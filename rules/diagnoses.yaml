@@ -1,0 +1,100 @@
+# Ordered rules: the first rule whose conditions all match wins.
+# A condition value matches exactly; a list matches any of its items;
+# "!x" matches anything but x, a missing fact included.
+# Fact keys are listed in docs/architecture.md; texts live in locales/ru.yaml.
+
+- id: no_internet
+  confidence: high
+  when: {local.net: none}
+
+- id: hosts_entry
+  confidence: high
+  when: {local.hosts_entry: true}
+
+- id: no_such_site
+  confidence: high
+  when: {dns.system: nxdomain, dns.doh: nxdomain}
+
+- id: no_such_site
+  confidence: likely
+  when: {dns.system: nxdomain, dns.doh: unavailable}
+
+- id: no_internet
+  confidence: likely
+  when: {dns.system: [timeout, error], dns.doh: unavailable}
+
+- id: clock_wrong
+  confidence: high
+  when: {local.clock: wrong, tls.status: [cert_expired, cert_untrusted, cert_invalid]}
+
+- id: dns_spoofed
+  confidence: high
+  when: {dns.match: differ, tls.status: "!ok", tls.alt: ok}
+
+# The ISP says "no such site" while the independent DNS knows it, and it works.
+- id: dns_spoofed
+  confidence: likely
+  when: {dns.system: nxdomain, dns.doh: ok, tls.status: ok}
+
+- id: isp_stub
+  confidence: high
+  when: {http.stub: true}
+
+# Traffic goes through a fake-ip proxy (usually a VPN on the router) and breaks on that path.
+- id: proxy_path_broken
+  confidence: likely
+  when: {dns.match: fakeip, tls.status: "!ok"}
+
+- id: sni_blocked
+  confidence: high
+  when: {tcp.status: ok, tls.status: [reset, timeout, eof], tls.control: ok}
+
+- id: isp_dns_down
+  confidence: high
+  when: {dns.system: [timeout, error, empty], dns.doh: ok, tls.status: ok}
+
+- id: ip_unreachable
+  confidence: likely
+  when: {tcp.status: [timeout, reset, unreachable]}
+
+# Cut with any name on this address: blocked by address, or the server is broken.
+- id: ip_unreachable
+  confidence: likely
+  when: {tcp.status: ok, tls.status: [reset, timeout, eof], tls.control: failed}
+
+- id: server_broken
+  confidence: high
+  when: {tcp.status: refused}
+
+- id: bad_certificate
+  confidence: high
+  when: {tls.status: [cert_expired, cert_name, cert_untrusted, cert_invalid]}
+
+- id: geo_blocked
+  confidence: high
+  when: {http.geo: true}
+
+- id: server_broken
+  confidence: high
+  when: {http.class: 5xx}
+
+- id: https_intercepted
+  confidence: likely
+  when: {tls.intercepted: true}
+
+- id: proxy_in_way
+  confidence: likely
+  when: {local.proxy: "on", tls.status: ok, http.class: [2xx, 3xx]}
+
+- id: all_ok
+  confidence: high
+  when: {tls.status: ok, http.class: [2xx, 3xx]}
+
+# Cloudflare's browser check: a real browser passes it, so the site is reachable.
+- id: all_ok
+  confidence: high
+  when: {tls.status: ok, http.challenge: true}
+
+- id: unknown
+  confidence: likely
+  when: {}

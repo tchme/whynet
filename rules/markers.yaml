@@ -1,0 +1,55 @@
+# Lowercase substrings. Probes use them to label what they saw; rules decide what it means.
+# New patterns found in real runs go here (and a line in docs/bugs.md if one misfired).
+
+# ISP block pages: matched in the final URL host or the first 64 KB of the page.
+stubs:
+  - eais.rkn.gov.ru
+  - blocklist.rkn.gov.ru
+  - warning.rt.ru
+  - доступ к информационному ресурсу ограничен
+  - доступ к ресурсу ограничен
+  - единый реестр
+
+# The site itself refusing a country: checked only on 4xx answers.
+geo:
+  - not available in your country
+  - not available in your region
+  - unavailable in your country
+  - unavailable in your region
+  - isn't available in your country
+  - not available in your location
+  - недоступен в вашем регионе
+  - недоступно в вашем регионе
+  - недоступен в вашей стране
+
+# HTTPS-scanning software: matched in the certificate chain's subjects and issuers.
+interceptors:
+  - kaspersky
+  - eset
+  - avast
+  - avg technologies
+  - bitdefender
+  - dr.web
+  - doctor web
+  - adguard
+  - norton
+  - sophos
+  - zscaler
+  - fortinet
+  - fiddler
+  - mitmproxy
+  - charles proxy
+
+# VPN and tunnel adapters: matched in the adapter name or description.
+vpn_adapters:
+  - wireguard
+  - wintun
+  - tap-windows
+  - amnezia
+  - openvpn
+  - sing-box
+  - hiddify
+  - outline
+  - nordlynx
+  - mullvad
+  - proton

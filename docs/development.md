@@ -14,16 +14,22 @@ WebView2 ships with Windows 11.
 ## Commands
 
 ```powershell
-go test ./...                         # unit tests and the failure lab
+go test ./...                                # unit tests and the failure lab (~5 s)
 go vet ./...
-go run ./cmd/whynet-cli check <site>  # facts + verdict in the console
-wails dev                             # app with live reload
-wails build                           # build/bin/whynet.exe
+go run ./cmd/whynet-cli youtube.com          # progress + verdict
+go run ./cmd/whynet-cli -json youtube.com    # every fact and all raw evidence
+go run ./cmd/whynet-cli -save youtube.com    # also writes the AI report .md here
+go run ./cmd/whynet-cli -save -no-hide ...   # report without masking
+wails dev                                    # app with live reload
+wails build                                  # build/bin/whynet.exe
 ```
+
+`wails` lives in `%USERPROFILE%\go\bin`; add it to PATH or call it by full path. When piping CLI output in Windows PowerShell 5.1, set `[Console]::OutputEncoding = [Text.Encoding]::UTF8` first, or Russian text arrives garbled (a real console window is fine).
 
 ## Conventions
 
 - Code comments, commit messages and docs in English; UI strings in `locales/ru.yaml` only, never inline.
 - Probes return facts; decisions go into `rules/diagnoses.yaml`.
-- Every new diagnosis gets a row in [diagnoses.md](diagnoses.md), a table test (facts -> diagnosis) and, where possible, a lab test that produces those facts from a real local server.
+- Every new diagnosis gets a rule, a text in `locales/ru.yaml` (`TestRulesAndTextsAgree` enforces both), a row in [diagnoses.md](diagnoses.md), a table case in `rules/rules_test.go` and, where possible, a lab case in `rules/lab_test.go` that produces the facts from a real local server.
+- A new fact key goes into the facts table in [architecture.md](architecture.md).
 - Work on a branch; `main` gets merged work. Push and releases only when the author asks.

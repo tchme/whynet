@@ -14,8 +14,19 @@ The author wants a long-lived open-source project that many people use, built in
 
 - Check one site and give one verdict: what broke, how sure we are, what to do.
 - Cover the ~12 causes behind most real cases (see [diagnoses.md](diagnoses.md)).
-- Plain Russian by default, full technical facts on demand, "Copy report" for sending to a friend or an issue.
+- Plain Russian by default, full technical facts on demand.
+- **The AI report is the core feature** (the author's top priority, 2026-11-15): one button saves everything whynet learned into one file that a person drops into ChatGPT/Claude and gets an analysis. Even if whynet never grows big, it must be a stable app that does this well. See "AI report" below.
+- **Stability:** no check may crash the app or hang it. Every step has its own timeout and panic recovery; one failed step never stops the others; a report is always saved, partial if need be, with what could not be checked.
 - One portable `.exe`, no install, no admin rights.
+
+## AI report
+
+The built-in rules cover common cases; the report covers the rest, so probes record **raw evidence** even when no rule needs it: exact error texts, DNS answers, certificate chain, redirect chain, response headers, every step's timing.
+
+- **Format:** one Markdown file (`whynet-<site>-<date>.md`), the format language models read best. Top: an instruction to the AI, so the file can be dropped into a chat with no prompt. Then a summary with whynet's own verdict, the computer and network (OS, adapters, VPN found or not, proxy, DNS servers, ISP and country, clock), each step in plain words (what was checked, what came back), and last the raw data as JSON.
+- **Language:** the UI language (Russian in v1).
+- **Privacy:** by default the report hides the public IP (only ISP, AS number and country stay), computer name, Windows user name and MAC addresses. Before saving, the app shows what goes into the file; a "don't hide" checkbox keeps everything for advanced users. Masking runs over the whole finished text, so it also catches these values inside raw evidence.
+- The CLI saves the same file (`--save`), so the report can be built and tested before the UI exists.
 
 ## Non-goals (v1)
 

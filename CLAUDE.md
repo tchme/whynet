@@ -5,14 +5,16 @@ Windows desktop app (Go + Wails v2) that tells a non-technical person why a site
 ## Commands
 
 - `go test ./...` — tests (run before every commit)
-- `go run ./cmd/whynet-cli check <site>` — console run
-- `wails dev` / `wails build` — app / exe
+- `go run ./cmd/whynet-cli [-json] [-save] [-no-hide] <site>` — console run; `-save` writes the AI report
+- `wails dev` / `wails build` — app / exe (`wails` is in `%USERPROFILE%\go\bin`)
 
 ## Key rules
 
 - Probes gather facts, rules decide (`rules/diagnoses.yaml`); never put a diagnosis in probe code.
 - All user-facing text in `locales/ru.yaml`.
 - Uncertain evidence gives an honest "probably", never a confident guess.
+- The AI report (`internal/report`) is the core feature: probes record raw evidence even when no rule uses it; private values stay masked by default.
+- No step may crash or hang the app: own timeout, panic recovery, later steps still run.
 - v1 plan (Russian, the author's working document): `C:\Users\Dimasta\.claude\plans\concurrent-whistling-heron.md`.
 
 ## Docs
