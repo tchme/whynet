@@ -32,4 +32,5 @@ Still to verify on real networks (plan step 6): `sni_blocked`, `isp_stub` and `d
 
 Verified live 2026-11-15 with Flowseal 1.9.9d on the Desktop:
 - zapret stopped, driver still loaded: `dpi_tool=none`, `windivert=running`, folder found from the driver path, discord.com listed.
+- `geo_blocked`: an artifact frame host on `claudeusercontent.com`, reached directly (not through the router proxy), answered HTTP 451 from Cloudflare's Moscow node; the browser showed `ERR_BLOCKED_BY_RESPONSE`, whynet gave `geo_blocked` (high).
 - zapret running (`general.bat` as admin): `dpi_tool=zapret`; a normal-rights whynet reads the elevated winws.exe's path and full command line (5170 chars, the strategy); discord.com and youtube.com `listed=true`, yandex.ru `excluded`; all three `all_ok`.
