@@ -77,7 +77,7 @@ func TestRulesAndTextsAgree(t *testing.T) {
 		}
 	}
 	placeholder := regexp.MustCompile(`\{([a-z_.]+)\}`)
-	known := regexp.MustCompile(`^(host|local\.[a-z_]+|dns\.[a-z_]+|tcp\.[a-z_]+|tls\.[a-z_]+|http\.[a-z_]+)$`)
+	known := regexp.MustCompile(`^(host|(local|dns|tcp|tls|http|br|res)\.[a-z_]+)$`)
 	for id, d := range tx.Diagnoses {
 		if !used[id] {
 			t.Errorf("text %s has no rule", id)

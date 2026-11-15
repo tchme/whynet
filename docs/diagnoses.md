@@ -20,6 +20,10 @@ Every diagnosis whynet can give: how it is detected and how it is tested. Rules 
 | `ip_unreachable` | Server doesn't answer: blocked by address or down (likely) | TCP timeout/reset/unreachable; or TLS cut with any SNI | lab (black hole) |
 | `server_broken` | The site's server is broken | TCP refused, or HTTP 5xx | lab (scripted refused, real 502) |
 | `bad_certificate` | Certificate can't be trusted | certificate error, clock fine | lab (wrong name) , table |
+| `content_stall` | The page opens, its content freezes after the first KB (likely) | `res.stall` | lab (server that sends 16 KB and goes silent) |
+| `content_blocked` | The page opens, some content servers fail (likely) | `res.worst` set | lab (server reset on its name); live: an ad server on habr.com before ads were excluded |
+| `content_slow` | Content is throttled (likely) | `res.slow` | not yet |
+| `content_flaky` | The browser failed on servers that pass their own check (likely) | `br.worst` set, no `res` failure | not yet |
 | `geo_blocked` | The site itself refuses your country | `http.geo` (451, or a geo text on a 4xx) | table |
 | `https_intercepted` | HTTPS intercepted by antivirus/other software (likely) | interceptor marker in the chain | table |
 | `proxy_in_way` | Works directly, but a system proxy is on (likely) | `local.proxy=on`, site ok | table |
@@ -29,6 +33,8 @@ Every diagnosis whynet can give: how it is detected and how it is tested. Rules 
 `all_ok` matters as much as the failures: it sends the person to the browser (cache, extensions, its own proxy or DNS-over-HTTPS setting).
 
 Still to verify on real networks (plan step 6): `sni_blocked`, `isp_stub` and `dns_spoofed` against real ISP blocking, `geo_blocked`, `https_intercepted`, `clock_wrong`, `proxy_in_way`, and the DPI-bypass failure diagnoses (`dpi_*`) on a site zapret actually fails on.
+
+Content checks, verified live 2026-11-15 (Edge 157): youtube.com — 164 browser requests to 9 servers incl. real `rr*---sn-*.googlevideo.com` video servers, 6 content servers checked, `all_ok` in ~9 s; a watch page measured the video server at ~1600 KB/s; habr.com — ~300 requests, `all_ok` in ~17 s on three runs in a row, Google ad servers cut by name and listed as ads.
 
 Verified live 2026-11-15 with Flowseal 1.9.9d on the Desktop:
 - zapret stopped, driver still loaded: `dpi_tool=none`, `windivert=running`, folder found from the driver path, discord.com listed.

@@ -71,13 +71,14 @@ func (p *prober) http(s *Step) {
 		s.Status = "fail"
 		return
 	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20)) // whole pages: the content step reads their resources
 	resp.Body.Close()
 
 	code := resp.StatusCode
 	s.Facts["http.status"] = strconv.Itoa(code)
 	s.Facts["http.class"] = strconv.Itoa(code/100) + "xx"
-	page := strings.ToLower(resp.Request.URL.Host + " " + string(body))
+	// stub and geo texts are looked for near the top only: a big page mentions anything somewhere
+	page := strings.ToLower(resp.Request.URL.Host + " " + string(body[:min(len(body), 64<<10)]))
 	if m := firstIn(page, p.env.Markers.Stubs); m != "" {
 		s.Facts["http.stub"] = "true"
 		s.Evidence["stub_marker"] = m
@@ -104,5 +105,8 @@ func (p *prober) http(s *Step) {
 	}
 	if code >= 400 || s.Facts["http.stub"] == "true" {
 		s.Status = "fail"
+	}
+	if scheme == "https" && s.Facts["http.stub"] != "true" && (code < 400 || s.Facts["http.challenge"] == "true") {
+		p.pageOK, p.body, p.finalURL = true, body, resp.Request.URL
 	}
 }

@@ -20,6 +20,7 @@ func main() {
 	asJSON := flag.Bool("json", false, "print facts and raw evidence as JSON")
 	save := flag.Bool("save", false, "save the AI report (.md) in the current folder")
 	noHide := flag.Bool("no-hide", false, "keep the public IP and other private values in the report")
+	noBrowser := flag.Bool("no-browser", false, "skip loading the page in a hidden Edge/Chrome")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "whynet-cli %s — why doesn't a site open?\n\nusage: whynet-cli [flags] <site>\n\n", report.Version)
 		flag.PrintDefaults()
@@ -29,13 +30,13 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
-	if err := run(flag.Arg(0), *asJSON, *save, !*noHide); err != nil {
+	if err := run(flag.Arg(0), *asJSON, *save, !*noHide, !*noBrowser); err != nil {
 		fmt.Fprintln(os.Stderr, "whynet:", err)
 		os.Exit(1)
 	}
 }
 
-func run(site string, asJSON, save, hide bool) error {
+func run(site string, asJSON, save, hide, browser bool) error {
 	rs, markers, err := rules.Load()
 	if err != nil {
 		return err
@@ -52,7 +53,11 @@ func run(site string, asJSON, save, hide bool) error {
 			fmt.Printf("%s %s (%d %s)\n", t.Status[s.Status], t.Steps[s.ID].Name, s.Ms, t.Report["ms"])
 		}
 	}
-	res, err := probe.Run(ctx, probe.DefaultEnv(markers), site, onStep)
+	env := probe.DefaultEnv(markers)
+	if !browser {
+		env.Browser = nil
+	}
+	res, err := probe.Run(ctx, env, site, onStep)
 	if errors.Is(err, probe.ErrBadInput) {
 		return errors.New(t.UI["bad_input"])
 	}

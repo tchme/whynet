@@ -96,6 +96,24 @@
   confidence: high
   when: {http.class: 5xx}
 
+# The page itself loaded; these are about what it loads (images, video, scripts).
+- id: content_stall
+  confidence: likely
+  when: {res.stall: true}
+
+- id: content_blocked
+  confidence: likely
+  when: {res.worst: [dns, ip, sni, tls, cert, http]}
+
+- id: content_slow
+  confidence: likely
+  when: {res.slow: true}
+
+# The browser failed somewhere, but those servers passed their own check.
+- id: content_flaky
+  confidence: likely
+  when: {br.worst: [reset, timeout, dns, refused, eof, cert, tls]}
+
 - id: https_intercepted
   confidence: likely
   when: {tls.intercepted: true}

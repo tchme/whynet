@@ -17,6 +17,12 @@ whynet/
     doh.go                 DNS-over-HTTPS JSON client (1.1.1.1, then 8.8.8.8)
     local.go               hosts parsing, Cloudflare trace + Team Cymru AS lookup, IP masking
     local_windows.go       route, OS, adapters (GetAdaptersAddresses), proxy (registry), hosts, clock
+    browser.go             "browser" step: hidden Edge/Chrome over the DevTools protocol (x/net/websocket),
+                           fresh temp profile, Network events -> per-server totals, errors, speed
+    browser_windows.go     find Edge, else Chrome (App Paths, Program Files, LocalAppData); hide its window
+    resources.go           "res" step: content servers from the HTML (x/net/html), from markers' `related`
+                           and from the browser's failures; DNS/TCP/TLS/control + one sample file per server,
+                           6 at a time, up to 20; stall watchdog and speed
     dpi.go                 bundle folder from a path, zapret hostlist matching (plain = with subdomains, ^ = exact)
     dpi_windows.go         DPI-bypass tools: processes (+exe, command line), services, WinDivert driver; no admin needed
   internal/report/         the AI report (Markdown) and its file name; Version
@@ -64,3 +70,12 @@ input -> probe.Target -> probe.Run(ctx, Env, onStep) -> Result{Steps[{facts, evi
 | `http.scheme` | https (TLS worked), http (fallback, where ISP stubs show up) |
 | `http.status` / `http.class` | code or error class / 2xx..5xx, fail |
 | `http.stub`, `http.geo`, `http.challenge` | true when seen |
+| `br.status` | ok, nav_failed, error, unavailable (no Edge/Chrome), off (disabled, or the page itself failed) |
+| `br.requests` / `br.failed` | requests the page made / that failed (cancelled ones and `ERR_ABORTED` excluded) |
+| `br.problem`, `br.failed_hosts`, `br.worst` | true / up to 3 servers / reset, timeout, dns, refused, eof, cert, tls, quic, other. Ads don't count; nor does a server whose only failures are silent requests while others succeeded |
+| `res.checked` / `res.failed` | content servers checked / failed (ads excluded) |
+| `res.problem`, `res.worst`, `res.failed_hosts` | true / dns, ip, sni, tls, cert, http, stall (worst first) / up to 3 |
+| `res.stall`, `res.stall_hosts` | true / servers that froze before 64 KB (the "16 KB" pattern) |
+| `res.slow`, `res.slow_hosts`, `res.slow_kbps` | true / servers under 64 KB/s on 256 KB+ (own sample or the browser's big files) / the slowest |
+
+Step order: local, dns, tcp, tls, http, browser, res. The browser runs first so the content step can explain the servers it failed on. Both content steps run only when the page itself loaded over HTTPS.

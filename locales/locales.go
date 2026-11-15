@@ -30,6 +30,8 @@ type Texts struct {
 	Report     map[string]string    `yaml:"report"`
 	Values     map[string]string    `yaml:"values"`
 	Notes      []Note               `yaml:"notes"`
+	Kinds      map[string]string    `yaml:"kinds"`
+	Results    map[string]string    `yaml:"results"`
 	UI         map[string]string    `yaml:"ui"`
 }
 

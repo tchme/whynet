@@ -1,6 +1,6 @@
 # whynet
 
-Windows desktop app (Go + Wails v2) that tells a non-technical person why a site doesn't open: it walks local -> DNS -> TCP -> TLS -> HTTP, finds the broken step and explains it in plain Russian, with technical facts under "Подробнее". Open source, MIT.
+Windows 10/11 desktop app (Go + Wails v2) that tells a non-technical person why a site doesn't open or loads broken: it walks local -> DNS -> TCP -> TLS -> HTTP, then loads the page in a hidden Edge and checks every server its content comes from; finds the broken step and explains it in plain Russian, with technical facts under "Подробнее". Open source, MIT.
 
 ## Commands
 

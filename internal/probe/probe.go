@@ -56,6 +56,20 @@ type Markers struct {
 	DPIProcesses map[string]string `yaml:"dpi_processes"`
 	DPIServices  map[string]string `yaml:"dpi_services"`
 	WinDivert    []string          `yaml:"windivert_drivers"`
+	// Servers a site loads content from by script, not named in its HTML: site -> hosts.
+	Related map[string][]string `yaml:"related"`
+	// Ads and counters: reported, but their failures don't make a site "broken".
+	Ads []string `yaml:"ads"`
+}
+
+// isUnder reports whether host is one of the domains or their subdomain.
+func isUnder(host string, domains []string) bool {
+	for _, d := range domains {
+		if host == d || strings.HasSuffix(host, "."+d) {
+			return true
+		}
+	}
+	return false
 }
 
 // Local is what the "local" step learns about this computer.
@@ -83,8 +97,9 @@ type Env struct {
 	DoH     func(ctx context.Context, host string) (DoHAnswer, error)
 	Dial    func(ctx context.Context, network, addr string) (net.Conn, error)
 	Local   func(ctx context.Context, host string, m Markers) Local
-	RootCAs *x509.CertPool // nil: the system store
-	Timeout time.Duration  // per network operation
+	Browser func(ctx context.Context, url string) BrowserResult // nil: skip the browser step
+	RootCAs *x509.CertPool                                      // nil: the system store
+	Timeout time.Duration                                       // per network operation
 	Markers Markers
 }
 
@@ -103,6 +118,7 @@ func DefaultEnv(m Markers) Env {
 		DoH:     dohLookup,
 		Dial:    (&net.Dialer{}).DialContext,
 		Local:   localInfo,
+		Browser: browserRun,
 		Timeout: 6 * time.Second,
 		Markers: m,
 	}
@@ -141,7 +157,7 @@ func Run(ctx context.Context, env Env, input string, onStep func(Step)) (*Result
 	}
 	p := &prober{ctx: ctx, env: env, host: host, path: path, onStep: onStep,
 		res: &Result{Input: input, Host: host, Started: time.Now(), Mask: map[string]string{}}}
-	fns := map[string]func(*Step){"local": p.local, "dns": p.dns, "tcp": p.tcp, "tls": p.tls, "http": p.http}
+	fns := map[string]func(*Step){"local": p.local, "dns": p.dns, "tcp": p.tcp, "tls": p.tls, "http": p.http, "browser": p.browser, "res": p.content}
 	for _, id := range StepIDs {
 		p.step(id, fns[id])
 	}
@@ -149,7 +165,7 @@ func Run(ctx context.Context, env Env, input string, onStep func(Step)) (*Result
 }
 
 // StepIDs is the order of the steps in every check.
-var StepIDs = []string{"local", "dns", "tcp", "tls", "http"}
+var StepIDs = []string{"local", "dns", "tcp", "tls", "http", "browser", "res"}
 
 type prober struct {
 	ctx        context.Context
@@ -164,6 +180,12 @@ type prober struct {
 	dnsDiffer bool
 	tcpOK     bool
 	tlsOK     bool
+
+	pageOK        bool             // the page itself loaded: content steps have something to check
+	body          []byte           // the page's HTML
+	finalURL      *url.URL         // after redirects
+	browserFailed []string         // servers the browser could not load from
+	browserSlow   map[string]int64 // servers the browser loaded big files from slowly -> KB/s
 }
 
 func (p *prober) step(id string, fn func(*Step)) {

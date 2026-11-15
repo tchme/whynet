@@ -9,6 +9,26 @@ Verified pitfalls and fixed bugs: symptom -> cause -> fix -> how it was verified
 - **Fix:** answers entirely in 198.18.0.0/15 give `dns.match=fakeip`; no alt handshake then. New diagnosis `proxy_path_broken` for when that path fails, so a broken router VPN is not blamed on the ISP.
 - **Verified:** live run on the author's network (2026-11-15): DNS ok, TLS 96 ms, `all_ok`; lab case "fake-ip proxy path broken".
 
+## Edge refused the DevTools connection ("bad status")
+
+- **Symptom:** browser step failed at once: `websocket.Dial ws://127.0.0.1:…/devtools/browser/…: bad status`.
+- **Cause:** Chromium 111+ rejects a DevTools client whose `Origin` is not allowed by `--remote-allow-origins`, and compares it as an exact string: `http://127.0.0.1/` (with the slash x/net/websocket was given) is not `http://127.0.0.1`.
+- **Fix:** launch with `--remote-allow-origins=http://127.0.0.1` and dial with exactly that origin.
+- **Verified:** youtube.com check: 164 requests recorded.
+
+## A tag without the attribute added the page itself as a content server
+
+- **Symptom:** `pageResources` listed the site's own host as image and media.
+- **Cause:** `<img srcset=…>` without `src`, or `<video poster=…>` without `src`, passed "" to `base.Parse`, which resolves to the page URL.
+- **Fix:** skip empty values. **Verified:** `TestPageResources`.
+
+## Browser step: false "failed" from requests that hang on purpose, and a 20 s wait
+
+- **Symptom:** habr.com sometimes got "part of the content didn't load" for habr.com itself; the browser step always used its whole 20 s.
+- **Cause:** a hung request to a blocked ad server held back the page's load event; counting every unanswered request as a timeout also caught long-polling XHR/fetch/ping and single slow answers from a working server.
+- **Fix:** stop 5 s after load, or 8 s after the page is parsed when load never comes; count silence as a timeout only for documents, scripts, styles, images, fonts and media; flag a server for silence only when none of its requests succeeded; ads excluded.
+- **Verified:** habr.com three runs in a row `all_ok`, browser step ~10 s (was 20 s); `TestBrowserAggregation`.
+
 ## Report preview ran past the window and hid its buttons
 
 - **Symptom:** in the AI report preview, Save / Copy / Close were below the bottom edge of the window.

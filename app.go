@@ -79,6 +79,7 @@ var tones = map[string]string{
 	"all_ok":      "ok",
 	"hosts_entry": "warn", "no_such_site": "warn", "isp_dns_down": "warn", "clock_wrong": "warn",
 	"proxy_in_way": "warn", "https_intercepted": "warn", "proxy_path_broken": "warn", "unknown": "warn",
+	"content_stall": "warn", "content_blocked": "warn", "content_slow": "warn", "content_flaky": "warn",
 	"dpi_conflict": "warn", "dpi_not_listed": "warn", "dpi_strategy_fails": "warn", "dpi_off": "warn",
 }
 

@@ -60,6 +60,14 @@ These would make whynet a failure even if it worked:
 - **Window:** variant A of three mockups (chosen by the author 2026-11-15): input bar on top, steps on the left with a one-line note under a failed step, verdict card on the right (tone icon, confidence, title, explanation, "what to do"), then "Save AI report" (preview with a "don't hide" checkbox, native Save dialog), "Copy", "Details" (facts per step). Light/dark follow Windows. The other variants were a path diagram (B) and a big-answer friendly screen (C).
 - License MIT. Repository `whynet` on the author's GitHub; publishing only when the author says so.
 
+## Content checks (decided 2026-11-15)
+
+A site can open while its images, video or scripts don't. Two steps cover this, on Windows 10 and 11 alike:
+
+- **Browser:** a hidden Edge (Chrome if Edge is missing; skipped with a note if neither) with a fresh throwaway profile loads the page over the DevTools protocol and records every request: errors per server, requests that never got an answer, speed of big files. It sees what scripts load (video servers), which HTML parsing can't. It uses the system proxy, like the person's browser.
+- **Content servers:** servers named in the HTML, known servers of popular sites (`related` in markers.yaml, for content loaded by scripts) and the servers the browser failed on, each checked like the site itself plus one real file, watching for the "freezes after ~16 KB" pattern and for throttling.
+- Ads and counters (`ads` in markers.yaml) are reported but never make a site "broken".
+
 ## Checks (v1)
 
 1. **Local:** route to the internet; system proxy (registry `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`); `hosts` entry for the domain; clock skew against the `Date` header of DoH responses (alarm above 5 minutes).

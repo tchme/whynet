@@ -17,6 +17,11 @@ import (
 
 const Version = "0.1.0-dev"
 
+// cell makes text safe inside a Markdown table cell.
+func cell(s string) string {
+	return strings.NewReplacer("|", `\|`, "\n", " ", "\r", "").Replace(s)
+}
+
 // FileName is a file name for the report on res, safe on Windows.
 func FileName(res *probe.Result) string {
 	host := strings.NewReplacer(":", "_", "/", "_", `\`, "_").Replace(res.Host)
@@ -64,6 +69,38 @@ func Markdown(res *probe.Result, v rules.Verdict, t *locales.Texts, hide bool) s
 		w("\n### %d. %s %s (%d %s)\n\n%s\n\n", i+1, st.Name, t.Status[s.Status], s.Ms, r["ms"], st.What)
 		for _, k := range slices.Sorted(maps.Keys(s.Facts)) {
 			w("- `%s`: %s\n", k, s.Facts[k])
+		}
+	}
+
+	for _, s := range res.Steps {
+		if br, ok := s.Evidence["browser"].(probe.BrowserResult); ok {
+			w("\n## %s\n\n", r["browser"])
+			if len(br.Hosts) == 0 {
+				w("%s\n", locales.Fill(r["browser_none"], map[string]string{"status": br.Status + " " + br.Error}))
+				continue
+			}
+			w("%s\n|---|---|---|---|\n", r["browser_cols"])
+			for _, h := range br.Hosts[:min(25, len(br.Hosts))] {
+				var errs []string
+				for _, e := range slices.Sorted(maps.Keys(h.Errors)) {
+					errs = append(errs, fmt.Sprintf("%s ×%d", e, h.Errors[e]))
+				}
+				w("| %s | %d | %d | %s |\n", cell(h.Host), h.Requests, h.Failed, cell(strings.Join(errs, ", ")))
+			}
+		}
+		if hosts, ok := s.Evidence["hosts"].([]*probe.HostCheck); ok {
+			w("\n## %s\n\n%s\n|---|---|---|---|\n", r["content"], r["content_cols"])
+			for _, h := range hosts {
+				kinds := make([]string, len(h.Kinds))
+				for i, k := range h.Kinds {
+					kinds[i] = t.Kinds[k]
+				}
+				detail := h.Detail
+				if h.KBps > 0 {
+					detail += fmt.Sprintf(", %d KB/s", h.KBps)
+				}
+				w("| %s | %s | %s | %s |\n", cell(h.Host), cell(strings.Join(kinds, ", ")), cell(t.Results[h.Result]), cell(detail))
+			}
 		}
 	}
 

@@ -54,6 +54,48 @@ windivert_drivers:
   - WinDivert
   - WinDivert1.4
 
+# Servers a site loads content from by script (video, images), which its HTML doesn't name.
+# Matched on the site and its subdomains. Add a site when a real check shows what it loads.
+related:
+  youtube.com: [i.ytimg.com, yt3.ggpht.com, redirector.googlevideo.com]
+  youtu.be: [i.ytimg.com, yt3.ggpht.com, redirector.googlevideo.com]
+  instagram.com: [static.cdninstagram.com, scontent.cdninstagram.com]
+  facebook.com: [static.xx.fbcdn.net, scontent.xx.fbcdn.net]
+  discord.com: [cdn.discordapp.com, media.discordapp.net, gateway.discord.gg]
+  x.com: [abs.twimg.com, pbs.twimg.com, video.twimg.com]
+  twitter.com: [abs.twimg.com, pbs.twimg.com, video.twimg.com]
+  twitch.tv: [static.twitchcdn.net, usher.ttvnw.net]
+  reddit.com: [www.redditstatic.com, i.redd.it, v.redd.it]
+  linkedin.com: [static.licdn.com, media.licdn.com]
+
+# Ads, analytics and counters: shown in the report, never the reason a site "doesn't load".
+# Matched on the domain and its subdomains.
+ads:
+  - doubleclick.net
+  - googlesyndication.com
+  - googleadservices.com
+  - google-analytics.com
+  - googletagmanager.com
+  - googletagservices.com
+  - adservice.google.com
+  - mc.yandex.ru
+  - mc.yandex.com
+  - an.yandex.ru
+  - yabs.yandex.ru
+  - yandexadexchange.net
+  - adfox.ru
+  - top-fwz1.mail.ru
+  - ad.mail.ru
+  - counter.yadro.ru
+  - tns-counter.ru
+  - scorecardresearch.com
+  - criteo.com
+  - criteo.net
+  - adnxs.com
+  - amazon-adsystem.com
+  - hotjar.com
+  - connect.facebook.net
+
 # VPN and tunnel adapters: matched in the adapter name or description.
 vpn_adapters:
   - wireguard
