@@ -60,6 +60,8 @@ type Markers struct {
 	Related map[string][]string `yaml:"related"`
 	// Ads and counters: reported, but their failures don't make a site "broken".
 	Ads []string `yaml:"ads"`
+	// Anti-bot check pages, matched in the page title.
+	Challenge []string `yaml:"challenge"`
 }
 
 // isUnder reports whether host is one of the domains or their subdomain.
@@ -184,6 +186,7 @@ type prober struct {
 	pageOK        bool             // the page itself loaded: content steps have something to check
 	body          []byte           // the page's HTML
 	finalURL      *url.URL         // after redirects
+	browserHosts  []*BrowserHost   // every server the browser used, failed first
 	browserFailed []string         // servers the browser could not load from
 	browserSlow   map[string]int64 // servers the browser loaded big files from slowly -> KB/s
 }

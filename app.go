@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,6 +67,71 @@ type CheckView struct {
 	Host    string      `json:"host"`
 	Verdict VerdictView `json:"verdict"`
 	Steps   []StepView  `json:"steps"`
+	Hosts   []HostView  `json:"hosts"`
+}
+
+// HostView is one server the page loads from, for the "Details" table.
+type HostView struct {
+	Host     string `json:"host"`
+	Kinds    string `json:"kinds"`
+	PingMs   int64  `json:"ping_ms"` // 0: not measured
+	KBps     int64  `json:"kbps"`
+	Requests int    `json:"requests"` // made by the browser
+	Failed   int    `json:"failed"`
+	Result   string `json:"result"`
+	Tone     string `json:"tone"` // ok, warn, bad, "" (not checked)
+}
+
+// hostViews joins the content check and the browser's view of the same servers.
+func (a *App) hostViews(res *probe.Result) []HostView {
+	var checks []*probe.HostCheck
+	var browser []*probe.BrowserHost
+	for _, s := range res.Steps {
+		if h, ok := s.Evidence["hosts"].([]*probe.HostCheck); ok {
+			checks = h
+		}
+		if b, ok := s.Evidence["browser"].(probe.BrowserResult); ok {
+			browser = b.Hosts
+		}
+	}
+	byHost := map[string]*probe.BrowserHost{}
+	for _, b := range browser {
+		byHost[b.Host] = b
+	}
+	var out []HostView
+	seen := map[string]bool{}
+	for _, c := range checks {
+		kinds := make([]string, len(c.Kinds))
+		for i, k := range c.Kinds {
+			kinds[i] = a.t.Kinds[k]
+		}
+		v := HostView{Host: c.Host, Kinds: strings.Join(kinds, ", "), PingMs: c.PingMs, KBps: c.KBps,
+			Result: a.t.Results[c.Result], Tone: hostTone(c.Result)}
+		if b := byHost[c.Host]; b != nil {
+			v.Requests, v.Failed = b.Requests, b.Failed
+			if v.KBps == 0 {
+				v.KBps = b.KBps
+			}
+		}
+		seen[c.Host] = true
+		out = append(out, v)
+	}
+	for _, b := range browser { // the servers beyond the check limit, with what the browser saw
+		if !seen[b.Host] {
+			out = append(out, HostView{Host: b.Host, Requests: b.Requests, Failed: b.Failed, KBps: b.KBps})
+		}
+	}
+	return out
+}
+
+func hostTone(result string) string {
+	switch result {
+	case "ok":
+		return "ok"
+	case "slow", "gone", "error":
+		return "warn"
+	}
+	return "bad"
 }
 
 type InfoView struct {
@@ -76,7 +142,7 @@ type InfoView struct {
 
 // tones colour the verdict; anything not listed is "bad".
 var tones = map[string]string{
-	"all_ok":      "ok",
+	"all_ok": "ok", "bot_check": "ok",
 	"hosts_entry": "warn", "no_such_site": "warn", "isp_dns_down": "warn", "clock_wrong": "warn",
 	"proxy_in_way": "warn", "https_intercepted": "warn", "proxy_path_broken": "warn", "unknown": "warn",
 	"content_stall": "warn", "content_blocked": "warn", "content_slow": "warn", "content_flaky": "warn",
@@ -136,6 +202,7 @@ func (a *App) Check(site string) (*CheckView, error) {
 	for _, s := range res.Steps {
 		view.Steps = append(view.Steps, a.stepView(s))
 	}
+	view.Hosts = a.hostViews(res)
 	return view, nil
 }
 

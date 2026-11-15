@@ -1,5 +1,31 @@
 export namespace main {
 	
+	export class HostView {
+	    host: string;
+	    kinds: string;
+	    ping_ms: number;
+	    kbps: number;
+	    requests: number;
+	    failed: number;
+	    result: string;
+	    tone: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new HostView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.host = source["host"];
+	        this.kinds = source["kinds"];
+	        this.ping_ms = source["ping_ms"];
+	        this.kbps = source["kbps"];
+	        this.requests = source["requests"];
+	        this.failed = source["failed"];
+	        this.result = source["result"];
+	        this.tone = source["tone"];
+	    }
+	}
 	export class StepView {
 	    id: string;
 	    name: string;
@@ -48,6 +74,7 @@ export namespace main {
 	    host: string;
 	    verdict: VerdictView;
 	    steps: StepView[];
+	    hosts: HostView[];
 	
 	    static createFrom(source: any = {}) {
 	        return new CheckView(source);
@@ -58,6 +85,7 @@ export namespace main {
 	        this.host = source["host"];
 	        this.verdict = this.convertValues(source["verdict"], VerdictView);
 	        this.steps = this.convertValues(source["steps"], StepView);
+	        this.hosts = this.convertValues(source["hosts"], HostView);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -78,6 +106,7 @@ export namespace main {
 		    return a;
 		}
 	}
+	
 	export class InfoView {
 	    steps: StepView[];
 	    ui: Record<string, string>;

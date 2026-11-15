@@ -126,8 +126,8 @@
   confidence: high
   when: {tls.status: ok, http.class: [2xx, 3xx]}
 
-# Cloudflare's browser check: a real browser passes it, so the site is reachable.
-- id: all_ok
+# An anti-bot check (Cloudflare, Ozon, DDoS-Guard): a real browser passes it, so the site is reachable.
+- id: bot_check
   confidence: high
   when: {tls.status: ok, http.challenge: true}
 

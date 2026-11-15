@@ -89,7 +89,7 @@ func Markdown(res *probe.Result, v rules.Verdict, t *locales.Texts, hide bool) s
 			}
 		}
 		if hosts, ok := s.Evidence["hosts"].([]*probe.HostCheck); ok {
-			w("\n## %s\n\n%s\n|---|---|---|---|\n", r["content"], r["content_cols"])
+			w("\n## %s\n\n%s\n|---|---|---|---|---|\n", r["content"], r["content_cols"])
 			for _, h := range hosts {
 				kinds := make([]string, len(h.Kinds))
 				for i, k := range h.Kinds {
@@ -99,7 +99,11 @@ func Markdown(res *probe.Result, v rules.Verdict, t *locales.Texts, hide bool) s
 				if h.KBps > 0 {
 					detail += fmt.Sprintf(", %d KB/s", h.KBps)
 				}
-				w("| %s | %s | %s | %s |\n", cell(h.Host), cell(strings.Join(kinds, ", ")), cell(t.Results[h.Result]), cell(detail))
+				ping := "—"
+				if h.PingMs > 0 {
+					ping = fmt.Sprint(h.PingMs)
+				}
+				w("| %s | %s | %s | %s | %s |\n", cell(h.Host), cell(strings.Join(kinds, ", ")), ping, cell(t.Results[h.Result]), cell(detail))
 			}
 		}
 	}

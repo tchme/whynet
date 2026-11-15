@@ -70,6 +70,8 @@ func TestBrowserAggregation(t *testing.T) {
 	ev("Network.loadingFailed", map[string]any{"requestId": "3", "timestamp": 1.1, "errorText": "net::ERR_ABORTED", "canceled": true})
 	req("4", "data:image/png;base64,AAAA", 1)
 	req("5", "https://v.example/video", 2) // 1 MB in 32 s = 32 KB/s
+	ev("Network.requestWillBeSent", map[string]any{"requestId": "9", "timestamp": 2, "type": "Document", "request": map[string]any{"url": "https://d.example/"}})
+	ev("Network.loadingFinished", map[string]any{"requestId": "9", "timestamp": 34, "encodedDataLength": 1 << 20}) // a slowly generated page: no speed
 	ev("Network.loadingFinished", map[string]any{"requestId": "5", "timestamp": 34, "encodedDataLength": 1 << 20})
 	req("6", "https://a.example/stream", 2) // answered, still downloading: fine
 	ev("Network.responseReceived", map[string]any{"requestId": "6", "timestamp": 2.1})
@@ -80,8 +82,11 @@ func TestBrowserAggregation(t *testing.T) {
 		t.Errorf("inflight = %d, want 3", n)
 	}
 	r := a.result()
-	if r.Requests != 7 || r.Failed != 2 { // the silent long-poll XHR is not a failure
-		t.Errorf("requests %d failed %d, want 7 and 2", r.Requests, r.Failed)
+	if r.Requests != 8 || r.Failed != 2 { // the silent long-poll XHR is not a failure
+		t.Errorf("requests %d failed %d, want 8 and 2", r.Requests, r.Failed)
+	}
+	if d := hostOf(r, "d.example"); d == nil || d.KBps != 0 {
+		t.Errorf("a generated page must not count as network speed: %+v", d)
 	}
 	for _, h := range r.Hosts {
 		if h.Host == "h.example" && (h.Failed != 1 || chromeErrClass(slices.Collect(maps.Keys(h.Errors))[0]) != "timeout") {

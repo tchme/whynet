@@ -68,6 +68,18 @@ related:
   reddit.com: [www.redditstatic.com, i.redd.it, v.redd.it]
   linkedin.com: [static.licdn.com, media.licdn.com]
 
+# Anti-bot check pages, matched in the page title: the site is up and wants a real browser.
+challenge:
+  - antibot
+  - challenge page
+  - just a moment
+  - checking your browser
+  - attention required
+  - ddos-guard
+  - проверка браузера
+  - вы не робот
+  - похоже, нет соединения   # ozon.ru shows this page to automated browsers
+
 # Ads, analytics and counters: shown in the report, never the reason a site "doesn't load".
 # Matched on the domain and its subdomains.
 ads:

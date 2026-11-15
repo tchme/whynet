@@ -23,6 +23,7 @@ type BrowserResult struct {
 	Status   string         `json:"status"` // ok, nav_failed, unavailable, error
 	Browser  string         `json:"browser,omitempty"`
 	Error    string         `json:"error,omitempty"`
+	Title    string         `json:"title,omitempty"` // the page title the browser ended on
 	Requests int            `json:"requests"`
 	Failed   int            `json:"failed"`
 	Hosts    []*BrowserHost `json:"hosts,omitempty"`
@@ -66,7 +67,12 @@ func (p *prober) browser(s *Step) {
 		s.Status = "fail"
 		return
 	}
+	p.browserHosts = r.Hosts
 	s.Facts["br.requests"] = strconv.Itoa(r.Requests)
+	if firstIn(strings.ToLower(r.Title), p.env.Markers.Challenge) != "" {
+		s.Facts["br.antibot"] = "true" // what lies behind the check stays unseen
+		s.Status = "warn"
+	}
 	s.Facts["br.failed"] = strconv.Itoa(r.Failed)
 	var failed []string
 	worst := ""
@@ -147,6 +153,9 @@ const hungAfter = 5.0
 // hangKinds are the request types that never wait on purpose. XHR, fetch, pings and
 // event streams may hang by design (long polling), so their silence proves nothing.
 var hangKinds = []string{"document", "stylesheet", "script", "image", "font", "media"}
+
+// speedKinds are the request types whose timing measures the network, not the server.
+var speedKinds = []string{"image", "media", "font", "script", "stylesheet"}
 
 const hungError = "net::ERR_TIMED_OUT (no answer while whynet watched)"
 
@@ -232,7 +241,8 @@ func (a *cdpAgg) result() BrowserResult {
 		}
 		if r.end > r.start {
 			h.SlowestMs = max(h.SlowestMs, int64((r.end-r.start)*1000))
-			if r.bytes >= speedMinRead {
+			// Only files sent as they are: a page or an API answer includes the server's thinking time.
+			if r.bytes >= speedMinRead && slices.Contains(speedKinds, r.kind) {
 				bigBytes[r.host] += r.bytes
 				bigSecs[r.host] += r.end - r.start
 			}
@@ -435,11 +445,20 @@ loop:
 			break loop
 		}
 	}
+	title := ""
+	if navErr == "" {
+		if raw, err := call("Runtime.evaluate", map[string]any{"expression": "document.title", "returnByValue": true}); err == nil {
+			var ev struct{ Result struct{ Value any } }
+			json.Unmarshal(raw, &ev)
+			title, _ = ev.Result.Value.(string)
+		}
+	}
 	session = ""
 	send("Browser.close", nil)
 
 	res = agg.result()
 	res.Browser = filepath.Base(exe)
+	res.Title = title
 	if navErr != "" {
 		res.Status, res.Error = "nav_failed", navErr
 	}

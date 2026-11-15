@@ -38,6 +38,7 @@ type HostCheck struct {
 	Detail string   `json:"detail,omitempty"`
 	Bytes  int64    `json:"bytes,omitempty"`
 	KBps   int64    `json:"kbps,omitempty"`
+	PingMs int64    `json:"ping_ms,omitempty"` // TCP connect time: the delay a browser feels (ICMP is often filtered)
 	Ms     int64    `json:"ms"`
 	sample string   // full URL, never reported (signed CDN links carry tokens)
 }
@@ -127,6 +128,22 @@ func addSrcset(srcset, kind string, add func(raw, kind string)) {
 	}
 }
 
+// browserKinds maps Chromium resource types to the kinds the report names.
+func browserKinds(types []string) []string {
+	var out []string
+	for _, t := range types {
+		k, ok := map[string]string{"image": "image", "script": "script", "stylesheet": "style", "font": "font",
+			"media": "media", "document": "frame"}[t]
+		if !ok {
+			k = "data" // xhr, fetch, ping, websocket: data the page's scripts exchange
+		}
+		if !slices.Contains(out, k) {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
 // relatedHosts are servers a site is known to use beyond its HTML (video, images loaded by scripts).
 func relatedHosts(host string, related map[string][]string) []string {
 	for site, hosts := range related {
@@ -152,14 +169,20 @@ func (p *prober) content(s *Step) {
 		}
 	}
 	// Servers the browser stumbled on come first: they are the ones to explain.
-	for _, b := range p.browserFailed {
-		add(&HostCheck{Host: b, Kinds: []string{"browser"}})
+	// Then what the HTML names, known servers of the site, and the rest the browser used.
+	for _, b := range p.browserHosts {
+		if slices.Contains(p.browserFailed, b.Host) {
+			add(&HostCheck{Host: b.Host, Kinds: browserKinds(b.Types)})
+		}
 	}
 	for _, h := range pageResources(p.body, p.finalURL) {
 		add(h)
 	}
 	for _, h := range relatedHosts(p.host, p.env.Markers.Related) {
 		add(&HostCheck{Host: h, Kinds: []string{"known"}})
+	}
+	for _, b := range p.browserHosts {
+		add(&HostCheck{Host: b.Host, Kinds: browserKinds(b.Types)})
 	}
 
 	var wg sync.WaitGroup
@@ -268,6 +291,17 @@ func (p *prober) checkHost(h *HostCheck) {
 	}
 	h.IP = ips[0]
 
+	ctx, cancel = p.timeout()
+	dialStart := time.Now()
+	c, err := p.env.Dial(ctx, "tcp", net.JoinHostPort(h.IP, "443"))
+	cancel()
+	if err != nil {
+		h.Result, h.Detail = "ip", "connect: "+netClass(err)
+		return
+	}
+	h.PingMs = time.Since(dialStart).Milliseconds()
+	c.Close()
+
 	if _, err := p.handshake(h.IP, h.Host, false); err != nil {
 		switch cls := tlsClass(err); cls {
 		case "reset", "timeout", "eof", "error", "refused", "unreachable":
@@ -289,11 +323,12 @@ func (p *prober) checkHost(h *HostCheck) {
 	if target == "" || strings.HasPrefix(target, "http://") {
 		target = "https://" + h.Host + "/"
 	}
-	p.fetchSample(h, target)
+	// Speed counts only for a real file: a server's root or an embedded page is generated, not sent.
+	p.fetchSample(h, target, target == h.sample && !(len(h.Kinds) == 1 && h.Kinds[0] == "frame"))
 }
 
 // fetchSample downloads up to sampleLimit of one file, watching for a stall and measuring speed.
-func (p *prober) fetchSample(h *HostCheck, target string) {
+func (p *prober) fetchSample(h *HostCheck, target string, measureSpeed bool) {
 	ctx, cancel := context.WithTimeout(p.ctx, 3*p.env.Timeout)
 	defer cancel()
 	cl := &http.Client{Transport: &http.Transport{
@@ -368,7 +403,7 @@ func (p *prober) fetchSample(h *HostCheck, target string) {
 		h.Result, h.Detail = "http", "HTTP "+strconv.Itoa(resp.StatusCode)
 	default:
 		h.Result, h.Detail = "ok", "HTTP "+strconv.Itoa(resp.StatusCode)
-		if h.Bytes >= speedMinRead && elapsed > 0 {
+		if measureSpeed && h.Bytes >= speedMinRead && elapsed > 0 {
 			h.KBps = int64(float64(h.Bytes) / 1024 / elapsed.Seconds())
 			if h.KBps < slowKBps {
 				h.Result = "slow"

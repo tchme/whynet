@@ -37,7 +37,7 @@ func TestMatch(t *testing.T) {
 		{with("http.class", "4xx", "http.status", "451", "http.geo", "true"), "geo_blocked"},
 		{with("tls.intercepted", "true"), "https_intercepted"},
 		{with("local.proxy", "on"), "proxy_in_way"},
-		{with("http.class", "4xx", "http.status", "403", "http.challenge", "true"), "all_ok"},
+		{with("http.class", "4xx", "http.status", "403", "http.challenge", "true"), "bot_check"},
 		{with("dns.system", "nxdomain", "dns.doh", "unavailable", "tcp.status", "skip", "tls.status", "skip"), "no_such_site"},
 		{with("dns.system", "timeout", "dns.doh", "unavailable", "tcp.status", "skip", "tls.status", "skip"), "no_internet"},
 		{with("dns.system", "nxdomain"), "dns_spoofed"},

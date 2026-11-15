@@ -9,6 +9,27 @@ Verified pitfalls and fixed bugs: symptom -> cause -> fix -> how it was verified
 - **Fix:** answers entirely in 198.18.0.0/15 give `dns.match=fakeip`; no alt handshake then. New diagnosis `proxy_path_broken` for when that path fails, so a broken router VPN is not blamed on the ISP.
 - **Verified:** live run on the author's network (2026-11-15): DNS ok, TLS 96 ms, `all_ok`; lab case "fake-ip proxy path broken".
 
+## ozon.ru: "all fine, code 307" and no content checked
+
+- **Symptom:** ozon.ru gave `all_ok` with "the site answered (code 307)"; the content step checked 0 servers.
+- **Cause:** ozon sets a cookie and redirects; the HTTP client kept no cookies, looped 5 redirects and stopped on a 307 with no page in it. With cookies it reaches an anti-bot page (`Antibot Challenge Page`, 403), which a real browser passes by script.
+- **Fix:** a cookie jar in the HTTP step; anti-bot pages recognised by title (`challenge` in markers.yaml) or Cloudflare's `Cf-Mitigated: challenge`, giving the `bot_check` verdict; the browser step reads the final page title and notes when it was stopped by the check too (ozon shows automated browsers "Похоже, нет соединения").
+- **Verified:** live ozon.ru: `bot_check`, browser step note about the check.
+
+## A slowly generated page counted as a slow network
+
+- **Symptom:** yandex.ru got "content loads very slowly: dzen.ru ~58 KB/s" (another run: 184 KB/s).
+- **Cause:** speed was computed for any big response, including the dzen.ru HTML page the server builds on the fly; its "speed" is the server's thinking time. The same for a server's root page fetched by the content check.
+- **Fix:** speed only for files sent as they are: images, media, fonts, scripts, styles in the browser; in the content check only for a real sample file from the HTML, not a root page or an embedded page.
+- **Verified:** yandex.ru `all_ok`; `TestBrowserAggregation` has a slow document that must not get a speed.
+
+## The window grew under the taskbar
+
+- **Symptom:** after opening "Details" the window looked unchanged, with a scrollbar.
+- **Cause:** the small start window is centred on screen; growing it kept its top edge and pushed the bottom off the screen (y 621 + 1252 > 1392).
+- **Fix:** when the new height doesn't fit below, move the window up first (`WindowGetPosition` / `WindowSetPosition`), at most to the top of the work area; height capped at 90% of the screen.
+- **Verified:** screenshots of the built exe (100% scaling only), window rectangle read with `GetWindowRect`.
+
 ## Edge refused the DevTools connection ("bad status")
 
 - **Symptom:** browser step failed at once: `websocket.Dial ws://127.0.0.1:…/devtools/browser/…: bad status`.

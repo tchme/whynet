@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"regexp"
 	"strconv"
 	"strings"
@@ -30,7 +31,9 @@ func (p *prober) http(s *Step) {
 	s.Facts["http.scheme"] = scheme
 
 	var chain []map[string]any
+	jar, _ := cookiejar.New(nil) // sites like ozon.ru set a cookie and redirect; without it they loop
 	cl := &http.Client{
+		Jar: jar,
 		Transport: &http.Transport{
 			Proxy: nil, // direct: a system proxy is a separate fact
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -86,7 +89,13 @@ func (p *prober) http(s *Step) {
 	if code == 451 || code >= 400 && firstIn(page, p.env.Markers.Geo) != "" {
 		s.Facts["http.geo"] = "true"
 	}
-	if strings.EqualFold(resp.Header.Get("Cf-Mitigated"), "challenge") {
+	title := ""
+	if m := titleRe.FindSubmatch(body); m != nil {
+		title = strings.TrimSpace(string(m[1]))
+		s.Evidence["title"] = title
+	}
+	// An anti-bot check answers scripts, not people: a real browser passes it, so the site is up.
+	if strings.EqualFold(resp.Header.Get("Cf-Mitigated"), "challenge") || firstIn(strings.ToLower(title), p.env.Markers.Challenge) != "" {
 		s.Facts["http.challenge"] = "true"
 	}
 
@@ -100,10 +109,7 @@ func (p *prober) http(s *Step) {
 		}
 	}
 	s.Evidence["headers"] = headers
-	if m := titleRe.FindSubmatch(body); m != nil {
-		s.Evidence["title"] = strings.TrimSpace(string(m[1]))
-	}
-	if code >= 400 || s.Facts["http.stub"] == "true" {
+	if (code >= 400 && s.Facts["http.challenge"] != "true") || s.Facts["http.stub"] == "true" {
 		s.Status = "fail"
 	}
 	if scheme == "https" && s.Facts["http.stub"] != "true" && (code < 400 || s.Facts["http.challenge"] == "true") {

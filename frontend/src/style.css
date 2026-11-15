@@ -34,7 +34,7 @@ main { flex: 1; overflow: auto; position: relative; }
 .btn:disabled { opacity: .55; cursor: default; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
-.grid { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 20px; padding: 20px; }
+.grid { display: grid; grid-template-columns: minmax(0, 330px) minmax(0, 1fr); gap: 20px; padding: 16px 20px 20px; align-items: start; }
 @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
 
 .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; align-content: start; }
@@ -67,10 +67,26 @@ main { flex: 1; overflow: auto; position: relative; }
 .verdict p { margin: 0; }
 .advice { background: var(--panel); border-radius: 8px; padding: 10px 12px; font-size: 14px; }
 .advice b { display: block; font: 600 11px var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
-.idle p, .waiting { color: var(--muted); }
+.waiting { color: var(--muted); }
+.hint { margin: 0; padding: 12px 20px 14px; color: var(--muted); font-size: 14px; }
+.hint + .hint { padding-top: 0; }
 .error-text { color: var(--bad); }
 
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+.hosts { width: 100%; border-collapse: collapse; font-size: 13px; }
+.hosts th { text-align: left; font: 600 11px var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.hosts td { padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.hosts tr:last-child td { border-bottom: 0; }
+.hosts .host { font-family: var(--mono); font-size: 12px; white-space: nowrap; user-select: text; }
+.hosts .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hosts .bad { color: var(--bad); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; background: var(--line); }
+.dot.ok { background: var(--ok); }
+.dot.warn { background: var(--warn); }
+.dot.bad { background: var(--bad); }
+
 .details { padding: 0 20px 20px; display: grid; gap: 10px; }
+.details .details-title:not(:first-child) { margin-top: 8px; }
 .details-title { font: 600 11px var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .details-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
 .fact-card { background: var(--panel); border-radius: 8px; padding: 10px 12px; font: 12px/1.65 var(--mono); min-width: 0; overflow-wrap: anywhere; user-select: text; }

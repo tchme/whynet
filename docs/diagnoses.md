@@ -27,7 +27,8 @@ Every diagnosis whynet can give: how it is detected and how it is tested. Rules 
 | `geo_blocked` | The site itself refuses your country | `http.geo` (451, or a geo text on a 4xx) | table |
 | `https_intercepted` | HTTPS intercepted by antivirus/other software (likely) | interceptor marker in the chain | table |
 | `proxy_in_way` | Works directly, but a system proxy is on (likely) | `local.proxy=on`, site ok | table |
-| `all_ok` | Everything works; the problem is in the browser | TLS ok and 2xx/3xx, or a Cloudflare challenge | lab, table; live: youtube.com, github.com |
+| `bot_check` | The site works but answers with an anti-bot check | TLS ok and `http.challenge` (title marker or Cloudflare header) | table; live: ozon.ru |
+| `all_ok` | Everything works; the problem is in the browser | TLS ok and 2xx/3xx | lab, table; live: youtube.com, github.com |
 | `unknown` | whynet can't tell; save the AI report | no other rule matched (always last) | table |
 
 `all_ok` matters as much as the failures: it sends the person to the browser (cache, extensions, its own proxy or DNS-over-HTTPS setting).
