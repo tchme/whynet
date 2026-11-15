@@ -15,7 +15,6 @@ Windows 10/11 desktop app (Go + Wails v2) that tells a non-technical person why 
 - Uncertain evidence gives an honest "probably", never a confident guess.
 - The AI report (`internal/report`) is the core feature: probes record raw evidence even when no rule uses it; private values stay masked by default.
 - No step may crash or hang the app: own timeout, panic recovery, later steps still run.
-- v1 plan (Russian, the author's working document): `C:\Users\Dimasta\.claude\plans\concurrent-whistling-heron.md`.
 
 ## Docs
 

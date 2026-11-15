@@ -20,13 +20,13 @@ func TestMarkdownHidesPrivateValues(t *testing.T) {
 		Started: time.Date(2026, 11, 15, 21, 4, 0, 0, time.UTC),
 		Steps: []probe.Step{{ID: "local", Status: "ok", Facts: map[string]string{"local.net": "ok",
 			"local.dpi_tool": "none", "local.dpi_installed": "true", "local.windivert": "running", "local.dpi_listed": "true"},
-			Evidence: map[string]any{"public": map[string]string{"ip": "95.24.13.7", "isp": "ROSTELECOM-AS, RU"}, "error": `open C:\Users\Dimasta\x`}}},
-		Mask: map[string]string{"95.24.13.7": "95.24.x.x", "Dimasta": "[user-name]"},
+			Evidence: map[string]any{"public": map[string]string{"ip": "95.24.13.7", "isp": "ROSTELECOM-AS, RU"}, "error": `open C:\Users\ivan\x`}}},
+		Mask: map[string]string{"95.24.13.7": "95.24.x.x", "ivan": "[user-name]"},
 	}
 	v := rules.Verdict{ID: "all_ok", Confidence: "high"}
 
 	hidden := Markdown(res, v, tx, true)
-	for _, private := range []string{"95.24.13.7", "Dimasta"} {
+	for _, private := range []string{"95.24.13.7", "ivan"} {
 		if strings.Contains(hidden, private) {
 			t.Errorf("hidden report leaks %q", private)
 		}

@@ -37,5 +37,3 @@ require (
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 )
-
-// replace github.com/wailsapp/wails/v2 v2.17.1 => C:\Users\Dimasta\go\pkg\mod

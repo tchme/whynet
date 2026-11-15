@@ -15,7 +15,7 @@ import (
 	"whynet/rules"
 )
 
-const Version = "0.1.0-dev"
+const Version = "0.1.0"
 
 // cell makes text safe inside a Markdown table cell.
 func cell(s string) string {
