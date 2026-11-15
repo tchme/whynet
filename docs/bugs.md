@@ -9,6 +9,13 @@ Verified pitfalls and fixed bugs: symptom -> cause -> fix -> how it was verified
 - **Fix:** answers entirely in 198.18.0.0/15 give `dns.match=fakeip`; no alt handshake then. New diagnosis `proxy_path_broken` for when that path fails, so a broken router VPN is not blamed on the ISP.
 - **Verified:** live run on the author's network (2026-11-15): DNS ok, TLS 96 ms, `all_ok`; lab case "fake-ip proxy path broken".
 
+## The exe showed no version, product or author in its properties
+
+- **Symptom:** after setting `info` in wails.json, the exe's details tab (and `FileVersionInfo`) stayed empty, though the strings were inside the file.
+- **Cause:** the Wails template `build/windows/info.json` writes the string table under language `0000`, which Windows doesn't read.
+- **Fix:** the table is under `0409`, with FileVersion, InternalName and OriginalFilename added. The icon comes from `build/appicon.png`: delete `build/windows/icon.ico` after changing it, and Wails cuts a new one (256–16 px).
+- **Verified:** `FileVersionInfo`: whynet 0.1.1, tchme, MIT License; the exe's own icon is the new one.
+
 ## ozon.ru: "turn off your VPN" was about automation, not the VPN
 
 - **Symptom:** whynet said "the site doesn't let you in through a VPN" for ozon.ru, while the author's own Edge and Opera opened it fine through the same router VPN.
