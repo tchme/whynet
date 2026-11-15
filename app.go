@@ -247,9 +247,7 @@ func (a *App) stepView(s probe.Step) StepView {
 	for _, k := range slices.Sorted(maps.Keys(s.Facts)) {
 		v.Facts = append(v.Facts, [2]string{k, s.Facts[k]})
 	}
-	if s.Status == "fail" || s.Status == "warn" || s.Status == "error" {
-		v.Note = a.t.Note(s.Facts)
-	}
+	v.Note = a.t.Note(s.Facts, s.Status == "fail" || s.Status == "warn" || s.Status == "error")
 	return v
 }
 

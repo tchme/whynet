@@ -173,6 +173,7 @@ report:
   advice: Совет whynet
   computer: Компьютер
   isp: Провайдер
+  path: Путь до сайта
   dpi: Обход блокировок
   dpi_line: "запущен: {local.dpi_tool}; драйвер WinDivert: {local.windivert}; сайт в списках запрета: {local.dpi_listed}"
   privacy: Приватность
@@ -225,6 +226,92 @@ results:
   slow: очень медленно
   error: сбой проверки
 
+# Countries as in "из <name>" (where a site sees the person from).
+countries:
+  RU: России
+  BY: Беларуси
+  KZ: Казахстана
+  UA: Украины
+  AM: Армении
+  GE: Грузии
+  MD: Молдовы
+  DE: Германии
+  NL: Нидерландов
+  FI: Финляндии
+  SE: Швеции
+  NO: Норвегии
+  DK: Дании
+  PL: Польши
+  CZ: Чехии
+  AT: Австрии
+  CH: Швейцарии
+  FR: Франции
+  GB: Великобритании
+  IE: Ирландии
+  BE: Бельгии
+  LU: Люксембурга
+  IT: Италии
+  ES: Испании
+  LV: Латвии
+  LT: Литвы
+  EE: Эстонии
+  RS: Сербии
+  BG: Болгарии
+  RO: Румынии
+  HU: Венгрии
+  TR: Турции
+  AE: ОАЭ
+  IL: Израиля
+  US: США
+  CA: Канады
+  SG: Сингапура
+  JP: Японии
+  HK: Гонконга
+  IN: Индии
+
+# Cloudflare nodes: airport code -> city.
+colos:
+  DME: Москва
+  SVO: Москва
+  LED: Санкт-Петербург
+  SVX: Екатеринбург
+  KJA: Красноярск
+  FRA: Франкфурт
+  AMS: Амстердам
+  HEL: Хельсинки
+  ARN: Стокгольм
+  OSL: Осло
+  CPH: Копенгаген
+  WAW: Варшава
+  PRG: Прага
+  VIE: Вена
+  ZRH: Цюрих
+  CDG: Париж
+  LHR: Лондон
+  DUB: Дублин
+  BRU: Брюссель
+  MXP: Милан
+  MAD: Мадрид
+  RIX: Рига
+  TLL: Таллин
+  VNO: Вильнюс
+  BEG: Белград
+  SOF: София
+  OTP: Бухарест
+  BUD: Будапешт
+  IST: Стамбул
+  ALA: Алматы
+  EVN: Ереван
+  TBS: Тбилиси
+  DXB: Дубай
+  IAD: Вашингтон
+  EWR: Нью-Йорк
+  LAX: Лос-Анджелес
+  SJC: Сан-Хосе
+  SIN: Сингапур
+  NRT: Токио
+  HKG: Гонконг
+
 # One-line notes under a step that failed or looks odd, in this order.
 notes:
   - {fact: local.net=none, text: Нет выхода в интернет.}
@@ -251,6 +338,8 @@ notes:
   - {fact: http.class=5xx, text: "Сервер ответил ошибкой {http.status}."}
   - {fact: http.class=4xx, text: "Сервер ответил кодом {http.status}."}
   - {fact: http.class=fail, text: Сайт не ответил.}
+  - {fact: http.via_vpn=true, info: true, text: "Сайт видит тебя из {http.seen_country} (узел Cloudflare — {http.seen_colo}): к нему ты идёшь через VPN или прокси."}
+  - {fact: http.via_vpn=false, info: true, text: "Сайт видит тебя из {http.seen_country} (узел Cloudflare — {http.seen_colo}): к нему ты идёшь напрямую."}
   - {fact: br.status=nav_failed, text: "Браузер не смог открыть страницу: {br.error}."}
   - {fact: br.status=error, text: "Браузер не запустился: {br.error}."}
   - {fact: br.loaded=false, text: "Страница так и не показалась за {br.dom_s} с."}

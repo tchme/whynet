@@ -81,6 +81,8 @@ input -> probe.Target -> probe.Run(ctx, Env, onStep) -> Result{Steps[{facts, evi
 | `http.scheme` | https (TLS worked), http (fallback, where ISP stubs show up) |
 | `http.status` / `http.class` | code or error class / 2xx..5xx, fail |
 | `http.stub`, `http.geo`, `http.challenge` | true when seen |
+| `local.country` | where the internet sees this computer by default (Cloudflare trace via 1.1.1.1) |
+| `http.seen_country` / `http.seen_colo` / `http.via_vpn` | Cloudflare-fronted sites only: where the site itself sees the person (its `/cdn-cgi/trace`) / the Cloudflare node / true when that differs from `local.country`, i.e. the way to this site goes through a VPN or proxy. Shown as an info note under a healthy step too |
 | `br.status` | ok, nav_failed, error, unavailable (no Edge/Chrome), off (disabled, or the page itself failed) |
 | `br.requests` / `br.failed` | requests the page made / that failed (cancelled ones and `ERR_ABORTED` excluded) |
 | `br.problem`, `br.failed_hosts`, `br.worst` | true / up to 3 servers / reset, timeout, dns, refused, eof, cert, tls, quic, other. Ads don't count; nor does a server whose only failures are silent requests while others succeeded |

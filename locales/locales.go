@@ -32,6 +32,8 @@ type Texts struct {
 	Notes      []Note               `yaml:"notes"`
 	Kinds      map[string]string    `yaml:"kinds"`
 	Results    map[string]string    `yaml:"results"`
+	Countries  map[string]string    `yaml:"countries"` // ISO code -> name as in "из <name>"
+	Colos      map[string]string    `yaml:"colos"`     // Cloudflare node (airport code) -> city
 	UI         map[string]string    `yaml:"ui"`
 }
 
@@ -49,17 +51,35 @@ func Load(lang string) (*Texts, error) {
 type Note struct {
 	Fact string `yaml:"fact"` // "key=value"
 	Text string `yaml:"text"`
+	Info bool   `yaml:"info"` // shown under a healthy step too: something worth knowing, not a problem
 }
 
-// Note joins, in file order, the notes whose fact a step has.
-func (t *Texts) Note(facts map[string]string) string {
+// Note joins, in file order, the notes whose fact a step has. Without problems, only info notes.
+func (t *Texts) Note(facts map[string]string, problems bool) string {
+	named := t.Named(facts)
 	var out []string
 	for _, n := range t.Notes {
-		if k, v, _ := strings.Cut(n.Fact, "="); facts[k] == v {
-			out = append(out, Fill(n.Text, facts))
+		if k, v, _ := strings.Cut(n.Fact, "="); facts[k] == v && (problems || n.Info) {
+			out = append(out, Fill(n.Text, named))
 		}
 	}
 	return strings.Join(out, " ")
+}
+
+// Named swaps country codes (keys ending in _country) and Cloudflare node codes (_colo)
+// in facts for their names in this language; unknown codes stay as they are.
+func (t *Texts) Named(facts map[string]string) map[string]string {
+	out := make(map[string]string, len(facts))
+	for k, v := range facts {
+		switch {
+		case strings.HasSuffix(k, "_country") && t.Countries[v] != "":
+			v = t.Countries[v]
+		case strings.HasSuffix(k, "_colo") && t.Colos[v] != "":
+			v = t.Colos[v] + " (" + v + ")"
+		}
+		out[k] = v
+	}
+	return out
 }
 
 // Plain returns facts with values translated through t.Values where a translation exists.

@@ -109,10 +109,43 @@ func (p *prober) http(s *Step) {
 		}
 	}
 	s.Evidence["headers"] = headers
+	if scheme == "https" && resp.Header.Get("Cf-Ray") != "" {
+		p.seenFrom(s, cl)
+	}
 	if (code >= 400 && s.Facts["http.challenge"] != "true") || s.Facts["http.stub"] == "true" {
 		s.Status = "fail"
 	}
 	if scheme == "https" && s.Facts["http.stub"] != "true" && (code < 400 || s.Facts["http.challenge"] == "true") {
 		p.pageOK, p.body, p.finalURL = true, body, resp.Request.URL
+	}
+}
+
+// seenFrom asks a Cloudflare-fronted site where it sees the person from (/cdn-cgi/trace, on every
+// such site) and compares it with what an independent server sees: a different country means
+// the way to this site goes through a VPN or proxy (a router's included).
+func (p *prober) seenFrom(s *Step, cl *http.Client) {
+	req, err := http.NewRequestWithContext(p.ctx, "GET", "https://"+p.host+"/cdn-cgi/trace", nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := cl.Do(req)
+	if err != nil {
+		return
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
+	resp.Body.Close()
+	kv := parseTrace(string(body))
+	if resp.StatusCode != 200 || kv["loc"] == "" {
+		return
+	}
+	s.Facts["http.seen_country"] = kv["loc"]
+	s.Facts["http.seen_colo"] = kv["colo"]
+	if kv["ip"] != "" {
+		s.Evidence["seen_ip"] = kv["ip"]
+		p.res.Mask[kv["ip"]] = maskIP(kv["ip"]) // may be the person's own VPS
+	}
+	if home := p.res.Facts()["local.country"]; home != "" {
+		s.Facts["http.via_vpn"] = strconv.FormatBool(home != kv["loc"])
 	}
 }

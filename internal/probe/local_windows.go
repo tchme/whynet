@@ -86,6 +86,9 @@ func localInfo(ctx context.Context, host string, m Markers) Local {
 		note("public", err)
 		if info != nil {
 			l.Evidence["public"] = info
+			if info["country"] != "" {
+				l.Facts["local.country"] = info["country"] // where the internet sees this computer by default
+			}
 			if ip := info["ip"]; ip != "" {
 				l.Mask[ip] = maskIP(ip)
 			}

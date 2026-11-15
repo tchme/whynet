@@ -54,6 +54,9 @@ func Markdown(res *probe.Result, v rules.Verdict, t *locales.Texts, hide bool) s
 			w("- %s: %s (%s, %s)\n", r["isp"], pub["isp"], pub["asn"], pub["country"])
 		}
 	}
+	if facts["http.via_vpn"] != "" {
+		w("- %s: %s\n", r["path"], t.Note(facts, false))
+	}
 	if facts["local.dpi_tool"] != "" && (facts["local.dpi_tool"] != "none" || facts["local.dpi_installed"] == "true") {
 		w("- %s: %s\n", r["dpi"], locales.Fill(r["dpi_line"], t.Plain(facts)))
 	}

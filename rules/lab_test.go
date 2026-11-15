@@ -150,6 +150,37 @@ func TestLab(t *testing.T) {
 	}
 }
 
+// A Cloudflare-fronted site that sees the person from another country: the way goes through a VPN.
+func TestSeenFrom(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cf-Ray", "8f00000000000000-FRA")
+		if r.URL.Path == "/cdn-cgi/trace" {
+			fmt.Fprint(w, "fl=1\nip=203.0.113.9\nloc=DE\ncolo=FRA\n")
+			return
+		}
+		fmt.Fprint(w, "<title>site</title>")
+	}))
+	t.Cleanup(srv.Close)
+	pool := x509.NewCertPool()
+	pool.AddCert(srv.Certificate())
+	l := &lab{pool: pool, routes: map[string]string{"10.0.0.1:443": srv.Listener.Addr().String()}}
+	env := l.env([]string{"10.0.0.1"}, nil, []string{"10.0.0.1"}, nil)
+	env.Local = func(context.Context, string, probe.Markers) probe.Local {
+		return probe.Local{Facts: map[string]string{"local.net": "ok", "local.country": "RU"}}
+	}
+	res, err := probe.Run(context.Background(), env, "example.com", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := res.Facts()
+	if f["http.via_vpn"] != "true" || f["http.seen_country"] != "DE" || f["http.seen_colo"] != "FRA" {
+		t.Errorf("facts %v", f)
+	}
+	if res.Mask["203.0.113.9"] == "" {
+		t.Error("the address the site sees must be masked in the report")
+	}
+}
+
 // A step that panics is recorded, and the check goes on.
 func TestPanicIsContained(t *testing.T) {
 	good := serve(t, 200, "ok")

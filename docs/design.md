@@ -72,6 +72,10 @@ A site can open while its images, video or scripts don't. Two steps cover this, 
 - **Slow pages:** the time until the page is parsed and shown (DOMContentLoaded) is measured; over 8 s, or never within the 20 s budget, gives `page_slow` — unless the site's own block page (anti-bot, "turn off VPN") already explains it.
 - Browser runs never sign in or sync (Edge does both on its own otherwise, see bugs.md).
 
+## Which way to the site (2026-11-16)
+
+For a site behind Cloudflare, whynet asks the site's own `/cdn-cgi/trace` where it sees the person and compares that country with the one an independent server sees. "The site sees you from Germany (Frankfurt node): you reach it through a VPN or proxy" — or "directly". Made for people with a VPN on the router, where it's otherwise unclear which sites go where. The address the site sees is masked in the report (it may be the person's own VPS).
+
 ## Checks (v1)
 
 1. **Local:** route to the internet; system proxy (registry `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`); `hosts` entry for the domain; clock skew against the `Date` header of DoH responses (alarm above 5 minutes).
