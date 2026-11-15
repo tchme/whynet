@@ -28,4 +28,8 @@ Every diagnosis whynet can give: how it is detected and how it is tested. Rules 
 
 `all_ok` matters as much as the failures: it sends the person to the browser (cache, extensions, its own proxy or DNS-over-HTTPS setting).
 
-Still to verify on real networks (plan step 6): `sni_blocked`, `isp_stub` and `dns_spoofed` against real ISP blocking, `geo_blocked`, `https_intercepted`, `clock_wrong`, `proxy_in_way`, and the DPI-bypass diagnoses with zapret actually running (reading an elevated winws.exe's path and command line is untested). Verified live 2026-11-15: driver loaded with zapret stopped (Flowseal 1.9.9d on the Desktop) gives `dpi_tool=none`, `windivert=running`, folder found from the driver path, discord.com listed.
+Still to verify on real networks (plan step 6): `sni_blocked`, `isp_stub` and `dns_spoofed` against real ISP blocking, `geo_blocked`, `https_intercepted`, `clock_wrong`, `proxy_in_way`, and the DPI-bypass failure diagnoses (`dpi_*`) on a site zapret actually fails on.
+
+Verified live 2026-11-15 with Flowseal 1.9.9d on the Desktop:
+- zapret stopped, driver still loaded: `dpi_tool=none`, `windivert=running`, folder found from the driver path, discord.com listed.
+- zapret running (`general.bat` as admin): `dpi_tool=zapret`; a normal-rights whynet reads the elevated winws.exe's path and full command line (5170 chars, the strategy); discord.com and youtube.com `listed=true`, yandex.ru `excluded`; all three `all_ok`.
