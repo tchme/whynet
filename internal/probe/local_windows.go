@@ -3,6 +3,7 @@ package probe
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
@@ -47,6 +48,12 @@ func localInfo(ctx context.Context, host string, m Markers) Local {
 			l.Facts["local.vpn"] = "true"
 			l.Evidence["vpn_adapter"] = a.Name
 		}
+	}
+
+	dpiFacts, dpiEv := dpiInfo(host, m)
+	maps.Copy(l.Facts, dpiFacts)
+	if len(dpiEv) > 0 {
+		l.Evidence["dpi_bypass"] = dpiEv
 	}
 
 	if k, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Internet Settings`, registry.QUERY_VALUE); err != nil {

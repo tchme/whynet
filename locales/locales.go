@@ -28,6 +28,7 @@ type Texts struct {
 	Status     map[string]string    `yaml:"status"`
 	Confidence map[string]string    `yaml:"confidence"`
 	Report     map[string]string    `yaml:"report"`
+	Values     map[string]string    `yaml:"values"`
 	UI         map[string]string    `yaml:"ui"`
 }
 
@@ -39,6 +40,18 @@ func Load(lang string) (*Texts, error) {
 	}
 	t := &Texts{}
 	return t, yaml.Unmarshal(b, t)
+}
+
+// Plain returns facts with values translated through t.Values where a translation exists.
+func (t *Texts) Plain(facts map[string]string) map[string]string {
+	out := make(map[string]string, len(facts))
+	for k, v := range facts {
+		if p, ok := t.Values[v]; ok {
+			v = p
+		}
+		out[k] = v
+	}
+	return out
 }
 
 // Fill replaces {fact.key} placeholders with the facts' values.

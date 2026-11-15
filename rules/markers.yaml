@@ -40,6 +40,20 @@ interceptors:
   - mitmproxy
   - charles proxy
 
+# DPI-bypass tools that rewrite packets through the WinDivert driver (so they change
+# whynet's own traffic too). Proxy-style tools like ByeDPI don't touch direct traffic.
+dpi_processes:   # lowercase exe name -> tool
+  winws.exe: zapret
+  goodbyedpi.exe: goodbyedpi
+dpi_services:    # Windows service name -> tool (Flowseal's service.bat makes "zapret")
+  zapret: zapret
+  winws1: zapret
+  winws2: zapret
+  GoodbyeDPI: goodbyedpi
+windivert_drivers:
+  - WinDivert
+  - WinDivert1.4
+
 # VPN and tunnel adapters: matched in the adapter name or description.
 vpn_adapters:
   - wireguard

@@ -52,6 +52,10 @@ type Markers struct {
 	Geo          []string `yaml:"geo"`
 	Interceptors []string `yaml:"interceptors"`
 	VPNAdapters  []string `yaml:"vpn_adapters"`
+	// DPI-bypass tools: process exe name and Windows service name -> tool.
+	DPIProcesses map[string]string `yaml:"dpi_processes"`
+	DPIServices  map[string]string `yaml:"dpi_services"`
+	WinDivert    []string          `yaml:"windivert_drivers"`
 }
 
 // Local is what the "local" step learns about this computer.

@@ -45,6 +45,24 @@
   confidence: likely
   when: {dns.match: fakeip, tls.status: "!ok"}
 
+# DPI-bypass tools on this PC (zapret, GoodbyeDPI): they rewrite whynet's packets too,
+# so a cut connection is about them before it is about the ISP.
+- id: dpi_conflict
+  confidence: likely
+  when: {local.dpi_tool: several, tls.status: "!ok"}
+
+- id: dpi_not_listed
+  confidence: likely
+  when: {local.dpi_tool: zapret, local.dpi_listed: false, tcp.status: ok, tls.status: [reset, timeout, eof]}
+
+- id: dpi_strategy_fails
+  confidence: likely
+  when: {local.dpi_tool: [zapret, goodbyedpi], tcp.status: ok, tls.status: [reset, timeout, eof]}
+
+- id: dpi_off
+  confidence: likely
+  when: {local.dpi_tool: none, local.dpi_installed: true, tcp.status: ok, tls.status: [reset, timeout, eof], tls.control: ok}
+
 - id: sni_blocked
   confidence: high
   when: {tcp.status: ok, tls.status: [reset, timeout, eof], tls.control: ok}

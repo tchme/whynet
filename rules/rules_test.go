@@ -42,6 +42,15 @@ func TestMatch(t *testing.T) {
 		{with("dns.system", "timeout", "dns.doh", "unavailable", "tcp.status", "skip", "tls.status", "skip"), "no_internet"},
 		{with("dns.system", "nxdomain"), "dns_spoofed"},
 		{with("tls.status", "alert"), "unknown"},
+		// DPI-bypass tools: a cut with a tool running is about the tool first
+		{with("tls.status", "reset", "tls.control", "ok", "local.dpi_tool", "several"), "dpi_conflict"},
+		{with("tls.status", "reset", "tls.control", "ok", "local.dpi_tool", "zapret", "local.dpi_listed", "false"), "dpi_not_listed"},
+		{with("tls.status", "timeout", "tls.control", "failed", "local.dpi_tool", "zapret", "local.dpi_listed", "true"), "dpi_strategy_fails"},
+		{with("tls.status", "eof", "local.dpi_tool", "goodbyedpi"), "dpi_strategy_fails"},
+		{with("tls.status", "reset", "tls.control", "ok", "local.dpi_tool", "none", "local.dpi_installed", "true"), "dpi_off"},
+		{with("tls.status", "reset", "tls.control", "ok", "local.dpi_tool", "none", "local.dpi_installed", "false"), "sni_blocked"},
+		{with("tls.status", "reset", "tls.control", "ok", "local.dpi_tool", "zapret", "local.dpi_listed", "excluded"), "dpi_strategy_fails"},
+		{with("local.dpi_tool", "zapret", "local.dpi_listed", "true"), "all_ok"},
 	}
 	for _, c := range cases {
 		if got := rules.Match(rs, c.facts); got.ID != c.want {
