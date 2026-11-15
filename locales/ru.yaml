@@ -153,5 +153,53 @@ values:
   "true": да
   "false": нет
 
+# One-line notes under a step that failed or looks odd, in this order.
+notes:
+  - {fact: local.net=none, text: Нет выхода в интернет.}
+  - {fact: local.hosts_entry=true, text: В файле hosts есть строчка про этот сайт.}
+  - {fact: local.proxy=on, text: В Windows включён прокси.}
+  - {fact: local.clock=wrong, text: "Часы компьютера сбиты на {local.clock_skew_sec} с."}
+  - {fact: dns.system=nxdomain, text: DNS компьютера не знает такого имени.}
+  - {fact: dns.system=timeout, text: DNS компьютера не ответил.}
+  - {fact: dns.doh=nxdomain, text: Независимый DNS тоже не знает такого имени.}
+  - {fact: dns.match=differ, text: DNS компьютера и независимый DNS дали разные адреса.}
+  - {fact: tcp.status=timeout, text: Сервер не ответил на подключение.}
+  - {fact: tcp.status=reset, text: Подключение сбросили.}
+  - {fact: tcp.status=refused, text: Сервер отказал в подключении.}
+  - {fact: tls.status=reset, text: Соединение сбросили сразу после имени сайта.}
+  - {fact: tls.status=timeout, text: После имени сайта ответа нет.}
+  - {fact: tls.status=eof, text: Соединение закрыли сразу после имени сайта.}
+  - {fact: tls.control=ok, text: С нейтральным именем тот же сервер ответил.}
+  - {fact: tls.control=failed, text: С нейтральным именем тоже не вышло.}
+  - {fact: tls.status=cert_expired, text: Сертификат просрочен или ещё не действует.}
+  - {fact: tls.status=cert_name, text: Сертификат выдан на другое имя.}
+  - {fact: tls.status=cert_untrusted, text: Сертификат выдан неизвестным центром.}
+  - {fact: http.stub=true, text: Пришла страница-заглушка о блокировке.}
+  - {fact: http.geo=true, text: "Сайт ответил, что недоступен в твоём регионе."}
+  - {fact: http.class=5xx, text: "Сервер ответил ошибкой {http.status}."}
+  - {fact: http.class=4xx, text: "Сервер ответил кодом {http.status}."}
+  - {fact: http.class=fail, text: Сайт не ответил.}
+
 ui:
   bad_input: Это не похоже на адрес сайта. Пример — youtube.com
+  busy: Проверка уже идёт.
+  placeholder: youtube.com
+  check: Проверить
+  idle_title: Какой сайт не открывается?
+  idle_text: Введи адрес и нажми «Проверить». whynet пройдёт путь от твоего компьютера до сайта и скажет, где он рвётся и что с этим делать.
+  checking: Проверяю {host}…
+  step_of: Шаг {n} из {total}
+  advice: Что сделать
+  save_report: Сохранить отчёт для ИИ
+  copy: Скопировать
+  details: Подробнее
+  hide_details: Скрыть подробности
+  report_title: Отчёт для ИИ
+  report_hint: Перетащи файл в чат с ChatGPT или Claude и ничего не пиши — инструкция для нейросети уже внутри.
+  reveal: Не скрывать личные данные (внешний IP, имя пользователя Windows)
+  save: Сохранить…
+  close: Закрыть
+  saved: "Сохранено: {path}"
+  copied: Отчёт скопирован. Вставь его в чат с нейросетью.
+  failed: "Не получилось: {error}"
+  save_title: Сохранить отчёт для ИИ

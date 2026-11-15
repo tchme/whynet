@@ -141,13 +141,15 @@ func Run(ctx context.Context, env Env, input string, onStep func(Step)) (*Result
 	}
 	p := &prober{ctx: ctx, env: env, host: host, path: path, onStep: onStep,
 		res: &Result{Input: input, Host: host, Started: time.Now(), Mask: map[string]string{}}}
-	p.step("local", p.local)
-	p.step("dns", p.dns)
-	p.step("tcp", p.tcp)
-	p.step("tls", p.tls)
-	p.step("http", p.http)
+	fns := map[string]func(*Step){"local": p.local, "dns": p.dns, "tcp": p.tcp, "tls": p.tls, "http": p.http}
+	for _, id := range StepIDs {
+		p.step(id, fns[id])
+	}
 	return p.res, nil
 }
+
+// StepIDs is the order of the steps in every check.
+var StepIDs = []string{"local", "dns", "tcp", "tls", "http"}
 
 type prober struct {
 	ctx        context.Context

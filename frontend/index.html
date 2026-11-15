@@ -1,12 +1,17 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>whynet</title>
 </head>
 <body>
-<div id="app"></div>
+<form class="ask" id="ask" autocomplete="off">
+    <input id="site" spellcheck="false" aria-label="Адрес сайта">
+    <button class="btn primary" id="check" type="submit"></button>
+</form>
+<main id="out"></main>
+<div class="toast" id="toast" role="status" hidden></div>
 <script src="./src/main.js" type="module"></script>
 </body>
 </html>

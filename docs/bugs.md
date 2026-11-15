@@ -9,6 +9,13 @@ Verified pitfalls and fixed bugs: symptom -> cause -> fix -> how it was verified
 - **Fix:** answers entirely in 198.18.0.0/15 give `dns.match=fakeip`; no alt handshake then. New diagnosis `proxy_path_broken` for when that path fails, so a broken router VPN is not blamed on the ISP.
 - **Verified:** live run on the author's network (2026-11-15): DNS ok, TLS 96 ms, `all_ok`; lab case "fake-ip proxy path broken".
 
+## Report preview ran past the window and hid its buttons
+
+- **Symptom:** in the AI report preview, Save / Copy / Close were below the bottom edge of the window.
+- **Cause:** `max-height: 100%` on the dialog, a grid item centered in a fixed backdrop, does not resolve to the window height; the `<pre>` grew with the report.
+- **Fix:** dialog `max-height: calc(100vh - 32px)`; the `<pre>` takes `flex: 1 1 360px; min-height: 0` and scrolls inside.
+- **Verified:** screenshots of the built exe at 900x660 with a long report: buttons visible, preview scrolls.
+
 ## Windows: a refused connection on loopback takes ~2 s
 
 - **Symptom:** a test dialing a closed local port classifies it as `timeout` under a short test timeout.
