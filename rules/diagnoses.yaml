@@ -31,8 +31,8 @@
   confidence: high
   when: {dns.match: differ, tls.status: "!ok", tls.alt: ok}
 
-# The ISP says "no such site" while the independent DNS knows it, and it works.
-- id: dns_spoofed
+# The ISP says "no such site" while the independent DNS knows it, and it works (rutracker.org, live).
+- id: dns_blocked
   confidence: likely
   when: {dns.system: nxdomain, dns.doh: ok, tls.status: ok}
 

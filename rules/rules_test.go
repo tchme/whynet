@@ -40,7 +40,7 @@ func TestMatch(t *testing.T) {
 		{with("http.class", "4xx", "http.status", "403", "http.challenge", "true"), "bot_check"},
 		{with("dns.system", "nxdomain", "dns.doh", "unavailable", "tcp.status", "skip", "tls.status", "skip"), "no_such_site"},
 		{with("dns.system", "timeout", "dns.doh", "unavailable", "tcp.status", "skip", "tls.status", "skip"), "no_internet"},
-		{with("dns.system", "nxdomain"), "dns_spoofed"},
+		{with("dns.system", "nxdomain"), "dns_blocked"},
 		{with("tls.status", "alert"), "unknown"},
 		// DPI-bypass tools: a cut with a tool running is about the tool first
 		{with("tls.status", "reset", "tls.control", "ok", "local.dpi_tool", "several"), "dpi_conflict"},

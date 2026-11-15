@@ -8,7 +8,8 @@ Every diagnosis whynet can give: how it is detected and how it is tested. Rules 
 | `hosts_entry` | The site is rewritten in the `hosts` file | `local.hosts_entry=true` | table; unit test of the parser |
 | `no_such_site` | Site doesn't exist / typo | NXDOMAIN from system DNS and DoH (likely, if DoH is unreachable) | lab, table; live: `doesnotexist-whynet-test.com` |
 | `clock_wrong` | Computer clock is wrong | certificate error plus clock skew > 5 min | table |
-| `dns_spoofed` | ISP substitutes the site's address | system and DoH differ, real address fails, DoH address works (`tls.alt=ok`); or ISP NXDOMAIN while DoH works (likely) | lab, table |
+| `dns_spoofed` | ISP substitutes the site's address | system and DoH differ, real address fails, DoH address works (`tls.alt=ok`) | lab |
+| `dns_blocked` | The site is hidden in DNS (likely) | system DNS says NXDOMAIN, DoH knows it and the DoH address works | table; live: rutracker.org through the author's router DNS (2026-11-16) |
 | `isp_stub` | ISP stub page | page or final URL matches `markers.yaml` stubs | lab (stub over HTTP after a TLS cut) |
 | `proxy_path_broken` | Breaks on the way through a VPN/proxy (usually on the router) | `dns.match=fakeip` and TLS not ok | lab |
 | `dpi_conflict` | Two WinDivert bypass tools fight (likely) | `local.dpi_tool=several` and TLS not ok | table |
