@@ -27,6 +27,8 @@ wails build                                  # build/bin/whynet.exe
 
 The window: `wails build` regenerates `frontend/wailsjs/` (bindings to `app.go`, committed) and embeds `frontend/dist`. Fonts come from the pinned `@fontsource/golos-text` and `@fontsource/jetbrains-mono` packages (OFL) and ship inside the exe, so the app needs no internet for them. npm 11 warns that esbuild's install script was not approved; the build works without it.
 
+Ad list: `go run ./tools/adlist` downloads the current StevenBlack/hosts list and rewrites `rules/ads.txt.gz`; update the date in `rules/ads-LICENSE.txt` and commit both.
+
 `wails` lives in `%USERPROFILE%\go\bin`; add it to PATH or call it by full path. When piping CLI output in Windows PowerShell 5.1, set `[Console]::OutputEncoding = [Text.Encoding]::UTF8` first, or Russian text arrives garbled (a real console window is fine).
 
 ## Conventions

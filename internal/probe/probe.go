@@ -64,6 +64,8 @@ type Markers struct {
 	AdSet map[string]bool `yaml:"-"`
 	// Anti-bot check pages, matched in the page title.
 	Challenge []string `yaml:"challenge"`
+	// A site's own "turn off your VPN" page, matched in the title and visible text.
+	VPNBlock []string `yaml:"vpn_block"`
 }
 
 // IsAd reports whether host or one of its parent domains is an ad or tracker server.
@@ -115,9 +117,12 @@ type Env struct {
 	Dial    func(ctx context.Context, network, addr string) (net.Conn, error)
 	Local   func(ctx context.Context, host string, m Markers) Local
 	Browser func(ctx context.Context, url string) BrowserResult // nil: skip the browser step
-	RootCAs *x509.CertPool                                      // nil: the system store
-	Timeout time.Duration                                       // per network operation
-	Markers Markers
+	// BrowserAlways runs the browser step even when the direct request got no page
+	// (a visible window can pass what whynet's own request could not).
+	BrowserAlways bool
+	RootCAs       *x509.CertPool // nil: the system store
+	Timeout       time.Duration  // per network operation
+	Markers       Markers
 }
 
 // DefaultEnv is the real network of this computer.

@@ -4,7 +4,11 @@ import {main} from '../models';
 
 export function Check(arg1:string):Promise<main.CheckView>;
 
+export function CheckInBrowser(arg1:string):Promise<main.CheckView>;
+
 export function CopyReport(arg1:boolean):Promise<void>;
+
+export function FinishBrowser():Promise<void>;
 
 export function Info():Promise<main.InfoView>;
 

@@ -24,6 +24,10 @@ type BrowserResult struct {
 	Browser  string         `json:"browser,omitempty"`
 	Error    string         `json:"error,omitempty"`
 	Title    string         `json:"title,omitempty"` // the page title the browser ended on
+	text     string         // start of the page's visible text: matched against markers, never reported (may be personal)
+	Visible  bool           `json:"visible,omitempty"`
+	DomMs    int64          `json:"dom_ms,omitempty"`  // navigation to "page parsed and shown"; 0: never
+	LoadMs   int64          `json:"load_ms,omitempty"` // navigation to the load event; 0: never
 	Requests int            `json:"requests"`
 	Failed   int            `json:"failed"`
 	Hosts    []*BrowserHost `json:"hosts,omitempty"`
@@ -46,15 +50,37 @@ const (
 	browserBudget = 20 * time.Second // from navigation to giving up on a page that never finishes loading
 	afterLoad     = 5 * time.Second  // time for lazy images and video after the load event
 	afterDOM      = 8 * time.Second  // the limit after the page is parsed, when the load event never comes
+	slowDOM       = 8 * time.Second  // a page shown later than this is "very slow"
+	maxVisible    = 10 * time.Minute // a visible window the person forgot
 )
 
+// BrowserOpts tunes a browser run. The zero value is the hidden, automatic one.
+type BrowserOpts struct {
+	// Visible opens a normal window the person uses (passes an anti-bot check, logs in, plays a video).
+	// It ends when Done closes, when the person closes the window, or after maxVisible.
+	Visible  bool
+	Done     <-chan struct{}
+	Progress func(BrowserProgress) // called twice a second while the window is open
+}
+
+// BrowserProgress is the live count shown while a visible window is open.
+type BrowserProgress struct {
+	Requests int `json:"requests"`
+	Failed   int `json:"failed"`
+	Seconds  int `json:"seconds"`
+}
+
 func (p *prober) browser(s *Step) {
-	if !p.pageOK || p.env.Browser == nil {
+	if (!p.pageOK && !p.env.BrowserAlways) || p.env.Browser == nil {
 		s.Facts["br.status"] = "off"
 		s.Status = "skip"
 		return
 	}
-	r := p.env.Browser(p.ctx, p.finalURL.String())
+	target := "https://" + p.host + p.path
+	if p.finalURL != nil {
+		target = p.finalURL.String()
+	}
+	r := p.env.Browser(p.ctx, target)
 	s.Facts["br.status"] = r.Status
 	s.Evidence["browser"] = r
 	switch r.Status {
@@ -69,7 +95,27 @@ func (p *prober) browser(s *Step) {
 	}
 	p.browserHosts = r.Hosts
 	s.Facts["br.requests"] = strconv.Itoa(r.Requests)
-	if firstIn(strings.ToLower(r.Title), p.env.Markers.Challenge) != "" {
+	if r.Visible {
+		s.Facts["br.visible"] = "true"
+	}
+	switch {
+	case r.DomMs == 0:
+		s.Facts["br.loaded"] = "false"
+		s.Facts["br.dom_s"] = strconv.Itoa(int(browserBudget.Seconds())) + "+"
+		s.Status = "warn"
+	case time.Duration(r.DomMs)*time.Millisecond > slowDOM:
+		s.Facts["br.slow_load"] = "true"
+		s.Facts["br.dom_s"] = strconv.FormatFloat(float64(r.DomMs)/1000, 'f', 1, 64)
+		s.Status = "warn"
+	default:
+		s.Facts["br.dom_s"] = strconv.FormatFloat(float64(r.DomMs)/1000, 'f', 1, 64)
+	}
+	page := strings.ToLower(r.Title + "\n" + r.text)
+	switch {
+	case firstIn(page, p.env.Markers.VPNBlock) != "":
+		s.Facts["br.vpn_block"] = "true" // the site itself says "turn off your VPN"
+		s.Status = "warn"
+	case firstIn(strings.ToLower(r.Title), p.env.Markers.Challenge) != "":
 		s.Facts["br.antibot"] = "true" // what lies behind the check stays unseen
 		s.Status = "warn"
 	}
@@ -208,6 +254,17 @@ func (a *cdpAgg) event(method string, params json.RawMessage) {
 	}
 }
 
+// liveFailed counts failures so far, hung requests included, for the live counter.
+func (a *cdpAgg) liveFailed() int {
+	n := 0
+	for _, r := range a.reqs {
+		if r.failed != "" || !r.done && !r.responded && a.lastTs-r.start > hungAfter && slices.Contains(hangKinds, r.kind) {
+			n++
+		}
+	}
+	return n
+}
+
 func (a *cdpAgg) inflight() int {
 	n := 0
 	for _, r := range a.reqs {
@@ -279,9 +336,14 @@ type cdpMsg struct {
 	SessionID string                    `json:"sessionId,omitempty"`
 }
 
-// browserRun loads target in a hidden Edge or Chrome with a fresh profile and records its network.
+// browserRun is the hidden, automatic browser step.
+func browserRun(ctx context.Context, target string) BrowserResult {
+	return BrowserSession(ctx, target, BrowserOpts{})
+}
+
+// BrowserSession loads target in Edge or Chrome with a fresh throwaway profile and records its network.
 // The browser uses the system proxy, like the person's own browser does.
-func browserRun(ctx context.Context, target string) (res BrowserResult) {
+func BrowserSession(ctx context.Context, target string, opts BrowserOpts) (res BrowserResult) {
 	exe := findBrowser()
 	if exe == "" {
 		return BrowserResult{Status: "unavailable"}
@@ -300,15 +362,26 @@ func browserRun(ctx context.Context, target string) (res BrowserResult) {
 		}
 	}()
 
-	ctx, cancel := context.WithTimeout(ctx, browserBudget+15*time.Second)
+	limit := browserBudget
+	if opts.Visible {
+		limit = maxVisible
+	}
+	ctx, cancel := context.WithTimeout(ctx, limit+15*time.Second)
 	defer cancel()
-	// The debugging port lives on localhost for the few seconds of the check, in a throwaway profile.
+	// The debugging port lives on localhost while the check runs, in a throwaway profile.
 	// Chromium 111+ refuses a debugging client whose Origin is not allowed explicitly.
-	cmd := exec.CommandContext(ctx, exe, "--headless=new", "--remote-debugging-port=0", "--user-data-dir="+dir,
-		"--remote-allow-origins=http://127.0.0.1",
-		"--no-first-run", "--no-default-browser-check", "--disable-extensions", "--mute-audio",
-		"--window-size=1280,900", "about:blank")
-	hideWindow(cmd)
+	// Edge signs a fresh profile into the Windows Microsoft account and starts sync on its own,
+	// which would send the checked pages to the person's account history: both are switched off.
+	args := []string{"--remote-debugging-port=0", "--user-data-dir=" + dir, "--remote-allow-origins=http://127.0.0.1",
+		"--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,900",
+		"--disable-sync", "--disable-features=msImplicitSignin"}
+	if !opts.Visible {
+		args = append(args, "--headless=new", "--mute-audio")
+	}
+	cmd := exec.CommandContext(ctx, exe, append(args, "about:blank")...)
+	if !opts.Visible {
+		hideWindow(cmd)
+	}
 	if err := cmd.Start(); err != nil {
 		return fail(err)
 	}
@@ -372,64 +445,122 @@ func browserRun(ctx context.Context, target string) (res BrowserResult) {
 		}
 	}
 
-	raw, err := call("Target.createTarget", map[string]any{"url": "about:blank"})
+	// Use the tab the browser opened with, so a visible window has no extra blank tab.
+	raw, err := call("Target.getTargets", nil)
 	if err != nil {
 		return fail(err)
 	}
-	var tgt struct{ TargetID string }
-	json.Unmarshal(raw, &tgt)
-	raw, err = call("Target.attachToTarget", map[string]any{"targetId": tgt.TargetID, "flatten": true})
+	var tl struct {
+		TargetInfos []struct{ TargetID, Type string }
+	}
+	json.Unmarshal(raw, &tl)
+	targetID := ""
+	for _, t := range tl.TargetInfos {
+		if t.Type == "page" {
+			targetID = t.TargetID
+			break
+		}
+	}
+	if targetID == "" {
+		if raw, err = call("Target.createTarget", map[string]any{"url": "about:blank"}); err != nil {
+			return fail(err)
+		}
+		var tgt struct{ TargetID string }
+		json.Unmarshal(raw, &tgt)
+		targetID = tgt.TargetID
+	}
+	if _, err := call("Target.setDiscoverTargets", map[string]any{"discover": true}); err != nil {
+		return fail(err)
+	}
+	raw, err = call("Target.attachToTarget", map[string]any{"targetId": targetID, "flatten": true})
 	if err != nil {
 		return fail(err)
 	}
 	var att struct{ SessionID string }
 	json.Unmarshal(raw, &att)
 	session = att.SessionID
-	for _, c := range []struct {
+	setup := []struct {
 		m string
 		p any
-	}{
-		{"Network.enable", nil},
-		{"Page.enable", nil},
-		// a plain browser agent: some sites turn away "HeadlessChrome"
-		{"Network.setUserAgentOverride", map[string]any{"userAgent": userAgent, "acceptLanguage": "ru,en;q=0.8"}},
-	} {
+	}{{"Network.enable", nil}, {"Page.enable", nil}}
+	if !opts.Visible {
+		// a plain browser agent: some sites turn away "HeadlessChrome"; a visible window keeps its own
+		setup = append(setup, struct {
+			m string
+			p any
+		}{"Network.setUserAgentOverride", map[string]any{"userAgent": userAgent, "acceptLanguage": "ru,en;q=0.8"}})
+	}
+	for _, c := range setup {
 		if _, err := call(c.m, c.p); err != nil {
 			return fail(err)
 		}
 	}
 
+	navStart := time.Now()
 	navID := send("Page.navigate", map[string]any{"url": target})
-	deadline := time.After(browserBudget)
+	deadline := time.After(limit)
 	quiet := time.NewTicker(500 * time.Millisecond)
 	defer quiet.Stop()
 	var loadedAt, domAt time.Time
 	loaded, lastEvent := false, time.Now()
 	navErr := ""
+	// The title and the start of the visible text, to recognise a site's own block pages.
+	// A visible window is read every 2 s, so the last page is known even after the person closes it.
+	const readPage = "[document.title, (document.body && document.body.innerText || '').slice(0, 3000)]"
+	title, text := "", ""
+	keepPage := func(raw json.RawMessage) {
+		var ev struct{ Result struct{ Value []string } }
+		if json.Unmarshal(raw, &ev) == nil && len(ev.Result.Value) == 2 {
+			title, text = ev.Result.Value[0], ev.Result.Value[1]
+		}
+	}
+	readID, ticks := -1, 0
+	done := opts.Done
+	if done == nil {
+		done = make(chan struct{}) // never closes: the hidden run ends by itself
+	}
 loop:
 	for {
 		select {
 		case m, ok := <-msgs:
 			if !ok {
-				break loop
+				break loop // the browser is gone: the person closed its window
 			}
 			switch {
 			case m.ID == navID:
 				var nav struct{ ErrorText string }
 				json.Unmarshal(m.Result, &nav)
-				if navErr = nav.ErrorText; navErr != "" {
+				// In a visible window the person may retry (F5), so a failed first try doesn't end it.
+				if navErr = nav.ErrorText; navErr != "" && !opts.Visible {
 					break loop
 				}
+			case m.ID == readID:
+				keepPage(m.Result)
+			case m.Method == "Target.targetDestroyed" && strings.Contains(string(m.Params), targetID):
+				break loop // the person closed the tab
 			case m.SessionID != session:
 			case m.Method == "Page.loadEventFired":
-				loaded, loadedAt = true, time.Now()
+				if !loaded {
+					loaded, loadedAt = true, time.Now()
+				}
 			case m.Method == "Page.domContentEventFired":
-				domAt = time.Now()
+				if domAt.IsZero() {
+					domAt = time.Now()
+				}
 			case strings.HasPrefix(m.Method, "Network."):
 				agg.event(m.Method, m.Params)
 				lastEvent = time.Now()
 			}
 		case <-quiet.C:
+			if opts.Progress != nil {
+				opts.Progress(BrowserProgress{Requests: len(agg.order), Failed: agg.liveFailed(), Seconds: int(time.Since(navStart).Seconds())})
+			}
+			if opts.Visible {
+				if ticks++; ticks%4 == 0 {
+					readID = send("Runtime.evaluate", map[string]any{"returnByValue": true, "expression": readPage})
+				}
+				continue // the person decides when it's done
+			}
 			// Done once the page has loaded and the network is quiet, or 5 s after load:
 			// counters and ads keep a page "loading" forever.
 			if loaded && (agg.inflight() == 0 && time.Since(lastEvent) > time.Second || time.Since(lastEvent) > 3*time.Second || time.Since(loadedAt) > afterLoad) {
@@ -439,27 +570,31 @@ loop:
 			if !domAt.IsZero() && time.Since(domAt) > afterDOM {
 				break loop
 			}
+		case <-done:
+			break loop
 		case <-deadline:
 			break loop
 		case <-ctx.Done():
 			break loop
 		}
 	}
-	title := ""
-	if navErr == "" {
-		if raw, err := call("Runtime.evaluate", map[string]any{"expression": "document.title", "returnByValue": true}); err == nil {
-			var ev struct{ Result struct{ Value any } }
-			json.Unmarshal(raw, &ev)
-			title, _ = ev.Result.Value.(string)
-		}
+	if raw, err := call("Runtime.evaluate", map[string]any{"returnByValue": true, "expression": readPage}); err == nil {
+		keepPage(raw) // the final page, when the browser is still there to ask
 	}
 	session = ""
 	send("Browser.close", nil)
 
 	res = agg.result()
 	res.Browser = filepath.Base(exe)
-	res.Title = title
-	if navErr != "" {
+	res.Title, res.text = title, text
+	res.Visible = opts.Visible
+	if !domAt.IsZero() {
+		res.DomMs = domAt.Sub(navStart).Milliseconds()
+	}
+	if loaded {
+		res.LoadMs = loadedAt.Sub(navStart).Milliseconds()
+	}
+	if navErr != "" && domAt.IsZero() {
 		res.Status, res.Error = "nav_failed", navErr
 	}
 	return res

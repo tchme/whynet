@@ -155,7 +155,7 @@ func relatedHosts(host string, related map[string][]string) []string {
 }
 
 func (p *prober) content(s *Step) {
-	if !p.pageOK {
+	if !p.pageOK && len(p.browserHosts) == 0 {
 		s.Facts["res.checked"] = "0"
 		s.Status = "skip"
 		return
@@ -175,8 +175,10 @@ func (p *prober) content(s *Step) {
 			add(&HostCheck{Host: b.Host, Kinds: browserKinds(b.Types)})
 		}
 	}
-	for _, h := range pageResources(p.body, p.finalURL) {
-		add(h)
+	if p.body != nil && p.finalURL != nil {
+		for _, h := range pageResources(p.body, p.finalURL) {
+			add(h)
+		}
 	}
 	for _, h := range relatedHosts(p.host, p.env.Markers.Related) {
 		add(&HostCheck{Host: h, Kinds: []string{"known"}})

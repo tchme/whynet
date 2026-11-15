@@ -78,7 +78,18 @@ challenge:
   - ddos-guard
   - проверка браузера
   - вы не робот
-  - похоже, нет соединения   # ozon.ru shows this page to automated browsers
+  - похоже, нет соединения   # ozon.ru's block page (it also says "turn off VPN": see vpn_block)
+
+# A site's own page asking to turn off a VPN: matched in the browser's title and visible text.
+vpn_block:
+  - выключите vpn
+  - отключите vpn
+  - выключите впн
+  - отключите впн
+  - turn off your vpn
+  - disable your vpn
+  - turn off vpn
+  - disable vpn
 
 # Ads, analytics and counters: shown in the report, never the reason a site "doesn't load".
 # Matched on the domain and its subdomains.

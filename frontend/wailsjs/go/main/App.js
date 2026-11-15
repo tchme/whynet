@@ -6,8 +6,16 @@ export function Check(arg1) {
   return window['go']['main']['App']['Check'](arg1);
 }
 
+export function CheckInBrowser(arg1) {
+  return window['go']['main']['App']['CheckInBrowser'](arg1);
+}
+
 export function CopyReport(arg1) {
   return window['go']['main']['App']['CopyReport'](arg1);
+}
+
+export function FinishBrowser() {
+  return window['go']['main']['App']['FinishBrowser']();
 }
 
 export function Info() {

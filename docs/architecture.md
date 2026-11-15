@@ -4,6 +4,7 @@
 whynet/
   main.go                  Wails window options (900x660, min 520x520, Windows theme = system)
   app.go                   what the window calls: Info, Check (emits a "step" event per finished step),
+                           CheckInBrowser + FinishBrowser (visible window, "browser-progress" events),
                            Report / SaveReport (native Save dialog) / CopyReport (clipboard); verdict tones;
                            hostViews joins the content check and the browser per server for "Details"
   frontend/                vanilla JS + Vite; index.html (input bar), src/main.js (state -> render, fitWindow
@@ -19,8 +20,10 @@ whynet/
     doh.go                 DNS-over-HTTPS JSON client (1.1.1.1, then 8.8.8.8)
     local.go               hosts parsing, Cloudflare trace + Team Cymru AS lookup, IP masking
     local_windows.go       route, OS, adapters (GetAdaptersAddresses), proxy (registry), hosts, clock
-    browser.go             "browser" step: hidden Edge/Chrome over the DevTools protocol (x/net/websocket),
-                           fresh temp profile, Network events -> per-server totals, errors, speed
+    browser.go             "browser" step: BrowserSession drives Edge/Chrome over the DevTools protocol
+                           (x/net/websocket), fresh temp profile, no sign-in/sync; hidden and automatic, or
+                           visible (BrowserOpts: Done, Progress) for the person; Network events -> per-server
+                           totals, errors, speed; DOMContentLoaded/load timing; page title+text for markers
     browser_windows.go     find Edge, else Chrome (App Paths, Program Files, LocalAppData); hide its window
     resources.go           "res" step: content servers from the HTML (x/net/html), from markers' `related`
                            and from the browser's failures; DNS/TCP/TLS/control + one sample file per server,
@@ -28,7 +31,9 @@ whynet/
     dpi.go                 bundle folder from a path, zapret hostlist matching (plain = with subdomains, ^ = exact)
     dpi_windows.go         DPI-bypass tools: processes (+exe, command line), services, WinDivert driver; no admin needed
   internal/report/         the AI report (Markdown) and its file name; Version
-  rules/                   rules engine + data, embedded: diagnoses.yaml, markers.yaml
+  rules/                   rules engine + data, embedded: diagnoses.yaml, markers.yaml, ads.txt.gz (76k ad
+                           and tracker domains, StevenBlack/hosts MIT, ads-LICENSE.txt)
+  tools/adlist/            rebuilds rules/ads.txt.gz from the upstream list
   locales/                 every user-facing string: ru.yaml (diagnoses, steps, report, ui, values, notes)
 ```
 
@@ -75,6 +80,9 @@ input -> probe.Target -> probe.Run(ctx, Env, onStep) -> Result{Steps[{facts, evi
 | `br.status` | ok, nav_failed, error, unavailable (no Edge/Chrome), off (disabled, or the page itself failed) |
 | `br.requests` / `br.failed` | requests the page made / that failed (cancelled ones and `ERR_ABORTED` excluded) |
 | `br.problem`, `br.failed_hosts`, `br.worst` | true / up to 3 servers / reset, timeout, dns, refused, eof, cert, tls, quic, other. Ads don't count; nor does a server whose only failures are silent requests while others succeeded |
+| `br.dom_s` / `br.loaded` / `br.slow_load` | seconds until the page showed ("20+" if never) / false when it never showed / true over 8 s |
+| `br.vpn_block`, `br.antibot` | true: the page title/text is the site's "turn off VPN" page / an anti-bot check |
+| `br.visible` | true: the person used a visible window |
 | `res.checked` / `res.failed` | content servers checked / failed (ads excluded) |
 | `res.problem`, `res.worst`, `res.failed_hosts` | true / dns, ip, sni, tls, cert, http, stall (worst first) / up to 3 |
 | `res.stall`, `res.stall_hosts` | true / servers that froze before 64 KB (the "16 KB" pattern) |

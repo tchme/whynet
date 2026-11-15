@@ -25,10 +25,11 @@ type App struct {
 	markers probe.Markers
 	t       *locales.Texts
 
-	mu      sync.Mutex
-	running bool
-	last    *probe.Result
-	verdict rules.Verdict
+	mu          sync.Mutex
+	running     bool
+	browserDone chan struct{} // closed by FinishBrowser to end a visible browser check
+	last        *probe.Result
+	verdict     rules.Verdict
 }
 
 func NewApp() (*App, error) {
@@ -143,9 +144,9 @@ type InfoView struct {
 // tones colour the verdict; anything not listed is "bad".
 var tones = map[string]string{
 	"all_ok": "ok", "bot_check": "ok",
-	"hosts_entry": "warn", "no_such_site": "warn", "isp_dns_down": "warn", "clock_wrong": "warn",
+	"site_blocks_vpn": "warn", "hosts_entry": "warn", "no_such_site": "warn", "isp_dns_down": "warn", "clock_wrong": "warn",
 	"proxy_in_way": "warn", "https_intercepted": "warn", "proxy_path_broken": "warn", "unknown": "warn",
-	"content_stall": "warn", "content_blocked": "warn", "content_slow": "warn", "content_flaky": "warn",
+	"content_stall": "warn", "content_blocked": "warn", "content_slow": "warn", "content_flaky": "warn", "page_slow": "warn",
 	"dpi_conflict": "warn", "dpi_not_listed": "warn", "dpi_strategy_fails": "warn", "dpi_off": "warn",
 }
 
@@ -160,6 +161,37 @@ func (a *App) Info() InfoView {
 
 // Check runs one check, sending each finished step as a "step" event.
 func (a *App) Check(site string) (*CheckView, error) {
+	return a.check(site, probe.DefaultEnv(a.markers), 2*time.Minute)
+}
+
+// CheckInBrowser runs the check with the browser step in a visible window the person uses
+// (to pass an anti-bot check, log in, play a video). The window sends "browser-progress"
+// events; it ends with FinishBrowser or when the person closes it.
+func (a *App) CheckInBrowser(site string) (*CheckView, error) {
+	done := make(chan struct{})
+	a.mu.Lock()
+	a.browserDone = done
+	a.mu.Unlock()
+	env := probe.DefaultEnv(a.markers)
+	env.BrowserAlways = true
+	env.Browser = func(ctx context.Context, url string) probe.BrowserResult {
+		return probe.BrowserSession(ctx, url, probe.BrowserOpts{Visible: true, Done: done,
+			Progress: func(p probe.BrowserProgress) { runtime.EventsEmit(a.ctx, "browser-progress", p) }})
+	}
+	return a.check(site, env, 15*time.Minute)
+}
+
+// FinishBrowser ends a visible browser check: whynet takes what the page loaded so far.
+func (a *App) FinishBrowser() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.browserDone != nil {
+		close(a.browserDone)
+		a.browserDone = nil
+	}
+}
+
+func (a *App) check(site string, env probe.Env, limit time.Duration) (*CheckView, error) {
 	a.mu.Lock()
 	if a.running {
 		a.mu.Unlock()
@@ -170,12 +202,13 @@ func (a *App) Check(site string) (*CheckView, error) {
 	defer func() {
 		a.mu.Lock()
 		a.running = false
+		a.browserDone = nil
 		a.mu.Unlock()
 	}()
 
-	ctx, cancel := context.WithTimeout(a.ctx, 2*time.Minute)
+	ctx, cancel := context.WithTimeout(a.ctx, limit)
 	defer cancel()
-	res, err := probe.Run(ctx, probe.DefaultEnv(a.markers), site, func(s probe.Step) {
+	res, err := probe.Run(ctx, env, site, func(s probe.Step) {
 		runtime.EventsEmit(a.ctx, "step", a.stepView(s))
 	})
 	if errors.Is(err, probe.ErrBadInput) {

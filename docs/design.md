@@ -67,7 +67,10 @@ A site can open while its images, video or scripts don't. Two steps cover this, 
 
 - **Browser:** a hidden Edge (Chrome if Edge is missing; skipped with a note if neither) with a fresh throwaway profile loads the page over the DevTools protocol and records every request: errors per server, requests that never got an answer, speed of big files. It sees what scripts load (video servers), which HTML parsing can't. It uses the system proxy, like the person's browser.
 - **Content servers:** servers named in the HTML, known servers of popular sites (`related` in markers.yaml, for content loaded by scripts) and the servers the browser failed on, each checked like the site itself plus one real file, watching for the "freezes after ~16 KB" pattern and for throttling.
-- Ads and counters (`ads` in markers.yaml) are reported but never make a site "broken".
+- Ads and counters are reported but never make a site "broken": a built-in list of 76k ad and tracker domains from StevenBlack/hosts (MIT, `rules/ads.txt.gz`, rebuilt with `tools/adlist`), plus a short hand list in markers.yaml.
+- **Visible window (decided 2026-11-16):** "Проверить в окне браузера" opens a normal Edge window with a throwaway profile; the person passes an anti-bot check, logs in or plays a video, then presses "Готово" or closes the window, and whynet checks everything the page loaded. Live counters show while it is open; it gives up after 10 minutes. The window keeps the browser's own User-Agent (a forged one is what anti-bot checks catch).
+- **Slow pages:** the time until the page is parsed and shown (DOMContentLoaded) is measured; over 8 s, or never within the 20 s budget, gives `page_slow` — unless the site's own block page (anti-bot, "turn off VPN") already explains it.
+- Browser runs never sign in or sync (Edge does both on its own otherwise, see bugs.md).
 
 ## Checks (v1)
 

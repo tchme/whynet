@@ -4,7 +4,7 @@ import '@fontsource/golos-text/600.css';
 import '@fontsource/jetbrains-mono/400.css';
 import './style.css';
 
-import { Info, Check, Report, SaveReport, CopyReport } from '../wailsjs/go/main/App';
+import { Info, Check, CheckInBrowser, FinishBrowser, Report, SaveReport, CopyReport } from '../wailsjs/go/main/App';
 import { EventsOn, WindowGetPosition, WindowGetSize, WindowSetPosition, WindowSetSize } from '../wailsjs/runtime/runtime';
 
 const GLYPH = { ok: '✓', fail: '✗', error: '✗', warn: '!', skip: '—', wait: '', run: '' };
@@ -20,6 +20,7 @@ const state = {
   phase: 'idle', // idle | running | done
   host: '', verdict: null, error: '',
   details: false, modal: false, reveal: false,
+  visible: false, progress: null, // a check with a visible browser window
 };
 
 function stepsHTML() {
@@ -33,6 +34,13 @@ function stepsHTML() {
 
 function rightHTML() {
   const ui = state.ui;
+  if (state.phase === 'running' && state.visible && state.steps.find(s => s.status === 'run')?.id === 'browser') {
+    const p = state.progress;
+    return `<section class="verdict" aria-live="polite">
+      <h2>${esc(ui.browser_title)}</h2><p>${esc(ui.browser_text)}</p>
+      ${p ? `<p class="live">${esc(fill(ui.browser_live, p))}</p>` : ''}
+      <div class="actions"><button class="btn primary" data-act="finish">${esc(ui.browser_done)}</button></div></section>`;
+  }
   if (state.phase === 'running') {
     const n = state.steps.findIndex(s => s.status === 'run');
     return `<section class="verdict waiting" aria-live="polite"><strong>${esc(fill(ui.checking, { host: state.host }))}</strong>
@@ -46,6 +54,7 @@ function rightHTML() {
       <div class="actions">
         <button class="btn primary" data-act="open">${esc(ui.save_report)}</button>
         <button class="btn" data-act="copy">${esc(ui.copy)}</button>
+        <button class="btn" data-act="in-browser">${esc(ui.in_browser)}</button>
         <button class="btn link" data-act="details" aria-expanded="${state.details}">${esc(state.details ? ui.hide_details : ui.details)} ${state.details ? '▴' : '▾'}</button>
       </div></section>`;
 }
@@ -142,26 +151,43 @@ EventsOn('step', s => {
   render();
 });
 
-form.addEventListener('submit', async e => {
-  e.preventDefault();
-  const site = input.value.trim();
+EventsOn('browser-progress', p => {
+  if (!state.visible || state.phase !== 'running') return;
+  state.progress = p;
+  const live = document.querySelector('.live');
+  if (live) live.textContent = fill(state.ui.browser_live, p); // no full render: keep the button under the cursor
+  else render();
+});
+
+async function startCheck(site, visible) {
   if (!site || state.phase === 'running') return;
   Object.assign(state, { phase: 'running', host: site, error: '', details: false, modal: false, reveal: false, hosts: [],
-    steps: state.blank.map((s, i) => ({ ...s, status: i === 0 ? 'run' : 'wait' })) });
+    visible, progress: null, steps: state.blank.map((s, i) => ({ ...s, status: i === 0 ? 'run' : 'wait' })) });
   render();
   try {
-    const view = await Check(site);
+    const view = await (visible ? CheckInBrowser(site) : Check(site));
     Object.assign(state, { phase: 'done', host: view.host, verdict: view.verdict, steps: view.steps, hosts: view.hosts || [] });
+    if (visible && view.steps.find(s => s.id === 'browser')?.facts?.some(([k, v]) => k === 'br.status' && v === 'unavailable')) {
+      toast(state.ui.browser_missing);
+    }
   } catch (err) {
     Object.assign(state, { phase: 'idle', error: err?.message ?? String(err), steps: state.blank });
   }
+  state.visible = false;
   render();
+}
+
+form.addEventListener('submit', e => {
+  e.preventDefault();
+  startCheck(input.value.trim(), false);
 });
 
 out.addEventListener('click', async e => {
   const el = e.target.closest('[data-act]');
   const act = el?.dataset.act;
   if (act === 'details') { state.details = !state.details; render(); }
+  else if (act === 'in-browser') startCheck(input.value.trim() || state.host, true);
+  else if (act === 'finish') { el.disabled = true; FinishBrowser(); }
   else if (act === 'open') { state.modal = true; render(); $('m-title')?.closest('.m').querySelector('[data-act="save"]').focus(); }
   else if (act === 'close' || (act === 'backdrop' && e.target === el)) { state.modal = false; render(); }
   else if (act === 'copy') {

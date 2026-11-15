@@ -9,6 +9,20 @@ Verified pitfalls and fixed bugs: symptom -> cause -> fix -> how it was verified
 - **Fix:** answers entirely in 198.18.0.0/15 give `dns.match=fakeip`; no alt handshake then. New diagnosis `proxy_path_broken` for when that path fails, so a broken router VPN is not blamed on the ISP.
 - **Verified:** live run on the author's network (2026-11-15): DNS ok, TLS 96 ms, `all_ok`; lab case "fake-ip proxy path broken".
 
+## Edge signed the throwaway profile into the person's Microsoft account (privacy)
+
+- **Symptom:** the visible window showed "Данные браузера теперь синхронизируются…" with the person's account e-mail; the profile was named after it.
+- **Cause:** Edge's implicit sign-in: a fresh profile on Windows signs into the Windows Microsoft account and starts sync on its own, headless included. Checked pages could reach the account's history; it also cost seconds of start-up (ozon.ru's page showed after 10 s, then 0.4 s).
+- **Fix:** every browser run starts with `--disable-sync --disable-features=msImplicitSignin`.
+- **Verified:** a headless Edge with a fresh profile: `account_info` with an e-mail in `Default\Preferences` without the flags, none with them; the visible window then shows "Профиль 1" and no sync prompt. Runs before 2026-11-16 (commit before this fix) did sign in.
+
+## The visible window's verdict was lost when the person closed it
+
+- **Symptom:** ozon.ru in a visible window gave `site_blocks_vpn` when ended with "Готово", but `bot_check` when the window was closed.
+- **Cause:** the page title and text were read once at the end; a closed window can't be asked.
+- **Fix:** a visible window is read every 2 s; the last reading is kept.
+- **Verified:** close the Edge window during an ozon.ru check: `site_blocks_vpn`, browser and profile cleaned up.
+
 ## ozon.ru: "all fine, code 307" and no content checked
 
 - **Symptom:** ozon.ru gave `all_ok` with "the site answered (code 307)"; the content step checked 0 servers.

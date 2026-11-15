@@ -51,6 +51,13 @@ func TestMatch(t *testing.T) {
 		{with("tls.status", "reset", "tls.control", "ok", "local.dpi_tool", "none", "local.dpi_installed", "false"), "sni_blocked"},
 		{with("tls.status", "reset", "tls.control", "ok", "local.dpi_tool", "zapret", "local.dpi_listed", "excluded"), "dpi_strategy_fails"},
 		{with("local.dpi_tool", "zapret", "local.dpi_listed", "true"), "all_ok"},
+		// the page shows late or never; a blocked content server explains more and wins
+		{with("br.status", "ok", "br.slow_load", "true", "br.dom_s", "12.4"), "page_slow"},
+		{with("br.status", "ok", "br.loaded", "false", "br.dom_s", "20+"), "page_slow"},
+		{with("br.loaded", "false", "res.worst", "sni"), "content_blocked"},
+		// the site's own block page outranks timings: it already says why
+		{with("http.challenge", "true", "br.antibot", "true", "br.slow_load", "true"), "bot_check"},
+		{with("br.vpn_block", "true", "br.slow_load", "true"), "site_blocks_vpn"},
 	}
 	for _, c := range cases {
 		if got := rules.Match(rs, c.facts); got.ID != c.want {
