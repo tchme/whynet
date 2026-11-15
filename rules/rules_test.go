@@ -59,6 +59,27 @@ func TestMatch(t *testing.T) {
 	}
 }
 
+// The built-in ad list catches ads and spares content servers seen in real checks.
+func TestAdList(t *testing.T) {
+	_, m, err := rules.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.AdSet) < 10000 {
+		t.Fatalf("ad list has %d domains", len(m.AdSet))
+	}
+	for _, ad := range []string{"securepubads.g.doubleclick.net", "mc.yandex.ru", "www.googletagmanager.com", "x.top-fwz1.mail.ru"} {
+		if !m.IsAd(ad) {
+			t.Errorf("%s should be an ad server", ad)
+		}
+	}
+	for _, content := range []string{"i.ytimg.com", "fonts.gstatic.com", "yastatic.net", "habrastorage.org", "cdn2.ozone.ru", "redirector.googlevideo.com", "yandex.ru"} {
+		if m.IsAd(content) {
+			t.Errorf("%s is content, not ads", content)
+		}
+	}
+}
+
 // Every rule has texts, every text has a rule, every placeholder is a fact or "host".
 func TestRulesAndTextsAgree(t *testing.T) {
 	rs, _, err := rules.Load()

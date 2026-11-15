@@ -3,17 +3,20 @@
 package rules
 
 import (
+	"compress/gzip"
 	"embed"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 
 	"whynet/internal/probe"
 )
 
-//go:embed diagnoses.yaml markers.yaml
+//go:embed diagnoses.yaml markers.yaml ads.txt.gz
 var files embed.FS
 
 type Rule struct {
@@ -31,6 +34,7 @@ type Verdict struct {
 func Load() ([]Rule, probe.Markers, error) {
 	var rs []Rule
 	var m probe.Markers
+	var err error
 	for name, v := range map[string]any{"diagnoses.yaml": &rs, "markers.yaml": &m} {
 		b, err := files.ReadFile(name)
 		if err == nil {
@@ -45,8 +49,36 @@ func Load() ([]Rule, probe.Markers, error) {
 			return nil, m, fmt.Errorf("diagnoses.yaml: rule %d: needs an id and confidence high|likely", i+1)
 		}
 	}
+	m.AdSet, err = adSet()
+	if err != nil {
+		return nil, m, fmt.Errorf("ads.txt.gz: %w", err)
+	}
 	return rs, m, nil
 }
+
+// adSet reads the built-in ad and tracker domains once (StevenBlack/hosts, see ads-LICENSE.txt).
+var adSet = sync.OnceValues(func() (map[string]bool, error) {
+	f, err := files.Open("ads.txt.gz")
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	zr, err := gzip.NewReader(f)
+	if err != nil {
+		return nil, err
+	}
+	b, err := io.ReadAll(zr)
+	if err != nil {
+		return nil, err
+	}
+	set := make(map[string]bool, 80000)
+	for _, d := range strings.Split(string(b), "\n") {
+		if d != "" {
+			set[d] = true
+		}
+	}
+	return set, nil
+})
 
 // Match returns the first rule whose conditions all hold.
 func Match(rs []Rule, facts map[string]string) Verdict {

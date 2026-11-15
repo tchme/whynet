@@ -83,7 +83,7 @@ func (p *prober) browser(s *Step) {
 			}
 			p.browserSlow[h.Host] = h.KBps
 		}
-		if h.Failed == 0 || isUnder(h.Host, p.env.Markers.Ads) {
+		if h.Failed == 0 || p.env.Markers.IsAd(h.Host) {
 			continue
 		}
 		// A blocked server is silent on every request; one slow answer from a working server is not a block.

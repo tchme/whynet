@@ -206,7 +206,7 @@ func (p *prober) content(s *Step) {
 	var failed, stalled, slow []string
 	worst, minKBps := "", int64(-1)
 	for _, h := range hosts {
-		if isUnder(h.Host, p.env.Markers.Ads) {
+		if p.env.Markers.IsAd(h.Host) {
 			h.Kinds = append(h.Kinds, "ads")
 			continue
 		}
@@ -228,7 +228,7 @@ func (p *prober) content(s *Step) {
 	}
 	// The browser's own timings of big files count too: that is where throttled video shows.
 	for _, host := range slices.Sorted(maps.Keys(p.browserSlow)) {
-		if isUnder(host, p.env.Markers.Ads) {
+		if p.env.Markers.IsAd(host) {
 			continue
 		}
 		if !slices.Contains(slow, host) {

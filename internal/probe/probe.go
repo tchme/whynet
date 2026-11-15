@@ -59,9 +59,24 @@ type Markers struct {
 	// Servers a site loads content from by script, not named in its HTML: site -> hosts.
 	Related map[string][]string `yaml:"related"`
 	// Ads and counters: reported, but their failures don't make a site "broken".
-	Ads []string `yaml:"ads"`
+	// Ads is the hand-made list; AdSet the big built-in one (rules/ads.txt.gz).
+	Ads   []string        `yaml:"ads"`
+	AdSet map[string]bool `yaml:"-"`
 	// Anti-bot check pages, matched in the page title.
 	Challenge []string `yaml:"challenge"`
+}
+
+// IsAd reports whether host or one of its parent domains is an ad or tracker server.
+func (m Markers) IsAd(host string) bool {
+	if isUnder(host, m.Ads) {
+		return true
+	}
+	for d := host; strings.Contains(d, "."); d = d[strings.Index(d, ".")+1:] {
+		if m.AdSet[d] {
+			return true
+		}
+	}
+	return false
 }
 
 // isUnder reports whether host is one of the domains or their subdomain.
