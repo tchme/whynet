@@ -91,6 +91,20 @@ vpn_block:
   - turn off vpn
   - disable vpn
 
+# The browser's own services that show up in a page's traffic (Edge's shopping helper,
+# SmartScreen, updates): not the site's content. Matched on the domain and its subdomains.
+browser_own:
+  - edge.microsoft.com
+  - edge.activity.windows.com
+  - config.edge.skype.com
+  - smartscreen.microsoft.com
+  - msedge.api.cdp.microsoft.com
+  - ntp.msn.com
+  - clients2.google.com
+  - update.googleapis.com
+  - safebrowsing.googleapis.com
+  - optimizationguide-pa.googleapis.com
+
 # Ads, analytics and counters: shown in the report, never the reason a site "doesn't load".
 # Matched on the domain and its subdomains.
 ads:

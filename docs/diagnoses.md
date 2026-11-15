@@ -27,8 +27,9 @@ Every diagnosis whynet can give: how it is detected and how it is tested. Rules 
 | `geo_blocked` | The site itself refuses your country | `http.geo` (451, or a geo text on a 4xx) | table |
 | `https_intercepted` | HTTPS intercepted by antivirus/other software (likely) | interceptor marker in the chain | table |
 | `proxy_in_way` | Works directly, but a system proxy is on (likely) | `local.proxy=on`, site ok | table |
-| `site_blocks_vpn` | The site's own page says "turn off your VPN" | `br.vpn_block` (title/text marker in the browser) | table; live: ozon.ru through the author's router VPN, hidden and visible window |
-| `bot_check` | The site works but answers with an anti-bot check | `br.antibot` (the browser was stopped too), or TLS ok and `http.challenge` | table |
+| `site_blocks_you` | Even a plain browser window got the site's block page (likely: VPN/proxy) | `br.blocked_page` | table |
+| `bot_check` | The site turns away automated checks; a normal browser will likely open it | `br.antibot`, or TLS ok and `http.challenge` | table; live: ozon.ru (turns away any browser with a debugging port) |
+| `browser_ok` | The person's plain window loaded the page | `br.visible` and `br.status=ok` | table |
 | `page_slow` | The page shows very late or never (likely) | `br.slow_load` (> 8 s) or `br.loaded=false` | table |
 | `all_ok` | Everything works; the problem is in the browser | TLS ok and 2xx/3xx | lab, table; live: youtube.com, github.com |
 | `unknown` | whynet can't tell; save the AI report | no other rule matched (always last) | table |

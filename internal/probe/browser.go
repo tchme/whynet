@@ -54,9 +54,10 @@ const (
 	maxVisible    = 10 * time.Minute // a visible window the person forgot
 )
 
-// BrowserOpts tunes a browser run. The zero value is the hidden, automatic one.
+// BrowserOpts tunes a browser run. The zero value is the hidden, automatic one (DevTools protocol).
 type BrowserOpts struct {
-	// Visible opens a normal window the person uses (passes an anti-bot check, logs in, plays a video).
+	// Visible opens a plain window the person uses (passes an anti-bot check, logs in, plays a video),
+	// recorded through Chromium's network log, not the debugging port (see netlog.go).
 	// It ends when Done closes, when the person closes the window, or after maxVisible.
 	Visible  bool
 	Done     <-chan struct{}
@@ -76,8 +77,10 @@ func (p *prober) browser(s *Step) {
 		s.Status = "skip"
 		return
 	}
+	// The address the person typed; the hidden run follows whynet's own redirects, a plain
+	// window starts clean (those redirects may be an anti-bot's answer to whynet itself).
 	target := "https://" + p.host + p.path
-	if p.finalURL != nil {
+	if p.finalURL != nil && !p.env.BrowserAlways {
 		target = p.finalURL.String()
 	}
 	r := p.env.Browser(p.ctx, target)
@@ -93,12 +96,20 @@ func (p *prober) browser(s *Step) {
 		s.Status = "fail"
 		return
 	}
+	// The browser's own services (Edge's shopping helper and the like) are not the page's content.
+	r.Hosts = slices.DeleteFunc(slices.Clone(r.Hosts), func(h *BrowserHost) bool {
+		if isUnder(h.Host, p.env.Markers.BrowserOwn) {
+			r.Requests, r.Failed = r.Requests-h.Requests, r.Failed-h.Failed
+			return true
+		}
+		return false
+	})
+	s.Evidence["browser"] = r
 	p.browserHosts = r.Hosts
 	s.Facts["br.requests"] = strconv.Itoa(r.Requests)
-	if r.Visible {
-		s.Facts["br.visible"] = "true"
-	}
 	switch {
+	case r.Visible:
+		s.Facts["br.visible"] = "true" // a plain window has no page timings: the person saw them
 	case r.DomMs == 0:
 		s.Facts["br.loaded"] = "false"
 		s.Facts["br.dom_s"] = strconv.Itoa(int(browserBudget.Seconds())) + "+"
@@ -110,13 +121,17 @@ func (p *prober) browser(s *Step) {
 	default:
 		s.Facts["br.dom_s"] = strconv.FormatFloat(float64(r.DomMs)/1000, 'f', 1, 64)
 	}
+	// A site's block page ("not a robot?", "turn off your VPN") means different things:
+	// shown to whynet's automated browser, it is about automation (ozon.ru turns away any
+	// browser with a debugging port); shown to a plain window, it is about the connection.
 	page := strings.ToLower(r.Title + "\n" + r.text)
-	switch {
-	case firstIn(page, p.env.Markers.VPNBlock) != "":
-		s.Facts["br.vpn_block"] = "true" // the site itself says "turn off your VPN"
-		s.Status = "warn"
-	case firstIn(strings.ToLower(r.Title), p.env.Markers.Challenge) != "":
-		s.Facts["br.antibot"] = "true" // what lies behind the check stays unseen
+	if firstIn(page, p.env.Markers.VPNBlock) != "" || firstIn(strings.ToLower(r.Title), p.env.Markers.Challenge) != "" {
+		if r.Visible {
+			s.Facts["br.blocked_page"] = "true"
+			s.Facts["br.page_title"] = r.Title
+		} else {
+			s.Facts["br.antibot"] = "true" // what lies behind the check stays unseen
+		}
 		s.Status = "warn"
 	}
 	s.Facts["br.failed"] = strconv.Itoa(r.Failed)
@@ -362,26 +377,27 @@ func BrowserSession(ctx context.Context, target string, opts BrowserOpts) (res B
 		}
 	}()
 
-	limit := browserBudget
 	if opts.Visible {
-		limit = maxVisible
+		ctx, cancel := context.WithTimeout(ctx, maxVisible+30*time.Second)
+		defer cancel()
+		host := target
+		if u, err := url.Parse(target); err == nil {
+			host = u.Hostname()
+		}
+		return netlogSession(ctx, exe, dir, host, target, opts)
 	}
-	ctx, cancel := context.WithTimeout(ctx, limit+15*time.Second)
+
+	ctx, cancel := context.WithTimeout(ctx, browserBudget+15*time.Second)
 	defer cancel()
 	// The debugging port lives on localhost while the check runs, in a throwaway profile.
 	// Chromium 111+ refuses a debugging client whose Origin is not allowed explicitly.
 	// Edge signs a fresh profile into the Windows Microsoft account and starts sync on its own,
 	// which would send the checked pages to the person's account history: both are switched off.
-	args := []string{"--remote-debugging-port=0", "--user-data-dir=" + dir, "--remote-allow-origins=http://127.0.0.1",
+	cmd := exec.CommandContext(ctx, exe, "--headless=new", "--mute-audio",
+		"--remote-debugging-port=0", "--user-data-dir="+dir, "--remote-allow-origins=http://127.0.0.1",
 		"--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,900",
-		"--disable-sync", "--disable-features=msImplicitSignin"}
-	if !opts.Visible {
-		args = append(args, "--headless=new", "--mute-audio")
-	}
-	cmd := exec.CommandContext(ctx, exe, append(args, "about:blank")...)
-	if !opts.Visible {
-		hideWindow(cmd)
-	}
+		"--disable-sync", "--disable-features=msImplicitSignin", "about:blank")
+	hideWindow(cmd)
 	if err := cmd.Start(); err != nil {
 		return fail(err)
 	}
@@ -445,7 +461,7 @@ func BrowserSession(ctx context.Context, target string, opts BrowserOpts) (res B
 		}
 	}
 
-	// Use the tab the browser opened with, so a visible window has no extra blank tab.
+	// Use the tab the browser opened with.
 	raw, err := call("Target.getTargets", nil)
 	if err != nil {
 		return fail(err)
@@ -469,9 +485,6 @@ func BrowserSession(ctx context.Context, target string, opts BrowserOpts) (res B
 		json.Unmarshal(raw, &tgt)
 		targetID = tgt.TargetID
 	}
-	if _, err := call("Target.setDiscoverTargets", map[string]any{"discover": true}); err != nil {
-		return fail(err)
-	}
 	raw, err = call("Target.attachToTarget", map[string]any{"targetId": targetID, "flatten": true})
 	if err != nil {
 		return fail(err)
@@ -479,18 +492,15 @@ func BrowserSession(ctx context.Context, target string, opts BrowserOpts) (res B
 	var att struct{ SessionID string }
 	json.Unmarshal(raw, &att)
 	session = att.SessionID
-	setup := []struct {
+	for _, c := range []struct {
 		m string
 		p any
-	}{{"Network.enable", nil}, {"Page.enable", nil}}
-	if !opts.Visible {
-		// a plain browser agent: some sites turn away "HeadlessChrome"; a visible window keeps its own
-		setup = append(setup, struct {
-			m string
-			p any
-		}{"Network.setUserAgentOverride", map[string]any{"userAgent": userAgent, "acceptLanguage": "ru,en;q=0.8"}})
-	}
-	for _, c := range setup {
+	}{
+		{"Network.enable", nil},
+		{"Page.enable", nil},
+		// a plain browser agent: some sites turn away "HeadlessChrome"
+		{"Network.setUserAgentOverride", map[string]any{"userAgent": userAgent, "acceptLanguage": "ru,en;q=0.8"}},
+	} {
 		if _, err := call(c.m, c.p); err != nil {
 			return fail(err)
 		}
@@ -498,46 +508,26 @@ func BrowserSession(ctx context.Context, target string, opts BrowserOpts) (res B
 
 	navStart := time.Now()
 	navID := send("Page.navigate", map[string]any{"url": target})
-	deadline := time.After(limit)
+	deadline := time.After(browserBudget)
 	quiet := time.NewTicker(500 * time.Millisecond)
 	defer quiet.Stop()
 	var loadedAt, domAt time.Time
 	loaded, lastEvent := false, time.Now()
 	navErr := ""
-	// The title and the start of the visible text, to recognise a site's own block pages.
-	// A visible window is read every 2 s, so the last page is known even after the person closes it.
-	const readPage = "[document.title, (document.body && document.body.innerText || '').slice(0, 3000)]"
-	title, text := "", ""
-	keepPage := func(raw json.RawMessage) {
-		var ev struct{ Result struct{ Value []string } }
-		if json.Unmarshal(raw, &ev) == nil && len(ev.Result.Value) == 2 {
-			title, text = ev.Result.Value[0], ev.Result.Value[1]
-		}
-	}
-	readID, ticks := -1, 0
-	done := opts.Done
-	if done == nil {
-		done = make(chan struct{}) // never closes: the hidden run ends by itself
-	}
 loop:
 	for {
 		select {
 		case m, ok := <-msgs:
 			if !ok {
-				break loop // the browser is gone: the person closed its window
+				break loop
 			}
 			switch {
 			case m.ID == navID:
 				var nav struct{ ErrorText string }
 				json.Unmarshal(m.Result, &nav)
-				// In a visible window the person may retry (F5), so a failed first try doesn't end it.
-				if navErr = nav.ErrorText; navErr != "" && !opts.Visible {
+				if navErr = nav.ErrorText; navErr != "" {
 					break loop
 				}
-			case m.ID == readID:
-				keepPage(m.Result)
-			case m.Method == "Target.targetDestroyed" && strings.Contains(string(m.Params), targetID):
-				break loop // the person closed the tab
 			case m.SessionID != session:
 			case m.Method == "Page.loadEventFired":
 				if !loaded {
@@ -552,15 +542,6 @@ loop:
 				lastEvent = time.Now()
 			}
 		case <-quiet.C:
-			if opts.Progress != nil {
-				opts.Progress(BrowserProgress{Requests: len(agg.order), Failed: agg.liveFailed(), Seconds: int(time.Since(navStart).Seconds())})
-			}
-			if opts.Visible {
-				if ticks++; ticks%4 == 0 {
-					readID = send("Runtime.evaluate", map[string]any{"returnByValue": true, "expression": readPage})
-				}
-				continue // the person decides when it's done
-			}
 			// Done once the page has loaded and the network is quiet, or 5 s after load:
 			// counters and ads keep a page "loading" forever.
 			if loaded && (agg.inflight() == 0 && time.Since(lastEvent) > time.Second || time.Since(lastEvent) > 3*time.Second || time.Since(loadedAt) > afterLoad) {
@@ -570,16 +551,20 @@ loop:
 			if !domAt.IsZero() && time.Since(domAt) > afterDOM {
 				break loop
 			}
-		case <-done:
-			break loop
 		case <-deadline:
 			break loop
 		case <-ctx.Done():
 			break loop
 		}
 	}
-	if raw, err := call("Runtime.evaluate", map[string]any{"returnByValue": true, "expression": readPage}); err == nil {
-		keepPage(raw) // the final page, when the browser is still there to ask
+	// The title and the start of the visible text, to recognise a site's own block pages.
+	title, text := "", ""
+	if raw, err := call("Runtime.evaluate", map[string]any{"returnByValue": true,
+		"expression": "[document.title, (document.body && document.body.innerText || '').slice(0, 3000)]"}); err == nil {
+		var ev struct{ Result struct{ Value []string } }
+		if json.Unmarshal(raw, &ev) == nil && len(ev.Result.Value) == 2 {
+			title, text = ev.Result.Value[0], ev.Result.Value[1]
+		}
 	}
 	session = ""
 	send("Browser.close", nil)
@@ -587,7 +572,6 @@ loop:
 	res = agg.result()
 	res.Browser = filepath.Base(exe)
 	res.Title, res.text = title, text
-	res.Visible = opts.Visible
 	if !domAt.IsZero() {
 		res.DomMs = domAt.Sub(navStart).Milliseconds()
 	}

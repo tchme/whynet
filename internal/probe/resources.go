@@ -39,8 +39,10 @@ type HostCheck struct {
 	Bytes  int64    `json:"bytes,omitempty"`
 	KBps   int64    `json:"kbps,omitempty"`
 	PingMs int64    `json:"ping_ms,omitempty"` // TCP connect time: the delay a browser feels (ICMP is often filtered)
-	Ms     int64    `json:"ms"`
-	sample string   // full URL, never reported (signed CDN links carry tokens)
+	// BrowserOK: whynet's own check failed, but the browser loaded from this server, so it doesn't count.
+	BrowserOK bool   `json:"browser_ok,omitempty"`
+	Ms        int64  `json:"ms"`
+	sample    string // full URL, never reported (signed CDN links carry tokens)
 }
 
 // failedResults are the outcomes that mean "this content won't load".
@@ -205,11 +207,20 @@ func (p *prober) content(s *Step) {
 	}
 	wg.Wait()
 
+	// What the real browser loaded fine outranks whynet's own request to the same server.
+	browserOK := map[string]bool{}
+	for _, b := range p.browserHosts {
+		browserOK[b.Host] = b.Requests > b.Failed
+	}
 	var failed, stalled, slow []string
 	worst, minKBps := "", int64(-1)
 	for _, h := range hosts {
 		if p.env.Markers.IsAd(h.Host) {
 			h.Kinds = append(h.Kinds, "ads")
+			continue
+		}
+		if browserOK[h.Host] && slices.Contains(failedResults, h.Result) {
+			h.BrowserOK = true
 			continue
 		}
 		switch {
@@ -333,17 +344,21 @@ func (p *prober) checkHost(h *HostCheck) {
 func (p *prober) fetchSample(h *HostCheck, target string, measureSpeed bool) {
 	ctx, cancel := context.WithTimeout(p.ctx, 3*p.env.Timeout)
 	defer cancel()
-	cl := &http.Client{Transport: &http.Transport{
-		Proxy: nil,
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			if host, port, _ := net.SplitHostPort(addr); host == h.Host {
-				addr = net.JoinHostPort(h.IP, port)
-			}
-			return p.env.Dial(ctx, network, addr)
-		},
-		TLSClientConfig:   &tls.Config{RootCAs: p.env.RootCAs},
-		DisableKeepAlives: true,
-	}}
+	cl := &http.Client{
+		// Any answer, a redirect too, shows the server works; following redirects without the
+		// site's cookies can loop (ozon.ru) and would look like a dead server.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Transport: &http.Transport{
+			Proxy: nil,
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				if host, port, _ := net.SplitHostPort(addr); host == h.Host {
+					addr = net.JoinHostPort(h.IP, port)
+				}
+				return p.env.Dial(ctx, network, addr)
+			},
+			TLSClientConfig:   &tls.Config{RootCAs: p.env.RootCAs},
+			DisableKeepAlives: true,
+		}}
 	req, err := http.NewRequestWithContext(ctx, "GET", target, nil)
 	if err != nil {
 		h.Result, h.Detail = "http", err.Error()

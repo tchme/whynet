@@ -96,10 +96,11 @@
   confidence: high
   when: {http.class: 5xx}
 
-# The browser saw the site's own block page: it says it all, before any timing or content.
-- id: site_blocks_vpn
-  confidence: high
-  when: {br.vpn_block: true}
+# The site's own block page says it all, before any timing or content.
+# Shown to a plain window: about the connection (often a VPN). Shown to the automated browser: about automation.
+- id: site_blocks_you
+  confidence: likely
+  when: {br.blocked_page: true}
 
 - id: bot_check
   confidence: high
@@ -143,6 +144,11 @@
 - id: all_ok
   confidence: high
   when: {tls.status: ok, http.class: [2xx, 3xx]}
+
+# The person's plain window loaded the page: whynet's own request being turned away doesn't matter.
+- id: browser_ok
+  confidence: high
+  when: {br.visible: true, br.status: ok}
 
 # An anti-bot check (Cloudflare, Ozon, DDoS-Guard): a real browser passes it, so the site is reachable.
 - id: bot_check

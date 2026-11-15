@@ -108,6 +108,9 @@ func (a *App) hostViews(res *probe.Result) []HostView {
 		}
 		v := HostView{Host: c.Host, Kinds: strings.Join(kinds, ", "), PingMs: c.PingMs, KBps: c.KBps,
 			Result: a.t.Results[c.Result], Tone: hostTone(c.Result)}
+		if c.BrowserOK {
+			v.Result, v.Tone = a.t.Results[c.Result]+" · "+a.t.UI["browser_ok"], "warn"
+		}
 		if b := byHost[c.Host]; b != nil {
 			v.Requests, v.Failed = b.Requests, b.Failed
 			if v.KBps == 0 {
@@ -143,8 +146,8 @@ type InfoView struct {
 
 // tones colour the verdict; anything not listed is "bad".
 var tones = map[string]string{
-	"all_ok": "ok", "bot_check": "ok",
-	"site_blocks_vpn": "warn", "hosts_entry": "warn", "no_such_site": "warn", "isp_dns_down": "warn", "clock_wrong": "warn",
+	"all_ok": "ok", "bot_check": "ok", "browser_ok": "ok",
+	"site_blocks_you": "warn", "hosts_entry": "warn", "no_such_site": "warn", "isp_dns_down": "warn", "clock_wrong": "warn",
 	"proxy_in_way": "warn", "https_intercepted": "warn", "proxy_path_broken": "warn", "unknown": "warn",
 	"content_stall": "warn", "content_blocked": "warn", "content_slow": "warn", "content_flaky": "warn", "page_slow": "warn",
 	"dpi_conflict": "warn", "dpi_not_listed": "warn", "dpi_strategy_fails": "warn", "dpi_off": "warn",

@@ -9,6 +9,24 @@ Verified pitfalls and fixed bugs: symptom -> cause -> fix -> how it was verified
 - **Fix:** answers entirely in 198.18.0.0/15 give `dns.match=fakeip`; no alt handshake then. New diagnosis `proxy_path_broken` for when that path fails, so a broken router VPN is not blamed on the ISP.
 - **Verified:** live run on the author's network (2026-11-15): DNS ok, TLS 96 ms, `all_ok`; lab case "fake-ip proxy path broken".
 
+## ozon.ru: "turn off your VPN" was about automation, not the VPN
+
+- **Symptom:** whynet said "the site doesn't let you in through a VPN" for ozon.ru, while the author's own Edge and Opera opened it fine through the same router VPN.
+- **Cause:** ozon.ru turns away any browser with `navigator.webdriver` set, and Chromium sets it as soon as `--remote-debugging-port` is open; its block page just says "Похоже, нет соединения… выключите VPN". Bisected with a fresh-profile Edge: no flags — ozon opens; debugging port, even with no client attached — blocked; `--enable-automation` — blocked; `--log-net-log` — opens.
+- **Fix:** the visible window is a plain browser recorded through Chromium's network log (`netlog.go`), no debugging port; `--test-type` hides the "unsupported command-line flag" bar the log flag brings up. A block page seen by the automated browser now means "the site turns away automated checks" (`bot_check`); only one seen by the plain window means the connection (`site_blocks_you`); a plain window that loaded the page gives `browser_ok`.
+- **Verified:** visible ozon.ru: real storefront, 903 requests recorded live, video servers with speed; Edge and profile cleaned up. The final `browser_ok` verdict on screen was not captured (a table test covers it).
+
+## The content check called working servers dead (redirect loop)
+
+- **Symptom:** after a plain-window ozon.ru check: "www.ozon.ru, p.ozon.ru don't answer", though the browser loaded both.
+- **Cause:** the sample fetch followed redirects without the site's cookies, hit the redirect limit and reported it as a network failure.
+- **Fix:** any HTTP answer, a redirect included, counts as a working server (no redirects followed); a server the real browser loaded from is never counted as failed, only marked.
+- **Verified:** the same check: both servers "работает".
+
+## Pitfall for whoever tests the window: synthetic clicks go to the foreground app
+
+Windows does not always let a script bring a window to the front. Test keystrokes and clicks sent to whynet's coordinates then land in whatever window is on top (it happened with the author's video player). Don't drive the GUI while the person uses the computer; ask first.
+
 ## Edge signed the throwaway profile into the person's Microsoft account (privacy)
 
 - **Symptom:** the visible window showed "Данные браузера теперь синхронизируются…" with the person's account e-mail; the profile was named after it.

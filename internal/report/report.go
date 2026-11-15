@@ -96,6 +96,9 @@ func Markdown(res *probe.Result, v rules.Verdict, t *locales.Texts, hide bool) s
 					kinds[i] = t.Kinds[k]
 				}
 				detail := h.Detail
+				if h.BrowserOK {
+					detail += " (the browser loaded from it fine: not counted)"
+				}
 				if h.KBps > 0 {
 					detail += fmt.Sprintf(", %d KB/s", h.KBps)
 				}

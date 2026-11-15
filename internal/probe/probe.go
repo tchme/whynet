@@ -66,6 +66,8 @@ type Markers struct {
 	Challenge []string `yaml:"challenge"`
 	// A site's own "turn off your VPN" page, matched in the title and visible text.
 	VPNBlock []string `yaml:"vpn_block"`
+	// The browser's own services seen in a page's traffic: dropped from the page's servers.
+	BrowserOwn []string `yaml:"browser_own"`
 }
 
 // IsAd reports whether host or one of its parent domains is an ad or tracker server.

@@ -57,7 +57,9 @@ func TestMatch(t *testing.T) {
 		{with("br.loaded", "false", "res.worst", "sni"), "content_blocked"},
 		// the site's own block page outranks timings: it already says why
 		{with("http.challenge", "true", "br.antibot", "true", "br.slow_load", "true"), "bot_check"},
-		{with("br.vpn_block", "true", "br.slow_load", "true"), "site_blocks_vpn"},
+		{with("br.blocked_page", "true", "br.page_title", "Похоже, нет соединения", "br.visible", "true"), "site_blocks_you"},
+		// a plain window loaded the page: whynet's own request meeting an anti-bot check doesn't matter
+		{with("http.class", "4xx", "http.status", "403", "http.challenge", "true", "br.visible", "true", "br.status", "ok", "br.requests", "903", "br.failed", "3"), "browser_ok"},
 	}
 	for _, c := range cases {
 		if got := rules.Match(rs, c.facts); got.ID != c.want {

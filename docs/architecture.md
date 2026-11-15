@@ -24,7 +24,11 @@ whynet/
                            (x/net/websocket), fresh temp profile, no sign-in/sync; hidden and automatic, or
                            visible (BrowserOpts: Done, Progress) for the person; Network events -> per-server
                            totals, errors, speed; DOMContentLoaded/load timing; page title+text for markers
-    browser_windows.go     find Edge, else Chrome (App Paths, Program Files, LocalAppData); hide its window
+    netlog.go              visible window: a plain browser (no debugging port: anti-bot checks spot it) with
+                           --log-net-log; the log is tailed live and parsed into the same per-server totals;
+                           the page's own requests are those whose network_isolation_key top site is the page's
+    browser_windows.go     find Edge, else Chrome (App Paths, Program Files, LocalAppData); hide its window;
+                           window title and WM_CLOSE for the plain window (one shared EnumWindows callback)
     resources.go           "res" step: content servers from the HTML (x/net/html), from markers' `related`
                            and from the browser's failures; DNS/TCP/TLS/control + one sample file per server,
                            6 at a time, up to 20; stall watchdog and speed
@@ -81,7 +85,8 @@ input -> probe.Target -> probe.Run(ctx, Env, onStep) -> Result{Steps[{facts, evi
 | `br.requests` / `br.failed` | requests the page made / that failed (cancelled ones and `ERR_ABORTED` excluded) |
 | `br.problem`, `br.failed_hosts`, `br.worst` | true / up to 3 servers / reset, timeout, dns, refused, eof, cert, tls, quic, other. Ads don't count; nor does a server whose only failures are silent requests while others succeeded |
 | `br.dom_s` / `br.loaded` / `br.slow_load` | seconds until the page showed ("20+" if never) / false when it never showed / true over 8 s |
-| `br.vpn_block`, `br.antibot` | true: the page title/text is the site's "turn off VPN" page / an anti-bot check |
+| `br.antibot` | true: the automated browser got the site's block page (anti-bot check, "turn off VPN") |
+| `br.blocked_page` / `br.page_title` | true: the plain window got such a page / its title |
 | `br.visible` | true: the person used a visible window |
 | `res.checked` / `res.failed` | content servers checked / failed (ads excluded) |
 | `res.problem`, `res.worst`, `res.failed_hosts` | true / dns, ip, sni, tls, cert, http, stall (worst first) / up to 3 |

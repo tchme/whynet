@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"maps"
 	"net/url"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -50,6 +53,65 @@ func TestPageResources(t *testing.T) {
 	}
 	if hosts := relatedHosts("notyoutube.com", map[string][]string{"youtube.com": {"i.ytimg.com"}}); hosts != nil {
 		t.Errorf("relatedHosts matched a look-alike: %v", hosts)
+	}
+}
+
+// A tiny NetLog: the browser's own request is dropped, the page's requests are counted.
+const testNetlog = `{"constants":{"logEventTypes":{"REQUEST_ALIVE":2,"URL_REQUEST_START_JOB":136,"HTTP_TRANSACTION_READ_RESPONSE_HEADERS":245,"URL_REQUEST_JOB_FILTERED_BYTES_READ":150},"logSourceType":{"URL_REQUEST":1},"netError":{"ERR_CONNECTION_RESET":-101,"ERR_ABORTED":-3}},
+"events": [
+{"params":{"url":"https://edge.microsoft.com/x","network_isolation_key":"null null"},"phase":1,"source":{"id":1,"type":1},"time":"1000","type":136},
+{"params":{"url":"https://ozon.ru/","network_isolation_key":"https://ozon.ru https://ozon.ru","request_type":"main frame"},"phase":1,"source":{"id":2,"type":1},"time":"1000","type":136},
+{"params":{},"phase":0,"source":{"id":2,"type":1},"time":"1100","type":245},
+{"params":{"byte_count":5000},"phase":0,"source":{"id":2,"type":1},"time":"1200","type":150},
+{"params":{},"phase":2,"source":{"id":2,"type":1},"time":"1300","type":2},
+{"params":{"url":"https://cdn.ozone.ru/a.js","network_isolation_key":"https://ozon.ru https://ozon.ru"},"phase":1,"source":{"id":3,"type":1},"time":"1400","type":136},
+{"params":{"net_error":-101},"phase":2,"source":{"id":3,"type":1},"time":"1500","type":2},
+{"params":{"url":"https://img.ozone.ru/b.png","network_isolation_key":"https://ozon.ru https://ozon.ru"},"phase":1,"source":{"id":4,"type":1},"time":"1600","type":136},
+{"params":{"net_error":-3},"phase":2,"source":{"id":4,"type":1},"time":"1700","type":2},
+{"params":{"url":"https://hung.ozone.ru/c.js","network_isolation_key":"https://ozon.ru https://ozon.ru"},"phase":1,"source":{"id":5,"type":1},"time":"2000","type":136},
+{"params":{},"phase":1,"source":{"id":9,"type":1},"time":"9000","type":2},
+`
+
+func TestNetlogParser(t *testing.T) {
+	n := newNetlogParser("www.ozon.ru")
+	for _, l := range strings.Split(testNetlog, "\n") {
+		n.line([]byte(l))
+	}
+	r := n.agg.result()
+	if r.Requests != 4 || r.Failed != 2 {
+		t.Fatalf("requests %d failed %d, want 4 and 2 (edge.microsoft.com dropped, the aborted one not a failure)", r.Requests, r.Failed)
+	}
+	if h := hostOf(r, "cdn.ozone.ru"); h == nil || h.Errors["net::ERR_CONNECTION_RESET"] != 1 {
+		t.Errorf("reset not recorded: %+v", h)
+	}
+	if h := hostOf(r, "hung.ozone.ru"); h == nil || h.Errors[hungError] != 1 {
+		t.Errorf("a script silent for 7 s must count as timed out: %+v", h)
+	}
+	if h := hostOf(r, "ozon.ru"); h == nil || h.Bytes != 5000 || h.Failed != 0 {
+		t.Errorf("main page: %+v", h)
+	}
+	if hostOf(r, "edge.microsoft.com") != nil {
+		t.Error("the browser's own traffic leaked into the page's servers")
+	}
+}
+
+// The browser appends to its log while it runs; lines cut mid-way must wait for their end.
+func TestNetlogTail(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "net.json")
+	cut := strings.Index(testNetlog, `cdn.ozone.ru`) // mid-line: the third request is cut in half
+	os.WriteFile(path, []byte(testNetlog[:cut]), 0o644)
+	tail := &netlogTail{path: path, p: newNetlogParser("ozon.ru")}
+	tail.read()
+	if n := len(tail.p.agg.order); n != 1 {
+		t.Fatalf("after the first half: %d requests, want 1", n)
+	}
+	os.WriteFile(path, []byte(testNetlog), 0o644)
+	tail.read()
+	if n := len(tail.p.agg.order); n != 4 {
+		t.Errorf("after the rest: %d requests, want 4", n)
+	}
+	if got := pageTitle("Ozon маркетплейс — Профиль 1: Microsoft Edge"); got != "Ozon маркетплейс" {
+		t.Errorf("pageTitle = %q", got)
 	}
 }
 
