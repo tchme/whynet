@@ -26,10 +26,10 @@ func main() {
 		MinWidth:         560,
 		MinHeight:        120,
 		AssetServer:      &assetserver.Options{Assets: assets},
-		BackgroundColour: &options.RGBA{R: 255, G: 255, B: 255, A: 255},
+		BackgroundColour: &options.RGBA{R: 0x16, G: 0x1d, B: 0x24, A: 255}, // the page's own background: no white flash
 		OnStartup:        app.startup,
 		Bind:             []interface{}{app},
-		Windows:          &windows.Options{Theme: windows.SystemDefault},
+		Windows:          &windows.Options{Theme: windows.Dark}, // dark title bar too, whatever the Windows theme
 	})
 	if err != nil {
 		println("Error:", err.Error())

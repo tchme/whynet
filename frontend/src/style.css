@@ -1,21 +1,12 @@
-/* Variant A of the mockup: steps on the left, verdict on the right; follows the Windows theme. */
+/* Variant A of the mockup: steps on the left, verdict on the right. Always dark (the author's choice, 2026-11-16). */
 :root {
-  --bg: #ffffff; --panel: #f4f6f8; --fg: #18222b; --muted: #5f6b76; --line: #e0e5ea;
-  --accent: #0b7c68; --accent-fg: #ffffff;
-  --ok: #1d8049; --bad: #c2352b; --warn: #a96d12;
-  --ok-bg: #e5f3ea; --bad-bg: #fbeae8; --warn-bg: #faf1df; --scrim: rgba(16, 26, 34, .38);
+  --bg: #161d24; --panel: #1c252e; --fg: #e2e8ec; --muted: #93a0ab; --line: #2a353f;
+  --accent: #34c3a1; --accent-fg: #08201a;
+  --ok: #55c788; --bad: #f07468; --warn: #e6ae52;
+  --ok-bg: #173022; --bad-bg: #3b1f1d; --warn-bg: #3a2c15; --scrim: rgba(0, 0, 0, .55);
   --font: "Golos Text", "Segoe UI", system-ui, sans-serif;
   --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
-  color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #161d24; --panel: #1c252e; --fg: #e2e8ec; --muted: #93a0ab; --line: #2a353f;
-    --accent: #34c3a1; --accent-fg: #08201a;
-    --ok: #55c788; --bad: #f07468; --warn: #e6ae52;
-    --ok-bg: #173022; --bad-bg: #3b1f1d; --warn-bg: #3a2c15; --scrim: rgba(0, 0, 0, .55);
-    color-scheme: dark;
-  }
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
