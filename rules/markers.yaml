@@ -108,6 +108,16 @@ vpn_block:
   - turn off vpn
   - disable vpn
 
+# Files of a page that whynet's hidden browser sometimes never gets an answer for, on every network
+# tried (the author's PC, two friends through a VPN and through zapret, 2026-11-16/17), while curl
+# gets them in 0.2 s; not QUIC (hangs with --disable-quic too). Nothing a person would see missing:
+# YouTube's search keyboard icon, its cast-to-TV script, Google's text font (text falls back).
+# shortcut: listed by address, the cause is not found; drop an entry once the hang is understood.
+late_noise:
+  - www.gstatic.com/inputtools/
+  - www.gstatic.com/cv/js/sender/
+  - fonts.gstatic.com/s/roboto/
+
 # Browsers by exe name (lowercase): the app check's picker sends them to the site check.
 browsers:
   - msedge.exe
@@ -174,6 +184,8 @@ vpn_adapters:
   - amnezia
   - openvpn
   - sing-box
+  - sing-tun           # sing-box's TUN adapter (Throne, Nekoray, Hiddify), seen 2026-11-17
+  - throne
   - hiddify
   - outline
   - nordlynx

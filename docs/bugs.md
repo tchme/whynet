@@ -239,3 +239,10 @@ Checked in the running exe on the author's PC (2026-11-16: Start, Ctrl+Alt+L pre
 - **Cause:** the picker counts a windowless process under its windowed ancestor (Steam's helpers under Steam); the test program, started from a terminal inside VS Code, counted under Code. The window's list also hides programs with no window and no connections at that moment.
 - **Fix:** `FindProgram` (and the recording) find a named exe or PID among all processes; a named exe counted under another program becomes a program of its own.
 - **Verified:** `TestFindProgram`; live: the test program found and recorded (`app_unreachable`).
+
+## YouTube "loads part of its content late" for nearly everyone (whynet's hidden browser)
+
+- **Symptom:** friends' reports through a VPN and through zapret (2026-11-16/17): youtube.com `content_late` or `content_flaky`, late files `fonts.gstatic.com/s/roboto/...woff2` (1 of 84 requests to that server), `www.gstatic.com/inputtools/images/tia.png` (the search box's keyboard icon), `www.gstatic.com/cv/js/sender/v1/cast_sender.js`, all "no answer while whynet watched".
+- **Cause:** not found. Reproduced on the author's PC in 3 of 4 runs and in 2 of 5 with `--disable-quic` (so not QUIC); DevTools shows the request was sent (`requestWillBeSentExtraInfo` came); curl gets the same files in 0.2 s. Whatever holds them, nothing a person sees is missing: the text font falls back, the other two are an icon and the cast-to-TV script.
+- **Fix:** `late_noise` in `markers.yaml` (addresses matched in the file URL) are not late files. A shortcut by address, marked so in the file.
+- **Verified:** content lab case (the icon stuck on a server whose other 14 files came: `all_ok`; `content_late` with the entry removed); a friend's three YouTube reports replayed: `all_ok` (one kept its dead googlevideo link, which `res.browser_dead` already forgives).

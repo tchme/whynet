@@ -69,6 +69,9 @@ type Markers struct {
 	Challenge []string `yaml:"challenge"`
 	// A site's own "turn off your VPN" page, matched in the title and visible text.
 	VPNBlock []string `yaml:"vpn_block"`
+	// Files a page asks for that whynet's hidden browser sometimes never gets, on any network:
+	// not counted as late (matched in the address).
+	LateNoise []string `yaml:"late_noise"`
 	// Browsers by exe name: the app check points them to the site check.
 	Browsers []string `yaml:"browsers"`
 	// The browser's own services seen in a page's traffic: dropped from the page's servers.

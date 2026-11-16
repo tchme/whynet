@@ -147,4 +147,18 @@ func TestContentLab(t *testing.T) {
 		f["br.late_s"] != "8.0+" || f["br.late_phase"] != "none" || f["br.problem"] != "" || f["res.lossy"] != "" {
 		t.Errorf("one stuck image: verdict %s, facts %v", v.ID, f)
 	}
+
+	// The same, but the stuck file is one the hidden browser misses on every network (YouTube's
+	// search keyboard icon, live 2026-11-17): not late.
+	browser = func(context.Context, string) probe.BrowserResult {
+		return probe.BrowserResult{Status: "ok", DomMs: 500, LoadMs: 600, Requests: 15, Failed: 1, Hosts: []*probe.BrowserHost{
+			{Host: "www.gstatic.com", Requests: 15, Failed: 1, Errors: map[string]int{hung: 1}, Types: []string{"image"}},
+		}, Slow: []*probe.SlowFile{
+			{URL: "https://www.gstatic.com/inputtools/images/tia.png", Host: "www.gstatic.com", Kind: "image", Ms: 7000, Unfinished: true, Phase: "none", Error: hung},
+		}}
+	}
+	f, v = run(`<script src="https://cdn.example.com/app.js"></script>`)
+	if v.ID != "all_ok" || f["br.late"] != "" {
+		t.Errorf("a known noisy file: verdict %s, facts %v", v.ID, f)
+	}
 }

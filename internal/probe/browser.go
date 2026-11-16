@@ -128,7 +128,7 @@ func (p *prober) browser(s *Step) {
 		return false
 	})
 	r.Slow = slices.DeleteFunc(slices.Clone(r.Slow), func(f *SlowFile) bool {
-		return isUnder(f.Host, p.env.Markers.BrowserOwn) || p.env.Markers.IsAd(f.Host)
+		return isUnder(f.Host, p.env.Markers.BrowserOwn) || p.env.Markers.IsAd(f.Host) || firstIn(f.URL, p.env.Markers.LateNoise) != ""
 	})
 	r.Slow = r.Slow[:min(len(r.Slow), maxSlow)]
 	s.Evidence["browser"] = r
