@@ -5,7 +5,8 @@ import '@fontsource/jetbrains-mono/400.css';
 import './style.css';
 
 import { Info, Check, CheckInBrowser, FinishBrowser, Report, SaveReport, CopyReport, CheckUpdate, Update,
-  StartLive, FinishLive, CancelLive, MarkLag, ReadHAR, PasteHAR, ReadHARFile, PickHAR, CompareHAR } from '../wailsjs/go/main/App';
+  StartLive, FinishLive, CancelLive, MarkLag, ReadHAR, PasteHAR, ReadHARFile, PickHAR, CompareHAR,
+  ListPrograms, RecordApp, FinishApp, CancelApp } from '../wailsjs/go/main/App';
 import { EventsOn, OnFileDrop, WindowGetPosition, WindowGetSize, WindowSetPosition, WindowSetSize } from '../wailsjs/runtime/runtime';
 
 const GLYPH = { ok: '✓', fail: '✗', error: '✗', warn: '!', skip: '—', wait: '', run: '' };
@@ -22,18 +23,24 @@ const freshLive = () => ({
   series: {}, now: {}, own: {}, view: null, error: '', chart: 'lanes',
 });
 
+const freshApp = () => ({
+  phase: 'idle', // idle (the picker) | recording | checking | done
+  list: [], selected: '', name: '', tick: null, steps: [], view: null, error: '',
+});
+
 const state = {
-  ui: {}, L: {}, version: '', blank: [], steps: [], hosts: [], slow: [],
+  ui: {}, L: {}, A: {}, version: '', blank: [], appBlank: [], steps: [], hosts: [], slow: [],
   own: null, // the person's own browser record, once compared
   ownModal: null, // { tab: chromium | firefox, status: '' | reading | warn, msg }
   browser: 'chromium', // the default browser: which instructions to show first
-  mode: 'site', // site | live
+  mode: 'site', // site | live | app
   phase: 'idle', // idle | running | done
   host: '', verdict: null, error: '',
   details: false, modal: false, reveal: false,
   visible: false, progress: null, // a check with a visible browser window
   update: null, updating: false, // a newer release offered at the top
   live: freshLive(),
+  app: freshApp(),
 };
 
 function updateHTML() {
@@ -45,8 +52,8 @@ function updateHTML() {
     <button class="btn" data-act="update-no">${esc(ui.update_no)}</button></span></div>`;
 }
 
-function stepsHTML() {
-  return state.steps.map(s => `<li class="${s.status}">
+function stepsHTML(steps = state.steps) {
+  return steps.map(s => `<li class="${s.status}">
       <span class="ico ${s.status}">${GLYPH[s.status] ?? ''}</span>
       <span>${esc(s.name)}</span>
       <span class="ms">${s.status === 'run' ? '…' : s.status === 'wait' || s.status === 'skip' ? ''
@@ -69,22 +76,26 @@ function rightHTML() {
     return `<section class="verdict waiting" aria-live="polite"><strong>${esc(fill(ui.checking, { host: state.host }))}</strong>
       <span>${esc(fill(ui.step_of, { n: n < 0 ? state.steps.length : n + 1, total: state.steps.length }))}${n >= 0 ? `: ${esc(state.steps[n].name.toLowerCase())}` : ''}</span></section>`;
   }
-  const v = state.verdict;
+  return verdictCard(state.verdict, `<div class="deeper"><div class="deeper-cap">${esc(ui.deeper)}</div><div class="actions">
+        <button class="btn sm" data-act="own">${esc(ui.own_open)}</button>
+        <button class="btn sm" data-act="in-browser">${esc(ui.in_browser)}</button>
+      </div></div>`);
+}
+
+// The verdict with its advice and the AI report buttons; extra goes under them.
+function verdictCard(v, extra = '') {
+  const ui = state.ui;
   return `<section class="verdict tone-${esc(v.tone)}" aria-live="polite">
       <div class="top"><span class="big" aria-hidden="true">${TONE[v.tone] ?? '!'}</span><span class="pill">${esc(v.confidence)}</span></div>
       <h2>${esc(v.title)}</h2><p>${esc(v.explain)}</p>
       <div class="advice"><b>${esc(ui.advice)}</b>${esc(v.advice)}</div>
       <div class="actions"><span class="split">
         <button class="btn primary" data-act="open">${esc(ui.save_report)}</button><button class="btn primary" data-act="copy">⧉ ${esc(ui.copy)}</button>
-      </span></div>
-      <div class="deeper"><div class="deeper-cap">${esc(ui.deeper)}</div><div class="actions">
-        <button class="btn sm" data-act="own">${esc(ui.own_open)}</button>
-        <button class="btn sm" data-act="in-browser">${esc(ui.in_browser)}</button>
-      </div></div></section>`;
+      </span></div>${extra}</section>`;
 }
 
-const moreBarHTML = () => `<button class="morebar" data-act="details" aria-expanded="${state.details}">${state.details
-  ? `${esc(state.ui.hide_details)} ▴` : `${esc(state.ui.details)} <span>— ${esc(state.ui.more_hint)}</span> ▾`}</button>`;
+const moreBarHTML = (hint = state.ui.more_hint) => `<button class="morebar" data-act="details" aria-expanded="${state.details}">${state.details
+  ? `${esc(state.ui.hide_details)} ▴` : `${esc(state.ui.details)} <span>— ${esc(hint)}</span> ▾`}</button>`;
 
 function hostsHTML() {
   const ui = state.ui;
@@ -148,9 +159,11 @@ function ownHTML() {
 
 function detailsHTML() {
   return `<div class="details">${ownHTML()}${slowHTML()}${hostsHTML()}
-    <div class="details-title">${esc(state.ui.facts_title)}</div><div class="details-grid">${state.steps.map(s =>
-    `<div class="fact-card"><b>${GLYPH[s.status] ?? ''} ${esc(s.name)}</b>${(s.facts || []).map(([k, v]) => `<span>${esc(k)}:</span> ${esc(v)}`).join('<br>')}</div>`).join('')}</div></div>`;
+    <div class="details-title">${esc(state.ui.facts_title)}</div><div class="details-grid">${factCards(state.steps)}</div></div>`;
 }
+
+const factCards = steps => steps.map(s =>
+  `<div class="fact-card"><b>${GLYPH[s.status] ?? ''} ${esc(s.name)}</b>${(s.facts || []).map(([k, v]) => `<span>${esc(k)}:</span> ${esc(v)}`).join('<br>')}</div>`).join('');
 
 function modalHTML() {
   const ui = state.ui;
@@ -481,22 +494,153 @@ EventsOn('live-tick', p => {
 EventsOn('live-lag', () => { if (state.live.phase === 'recording') { state.live.lags++; updateLiveRec(); } });
 EventsOn('live-done', view => { if (state.live.phase === 'recording') showLiveResult(view); }); // an hour has passed
 
+/* ---------- App check ---------- */
+
+const toneClass = t => ({ bad: 'bad', warn: 'warnc', ok: 'good' })[t] ?? 'dim';
+// A program's letter tile: its colour from its name, so it stays the same between lists.
+const tileColor = name => `hsl(${[...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7)} 45% 38%)`;
+
+let programsTimer = 0;
+async function loadPrograms() {
+  try { state.app.list = (await ListPrograms()) || []; } catch (err) { state.app.error = err?.message ?? String(err); }
+  if (state.mode === 'app' && state.app.phase === 'idle') render();
+}
+// While the picker is open, the list follows programs started and closed.
+function watchPrograms(on) {
+  clearInterval(programsTimer);
+  if (!on) return;
+  loadPrograms();
+  programsTimer = setInterval(() => { if (state.app.phase === 'idle' && !document.hidden) loadPrograms(); }, 4000);
+}
+
+function appPickerHTML() {
+  const A = state.A, ap = state.app, q = input.value.trim().toLowerCase();
+  const match = p => !q || p.name.toLowerCase().includes(q) || p.exe.toLowerCase().includes(q) || (p.title || '').toLowerCase().includes(q);
+  const row = p => `<button type="button" class="pitem${p.exe === ap.selected ? ' on' : ''}${p.browser ? ' dim' : ''}" data-act="app-pick" data-exe="${esc(p.exe)}" aria-selected="${p.exe === ap.selected}">
+      <span class="pico" style="background:${tileColor(p.name)}" aria-hidden="true">${esc((p.name[0] || '?').toUpperCase())}</span>
+      <span class="pname"><b>${esc(p.name)}</b><small>${esc(p.title && p.title !== p.name ? p.title : p.exe)}</small></span>
+      <span class="pconns">${p.conns ? esc(fill(A.conns, { n: p.conns })) : esc(A.no_conns)}</span></button>`;
+  const progs = ap.list.filter(p => !p.browser && match(p)), browsers = ap.list.filter(p => p.browser && match(p));
+  return `<p class="hint">${esc(A.idle)}</p>${ap.error ? `<p class="hint error-text" role="alert">${esc(ap.error)}</p>` : ''}
+    <div class="plist" role="listbox">${progs.map(row).join('')}
+      ${browsers.length ? `<div class="pgrp">${esc(A.browsers)}</div>${browsers.map(row).join('')}` : ''}</div>
+    ${progs.length || browsers.length ? '' : `<p class="hint">${esc(A.none_found)}</p>`}
+    <p class="hint small">${esc(A.idle_note)}</p>`;
+}
+
+function appRecHTML() {
+  const A = state.A, ap = state.app;
+  return `<section class="apprec" aria-live="off">
+    <div class="rec"><span class="dotrec"></span><span class="t" id="app-time">${clock(ap.tick?.seconds ?? 0)}</span>
+      <span class="muted">${esc(fill(A.rec_title, { name: ap.name }))}</span>
+      <span class="actions push"><button class="btn link" data-act="app-cancel">${esc(A.cancel)}</button>
+        <button class="btn primary" data-act="app-done">${esc(A.done)}</button></span></div>
+    <p class="muted">${esc(fill(A.rec_hint, { name: ap.name }))}</p>
+    <div id="app-rec">${appRecBodyHTML()}</div></section>`;
+}
+
+function appRecBodyHTML() {
+  const A = state.A, t = state.app.tick;
+  if (!t?.servers?.length) return `<p class="muted">${esc(A.rec_wait)}</p>`;
+  return `<div class="muted">${esc(fill(A.count, { servers: t.servers.length, conns: t.conns, cut: t.cut, stuck: t.stuck }))}</div>
+    <div class="table-wrap"><table class="hosts"><thead><tr><th>${esc(A.col_server)}</th><th class="num">${esc(A.col_conns)}</th><th>${esc(A.col_seen)}</th></tr></thead>
+      <tbody>${t.servers.map(s => `<tr><td class="host">${esc(s.addr)}</td><td class="num">${s.conns}</td>
+        <td class="${toneClass(s.seen_tone)}">${esc(s.seen)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+function appDoneHTML() {
+  const v = state.app.view;
+  return `<div class="grid"><div><ol class="steps">${stepsHTML(v.steps)}</ol><div class="version">whynet ${esc(state.version)}</div></div>${verdictCard(v.verdict)}</div>`
+    + moreBarHTML(fill(state.A.details_hint, { name: v.program })) + (state.details ? appDetailsHTML(v) : '');
+}
+
+function appDetailsHTML(v) {
+  const A = state.A;
+  const rows = (v.servers || []).map(s => `<tr>
+      <td class="host"><span class="dot ${esc(s.tone || 'none')}"></span>${esc(s.label)}${s.ad ? ` <span class="tag">${esc(A.ad)}</span>` : ''}<small>${esc(s.name_from)}</small></td>
+      <td class="host">${esc(s.addr)}</td><td>${esc(s.owner || '—')}</td>
+      <td class="${toneClass(s.seen_tone)}">${esc(s.seen)}</td><td class="${toneClass(s.tone)}">${esc(s.check)}</td>
+      <td class="num">${esc(s.ping || '—')}</td>${v.zapret ? `<td>${esc(s.zapret || '—')}</td>` : ''}</tr>`).join('');
+  return `<div class="details"><div class="own-sum">${esc(v.summary)}</div>
+    <div class="details-title">${esc(A.servers_title)}</div>
+    <div class="table-wrap"><table class="hosts"><thead><tr><th>${esc(A.col_server)}</th><th>${esc(A.col_addr)}</th><th>${esc(A.col_owner)}</th>
+      <th>${esc(A.col_seen)}</th><th>${esc(A.col_check)}</th><th class="num">${esc(A.col_ping)}</th>${v.zapret ? `<th>${esc(A.col_zapret)}</th>` : ''}</tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    <div class="details-title">${esc(state.ui.facts_title)}</div><div class="details-grid">${factCards(v.steps)}</div></div>`;
+}
+
+function appHTML() {
+  const ap = state.app;
+  switch (ap.phase) {
+    case 'recording': return appRecHTML();
+    case 'checking': return `<div class="grid"><div><ol class="steps">${stepsHTML(ap.steps)}</ol></div>
+      <section class="verdict waiting" aria-live="polite"><strong>${esc(fill(state.A.checking, { name: ap.name }))}</strong></section></div>`;
+    case 'done': return appDoneHTML();
+  }
+  return appPickerHTML();
+}
+
+async function startApp() {
+  const ap = state.app, A = state.A;
+  if (state.phase === 'running' || ['recording', 'checking'].includes(ap.phase)) return;
+  const q = input.value.trim().toLowerCase();
+  let p = ap.list.find(x => x.exe === ap.selected);
+  if (!p && q) p = ap.list.find(x => !x.browser && (x.name.toLowerCase().includes(q) || x.exe.toLowerCase().includes(q)));
+  if (!p) { toast(A.pick_first); return; }
+  if (p.browser) { toast(fill(A.browser, { name: p.name })); return; }
+  Object.assign(ap, { phase: 'recording', selected: p.exe, name: p.name, tick: null, view: null, error: '', steps: [] });
+  input.value = p.name;
+  state.details = false;
+  render();
+  try {
+    const view = await RecordApp(p.exe);
+    if (view) Object.assign(ap, { phase: 'done', view });
+    else { ap.phase = 'idle'; loadPrograms(); } // cancelled
+  } catch (err) {
+    Object.assign(ap, { phase: 'idle', error: err?.message ?? String(err) });
+    loadPrograms();
+  }
+  render();
+}
+
+// The recording screen is patched in place: a full render every second would pull the buttons from under the cursor.
+EventsOn('app-tick', t => {
+  const ap = state.app;
+  if (ap.phase !== 'recording') return;
+  ap.tick = t;
+  const time = $('app-time'), body = $('app-rec');
+  if (time) time.textContent = clock(t.seconds);
+  if (body) { body.innerHTML = appRecBodyHTML(); fitWindow(); }
+});
+
+// The check's steps after the recording; the first one ends the recording screen.
+EventsOn('app-step', s => {
+  const ap = state.app;
+  if (ap.phase === 'recording') Object.assign(ap, { phase: 'checking', steps: state.appBlank.map((x, i) => ({ ...x, status: i === 0 ? 'run' : 'wait' })) });
+  if (ap.phase !== 'checking') return;
+  const i = ap.steps.findIndex(x => x.id === s.id);
+  if (i < 0) return;
+  ap.steps[i] = s;
+  if (ap.steps[i + 1]) ap.steps[i + 1] = { ...ap.steps[i + 1], status: 'run' };
+  render();
+});
+
 /* ---------- Window ---------- */
 
 function render() {
-  const live = state.mode === 'live';
+  const live = state.mode === 'live', app = state.mode === 'app';
   // Before the first check the window is just the address bar and one line of help.
   const site = state.phase === 'idle'
     ? `<p class="hint">${esc(state.ui.idle_text)}</p>${state.error ? `<p class="hint error-text" role="alert">${esc(state.error)}</p>` : ''}`
     : `<div class="grid"><div><ol class="steps">${stepsHTML()}</ol><div class="version">whynet ${esc(state.version)}</div></div>${rightHTML()}</div>`
       + (state.phase === 'done' ? moreBarHTML() : '') + (state.details && state.phase === 'done' ? detailsHTML() : '');
-  out.innerHTML = `<div class="content" id="content">${updateHTML()}${live ? liveHTML() : site}</div>`
+  out.innerHTML = `<div class="content" id="content">${updateHTML()}${live ? liveHTML() : app ? appHTML() : site}</div>`
     + (state.modal ? modalHTML() : '') + (state.ownModal ? ownModalHTML() : '');
-  const busy = state.phase === 'running' || ['starting', 'recording'].includes(state.live.phase);
+  const busy = state.phase === 'running' || ['starting', 'recording'].includes(state.live.phase) || ['recording', 'checking'].includes(state.app.phase);
   checkBtn.disabled = busy;
-  input.disabled = live && busy;
-  checkBtn.textContent = live ? state.L.start : state.ui.check;
-  input.placeholder = live ? state.L.placeholder : state.ui.placeholder;
+  input.disabled = (live || app) && busy;
+  checkBtn.textContent = live ? state.L.start : app ? state.A.record : state.ui.check;
+  input.placeholder = live ? state.L.placeholder : app ? state.A.placeholder : state.ui.placeholder;
   for (const b of modeEl.querySelectorAll('button')) {
     b.setAttribute('aria-selected', String(b.dataset.mode === state.mode));
     b.disabled = busy && b.dataset.mode !== state.mode;
@@ -532,7 +676,8 @@ async function fitWindow(again = true) {
     }
     // Width: "Details" open widens the window to its tables (up to the screen), closing them narrows it back.
     let w = size.w;
-    const lack = state.details && state.phase === 'done' && state.mode === 'site' ? lackWidth() : 0;
+    const shown = state.mode === 'site' ? state.phase === 'done' : state.mode === 'app' && state.app.phase === 'done';
+    const lack = state.details && shown ? lackWidth() : 0;
     if (lack > 2) {
       narrowW ??= size.w;
       w = Math.max(size.w, Math.min(Math.floor(screen.availWidth * 0.95), MAX_W, size.w + lack));
@@ -632,7 +777,7 @@ async function readOwn(reading) {
 }
 
 // Each mode keeps what was typed in it.
-const typed = { site: '', live: '' };
+const typed = { site: '', live: '', app: '' };
 modeEl.addEventListener('click', e => {
   const b = e.target.closest('button[data-mode]');
   if (!b || b.disabled || b.dataset.mode === state.mode) return;
@@ -640,6 +785,7 @@ modeEl.addEventListener('click', e => {
   state.mode = b.dataset.mode;
   input.value = typed[state.mode];
   state.details = false;
+  watchPrograms(state.mode === 'app');
   render();
   input.focus();
 });
@@ -647,7 +793,21 @@ modeEl.addEventListener('click', e => {
 form.addEventListener('submit', e => {
   e.preventDefault();
   if (state.mode === 'live') startLive(input.value.trim(), false);
+  else if (state.mode === 'app') startApp();
   else startCheck(input.value.trim(), false);
+});
+
+// In the app mode the field searches the list; typing after a result goes back to the list.
+input.addEventListener('input', () => {
+  const ap = state.app;
+  if (state.mode !== 'app') return;
+  if (ap.phase === 'done') { ap.phase = 'idle'; state.details = false; loadPrograms(); }
+  if (ap.phase === 'idle') { ap.selected = ''; render(); }
+});
+
+out.addEventListener('dblclick', e => {
+  const el = e.target.closest('[data-act="app-pick"]');
+  if (el) { state.app.selected = el.dataset.exe; startApp(); }
 });
 
 out.addEventListener('click', async e => {
@@ -669,6 +829,13 @@ out.addEventListener('click', async e => {
   else if (act === 'own-paste') readOwn(PasteHAR());
   else if (act === 'own-pick') readOwn(PickHAR());
   else if (act === 'finish') { el.disabled = true; FinishBrowser(); }
+  else if (act === 'app-pick') {
+    const p = state.app.list.find(x => x.exe === el.dataset.exe);
+    if (p?.browser) toast(fill(state.A.browser, { name: p.name }));
+    else if (p) { state.app.selected = p.exe; render(); }
+  }
+  else if (act === 'app-done') { el.disabled = true; FinishApp(); }
+  else if (act === 'app-cancel') CancelApp();
   else if (act === 'live-done') {
     el.disabled = true;
     try { showLiveResult(await FinishLive()); } catch (err) { failed(err); }
@@ -716,10 +883,12 @@ document.addEventListener('paste', e => {
 OnFileDrop((x, y, paths) => { if (state.ownModal && paths?.length) readOwn(ReadHARFile(paths[0])); }, false);
 
 Info().then(info => {
-  Object.assign(state, { ui: info.ui, L: info.live || {}, version: info.version, blank: info.steps, steps: info.steps, browser: info.browser || 'chromium' });
-  const [siteBtn, liveBtn] = modeEl.querySelectorAll('button');
+  Object.assign(state, { ui: info.ui, L: info.live || {}, A: info.app || {}, version: info.version, blank: info.steps, steps: info.steps,
+    appBlank: info.app_steps || [], browser: info.browser || 'chromium' });
+  const [siteBtn, liveBtn, appBtn] = modeEl.querySelectorAll('button');
   siteBtn.textContent = state.L.mode_site;
   liveBtn.innerHTML = `${esc(state.L.mode_live)} <small>· ${esc(state.L.mode_live_hint)}</small>`;
+  appBtn.textContent = state.A.mode;
   modeEl.hidden = false;
   render();
   input.focus();

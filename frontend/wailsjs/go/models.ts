@@ -81,6 +81,124 @@ export namespace live {
 
 export namespace main {
 	
+	export class AppServerView {
+	    label: string;
+	    name_from: string;
+	    addr: string;
+	    owner: string;
+	    ad: boolean;
+	    conns: number;
+	    seen: string;
+	    seen_tone: string;
+	    check: string;
+	    tone: string;
+	    ping: string;
+	    zapret: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppServerView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.name_from = source["name_from"];
+	        this.addr = source["addr"];
+	        this.owner = source["owner"];
+	        this.ad = source["ad"];
+	        this.conns = source["conns"];
+	        this.seen = source["seen"];
+	        this.seen_tone = source["seen_tone"];
+	        this.check = source["check"];
+	        this.tone = source["tone"];
+	        this.ping = source["ping"];
+	        this.zapret = source["zapret"];
+	    }
+	}
+	export class StepView {
+	    id: string;
+	    name: string;
+	    status: string;
+	    ms: number;
+	    note?: string;
+	    facts: string[][];
+	
+	    static createFrom(source: any = {}) {
+	        return new StepView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.status = source["status"];
+	        this.ms = source["ms"];
+	        this.note = source["note"];
+	        this.facts = source["facts"];
+	    }
+	}
+	export class VerdictView {
+	    id: string;
+	    title: string;
+	    explain: string;
+	    advice: string;
+	    confidence: string;
+	    tone: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new VerdictView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.explain = source["explain"];
+	        this.advice = source["advice"];
+	        this.confidence = source["confidence"];
+	        this.tone = source["tone"];
+	    }
+	}
+	export class AppView {
+	    program: string;
+	    summary: string;
+	    verdict: VerdictView;
+	    steps: StepView[];
+	    servers: AppServerView[];
+	    zapret: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.program = source["program"];
+	        this.summary = source["summary"];
+	        this.verdict = this.convertValues(source["verdict"], VerdictView);
+	        this.steps = this.convertValues(source["steps"], StepView);
+	        this.servers = this.convertValues(source["servers"], AppServerView);
+	        this.zapret = source["zapret"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ChartView {
 	    start: number;
 	    step: number;
@@ -239,50 +357,6 @@ export namespace main {
 	        this.tone = source["tone"];
 	    }
 	}
-	export class StepView {
-	    id: string;
-	    name: string;
-	    status: string;
-	    ms: number;
-	    note?: string;
-	    facts: string[][];
-	
-	    static createFrom(source: any = {}) {
-	        return new StepView(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.name = source["name"];
-	        this.status = source["status"];
-	        this.ms = source["ms"];
-	        this.note = source["note"];
-	        this.facts = source["facts"];
-	    }
-	}
-	export class VerdictView {
-	    id: string;
-	    title: string;
-	    explain: string;
-	    advice: string;
-	    confidence: string;
-	    tone: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new VerdictView(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.title = source["title"];
-	        this.explain = source["explain"];
-	        this.advice = source["advice"];
-	        this.confidence = source["confidence"];
-	        this.tone = source["tone"];
-	    }
-	}
 	export class CheckView {
 	    host: string;
 	    verdict: VerdictView;
@@ -422,8 +496,10 @@ export namespace main {
 	
 	export class InfoView {
 	    steps: StepView[];
+	    app_steps: StepView[];
 	    ui: Record<string, string>;
 	    live: Record<string, string>;
+	    app: Record<string, string>;
 	    version: string;
 	    browser: string;
 	
@@ -434,8 +510,10 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.steps = this.convertValues(source["steps"], StepView);
+	        this.app_steps = this.convertValues(source["app_steps"], StepView);
 	        this.ui = source["ui"];
 	        this.live = source["live"];
+	        this.app = source["app"];
 	        this.version = source["version"];
 	        this.browser = source["browser"];
 	    }
@@ -596,6 +674,33 @@ export namespace main {
 	
 	
 	
+
+}
+
+export namespace probe {
+	
+	export class Program {
+	    exe: string;
+	    name: string;
+	    title?: string;
+	    window: boolean;
+	    browser: boolean;
+	    conns: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Program(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.exe = source["exe"];
+	        this.name = source["name"];
+	        this.title = source["title"];
+	        this.window = source["window"];
+	        this.browser = source["browser"];
+	        this.conns = source["conns"];
+	    }
+	}
 
 }
 

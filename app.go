@@ -44,7 +44,15 @@ type App struct {
 	lastLive    *live.Result
 	prevLive    *live.Result // the check "Проверить ещё раз и сравнить" compares with
 	liveVerdict rules.Verdict
-	lastKind    string // site, live: which check the report is about
+
+	appRules    []rules.Rule
+	appDone     chan struct{}      // closed by FinishApp to end a recording
+	appCancel   context.CancelFunc // CancelApp: end the recording without a check
+	appCanceled bool
+	lastApp     *probe.AppResult
+	appVerdict  rules.Verdict
+
+	lastKind string // site, live, app: which check the report is about
 }
 
 func NewApp() (*App, error) {
@@ -56,11 +64,15 @@ func NewApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	ars, err := rules.LoadApp()
+	if err != nil {
+		return nil, err
+	}
 	t, err := locales.Load("ru")
 	if err != nil {
 		return nil, err
 	}
-	return &App{rules: rs, liveRules: lrs, markers: m, t: t}, nil
+	return &App{rules: rs, liveRules: lrs, appRules: ars, markers: m, t: t}, nil
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -282,11 +294,13 @@ func hostTone(result string) string {
 }
 
 type InfoView struct {
-	Steps   []StepView        `json:"steps"`
-	UI      map[string]string `json:"ui"`
-	Live    map[string]string `json:"live"`
-	Version string            `json:"version"`
-	Browser string            `json:"browser"` // chromium or firefox: the default browser, for the record instructions
+	Steps    []StepView        `json:"steps"`
+	AppSteps []StepView        `json:"app_steps"` // the app check's steps
+	UI       map[string]string `json:"ui"`
+	Live     map[string]string `json:"live"`
+	App      map[string]string `json:"app"`
+	Version  string            `json:"version"`
+	Browser  string            `json:"browser"` // chromium or firefox: the default browser, for the record instructions
 }
 
 // tones colour the verdict; anything not listed is "bad".
@@ -306,7 +320,11 @@ func (a *App) Info() InfoView {
 	for i, id := range probe.StepIDs {
 		steps[i] = StepView{ID: id, Name: a.t.Steps[id].Name, Status: "wait"}
 	}
-	return InfoView{Steps: steps, UI: a.t.UI, Live: a.t.Live, Version: report.Version, Browser: probe.DefaultBrowserFamily()}
+	appSteps := make([]StepView, len(probe.AppStepIDs))
+	for i, id := range probe.AppStepIDs {
+		appSteps[i] = StepView{ID: id, Name: a.t.Steps[id].Name, Status: "wait"}
+	}
+	return InfoView{Steps: steps, AppSteps: appSteps, UI: a.t.UI, Live: a.t.Live, App: a.t.App, Version: report.Version, Browser: probe.DefaultBrowserFamily()}
 }
 
 // Check runs one check, sending each finished step as a "step" event.
@@ -409,6 +427,8 @@ func (a *App) report(hide bool) (md, name string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	switch {
+	case a.lastKind == "app" && a.lastApp != nil:
+		return report.AppMarkdown(a.lastApp, a.appVerdict, a.t, hide), report.AppFileName(a.lastApp)
 	case a.lastKind == "live" && a.lastLive != nil:
 		return report.LiveMarkdown(a.lastLive, a.liveVerdict, a.t, hide, a.prevLive), report.LiveFileName(a.lastLive)
 	case a.last != nil:
