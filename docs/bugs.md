@@ -225,3 +225,17 @@ Checked in the running exe on the author's PC (2026-11-16: Start, Ctrl+Alt+L pre
 - **Cause:** only Edge and Chrome were looked for; that PC has neither (Edge removed, most likely).
 - **Fix:** Brave and Vivaldi are looked for too, App Paths values are unquoted (Opera's installer writes the path in quotes), and the evidence says what was looked for. Tried live on the author's PC and left out: Yandex Browser refuses remote debugging ("DevTools remote debugging is disallowed by the system admin"), Opera GX opens the port but its navigation ends in `ERR_ABORTED`.
 - **Verified:** Yandex Browser and Opera GX were run through `BrowserSession` here (results above; no processes or profile folders left). Brave and Vivaldi were not run: not installed on the author's PC.
+
+## App check: a program dropping a spare connection looked like a block (Telegram)
+
+- **Symptom:** found in the first live runs of the app check (2026-11-16): Telegram, working fine, got `app_blocked_maybe` ("похоже, блокируют") for 149.154.167.41:443.
+- **Cause:** one of its 6 connections to that server vanished within 2 s without a closing state, and any such connection made the server "troubled". Programs abort spare parallel tries themselves (Telegram races its data centres; a closesocket with linger 0 is a reset too), so a lone reset among working connections is not a block.
+- **Fix:** a server is troubled only when its failed connects (reset or unanswered) are at least as many as its working ones.
+- **Verified:** `TestTroubled`; live: Telegram, Spotify, Yandex Messenger and Discord `app_ok` on the author's PC.
+
+## App check: a console program named on the command line was "not running"
+
+- **Symptom:** `whynet-cli -app blackhole-test` said the program is not running while it was.
+- **Cause:** the picker counts a windowless process under its windowed ancestor (Steam's helpers under Steam); the test program, started from a terminal inside VS Code, counted under Code. The window's list also hides programs with no window and no connections at that moment.
+- **Fix:** `FindProgram` (and the recording) find a named exe or PID among all processes; a named exe counted under another program becomes a program of its own.
+- **Verified:** `TestFindProgram`; live: the test program found and recorded (`app_unreachable`).

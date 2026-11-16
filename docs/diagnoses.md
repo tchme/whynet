@@ -65,6 +65,26 @@ Rules in `rules/live.yaml` (first match wins, nearest link first), texts under `
 | `live_route` | The route to the server or the server (likely) | the server (or its stand-in) unstable by itself | table, analysis |
 | `live_stable` | The network held | nothing else matched (always last) | table, analysis; live: the author's PC on cable, 40 s (2026-11-16) |
 
+## App check verdicts
+
+Rules in `rules/app.yaml` (first match wins), texts under `app_diagnoses` in `locales/ru.yaml`, facts in [architecture.md](architecture.md). "Lab" = `rules/app_lab_test.go` (recorded servers against local servers), "table" = `rules/app_test.go`.
+
+| id | Meaning (plain) | Detected by | Tested |
+|---|---|---|---|
+| `app_no_traffic` | The program opened no TCP connection while recording (offline, waiting, or UDP only) | `app.servers=0` | table, lab |
+| `app_dpi_conflict` | Two bypass tools fight | `local.dpi_tool=several`, `app.blocked` | table |
+| `app_game_filter_none` | zapret's Game Filter on with IPSet Filter `none`: its game rules reach no address | zapret, Game Filter all/tcp, IPSet Filter none, a blocked server on a Game Filter port | table |
+| `app_dpi_not_listed` | zapret runs, a blocked server is in neither of its lists | zapret, `app.dpi_unlisted`, `app.blocked` | table |
+| `app_dpi_fails` | A bypass runs, the servers are still cut | zapret/GoodbyeDPI, `app.blocked` | table |
+| `app_router_path` | Every blocked server sits behind a fake-ip router: the router's path | `app.blocked_fakeip` | table, lab |
+| `app_blocked_name` | Cut by name (DPI) | `app.sni` | table, lab (name from the certificate) |
+| `app_blocked_maybe` | Cut, the name can't be tested (unknown name, not TLS, or the server closes other names) | `app.maybe` | table, lab |
+| `app_unreachable` | A server doesn't answer on its port | `app.unreachable` | table, lab; live: a test program dialling 192.0.2.1:443 and :2053 (2026-11-16) |
+| `app_lossy` | Servers answer but lose connects | `app.lossy` | table |
+| `app_flaky` | The program had failed connects, whynet's own check passed | `app.program_trouble` | table, lab |
+| `app_ok` | Every server answers | servers checked, nothing above | table, lab; live: Discord (through the router), Telegram, Spotify, Yandex Messenger on the author's PC (2026-11-16) |
+| `unknown` | Nothing matched | always last | table |
+
 `all_ok` matters as much as the failures: it sends the person to the browser (cache, extensions, its own proxy or DNS-over-HTTPS setting).
 
 Still to verify on real networks (plan step 6): `isp_stub` and `dns_spoofed` against real ISP blocking, `https_intercepted`, `dpi_strategy_fails` and `dpi_conflict`. Done: `sni_blocked`, `cut_midway`, `dpi_not_listed` (a friend's network), `geo_blocked`, `hosts_entry`, `clock_wrong`, `proxy_in_way` (the author's PC). The "router VPN off" runs of the plan are dropped: the author's VPN must never be interrupted, and the friend's network has no VPN.

@@ -1,6 +1,6 @@
 # App check (design)
 
-Status: draft 2026-11-16, waiting for the author's approval. Stage 1 (TCP, no admin rights) is designed here; stage 2 (UDP, admin rights) shares the program picker with the stability check's stage 2 ([stability.md](stability.md)) and is not designed here.
+Status: approved 2026-11-16; stage 1 built the same day (`internal/probe/app*.go`, `app_program.go`, the window's "Программа" mode as in `docs/mockups/app.html`, `whynet-cli -app`). Verified live on the author's PC: the picker, names from certificates through the fake-ip router (Discord `discord.gg`, `discord.media`; Spotify), Telegram named by its network only, `app_ok` for four working programs, `app_unreachable` for a test program dialling a silent address. Not seen live yet: a real blocked program (the author's network routes the blocked ones through the router VPN), the DNS cache as a name source (refused without admin on the author's Windows 11 26H2), the running exe's window (checked by screenshots of the built frontend with Go stubbed). Stage 1 (TCP, no admin rights) is designed here; stage 2 (UDP, admin rights) shares the program picker with the stability check's stage 2 ([stability.md](stability.md)) and is not designed here.
 
 ## Intent
 

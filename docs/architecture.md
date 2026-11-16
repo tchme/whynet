@@ -19,7 +19,11 @@ whynet/
   app_live.go              the stability check for the window: StartLive (emits "live-tick" about once a
                            second, "live-done" after an hour), FinishLive, CancelLive, MarkLag; Ctrl+Alt+L hotkey;
                            compare with the previous check; LiveView for the window
-  cmd/whynet-cli/          console front end: progress, verdict, -json, -save (AI report); live.go: -live [-for]
+  app_program.go           the app check for the window: ListPrograms, RecordApp (emits "app-tick" once a second,
+                           then "app-step" per check step; ends with FinishApp or after 2 min), CancelApp;
+                           AppView / AppServerView for the window
+  cmd/whynet-cli/          console front end: progress, verdict, -json, -save (AI report); live.go: -live [-for];
+                           app.go: -app [-for 30s] [program or PID] (no name: lists the programs)
   internal/probe/          the checks; Env holds everything external, tests swap it
     har.go                 ParseHAR: a HAR record down to address (no query), kind, status, error, phases, IP
                            (cookies, headers, bodies are never decoded); OwnStep compares it with whynet's browser
@@ -51,6 +55,16 @@ whynet/
                            handshakes behind a fake-ip router), median + tries that lost a packet
     dpi.go                 bundle folder from a path, zapret hostlist matching (plain = with subdomains, ^ = exact)
     dpi_windows.go         DPI-bypass tools: processes (+exe, command line), services, WinDivert driver; no admin needed
+    app.go                 the app check (design: appcheck.md): processes grouped into programs (helpers without a
+                           window under their windowed ancestor; a named exe found on its own), the recorder over
+                           reads of the TCP table (stuck connects; a reset told from a close by the closing states),
+                           server names (DNS cache, the certificate shown without SNI, PTR) and owners
+    app_check.go           CheckApp: steps local, record, names, check; each server on its own port (5 connects,
+                           the name against example.org when it speaks TLS, zapret names/ipset/Game Filter ports),
+                           troubled first, ads never blamed, 20 at most; `app.*` facts
+    app_windows.go         GetExtendedTcpTable (owner PID, IPv4+IPv6), the process snapshot and window titles,
+                           RecordApp (every 250 ms, processes re-read every 2 s), DNSCacheNames (dnsapi; refused
+                           without admin on newer Windows 11)
   internal/live/            the stability check (design: stability.md); Env holds everything external
     live.go                Link, Result and the types the window and the report read; the two control addresses
     session.go             Start: router (physical adapter's gateway), the node beyond it (first trace round),
@@ -64,15 +78,16 @@ whynet/
     hotkey_windows.go      Ctrl+Alt+L (RegisterHotKey on a locked thread with its own message loop)
     env_windows.go         DefaultEnv: the real network
   internal/report/         the AI report (Markdown) and its file name; Version (a var, settable with -ldflags);
-                           live.go: the stability report, link names and hop notes shared with the window
+                           live.go: the stability report, link names and hop notes shared with the window;
+                           app.go: the app check's report (servers table); summary and steps writers shared
   internal/update/         newest GitHub release (asset whynet.exe + its SHA-256 digest), version compare,
                            download and swap: running exe -> exe.old, new -> exe; CleanOld on next start
   rules/                   rules engine + data, embedded: diagnoses.yaml, live.yaml (stability verdicts,
-                           LoadLive), markers.yaml, ads.txt.gz (76k ad
+                           LoadLive), app.yaml (app check verdicts, LoadApp), markers.yaml, ads.txt.gz (76k ad
                            and tracker domains, StevenBlack/hosts MIT, ads-LICENSE.txt)
   tools/adlist/            rebuilds rules/ads.txt.gz from the upstream list
-  locales/                 every user-facing string: ru.yaml (diagnoses, live_diagnoses, live, steps, report,
-                           ui, values, notes)
+  locales/                 every user-facing string: ru.yaml (diagnoses, live_diagnoses, live, app_diagnoses,
+                           app, steps, report, ui, values, notes)
 ```
 
 ## Data flow
@@ -87,6 +102,11 @@ stability: target -> live.Start(ctx, Env, target, onUpdate) -> Session (ticks, t
       -> Session.Finish -> live.Result{Facts, Links, Trace, WiFi, Lags, Spikes, Buckets, Chart, Mask}
       -> rules.Match(rules.LoadLive(), Result.Facts) -> Verdict (live_* texts)
       -> report.LiveMarkdown(Result, Verdict, texts, hide, previous) -> .md file
+
+app check: exe -> probe.RecordApp(ctx, exe, done, progress) -> []AppServer (what the program went through)
+      -> probe.CheckApp(ctx, Env, exe, servers, recorded, DNSCacheNames(), onStep) -> AppResult{Result, Servers}
+      -> rules.Match(rules.LoadApp(), AppResult.Facts()) -> Verdict (app_* texts)
+      -> report.AppMarkdown(AppResult, Verdict, texts, hide) -> .md file
 ```
 
 - The window renders only what Go sends: step names, verdict texts with placeholders filled, one-line notes under failed steps (`notes` in ru.yaml, matched by `key=value`), UI strings. The UI never builds its own diagnosis text.
@@ -165,6 +185,21 @@ Stability check facts (`internal/live/analyze.go`; ids: router, beyond, ctl_ru, 
 | `live.lag_marks` | how many "лагнуло" marks (bookmarks: each looks back 10 s for the nearest jump; no rule uses them) |
 | `live.route_jump_hop` | TTL where the delay goes up and stays |
 | `live.seconds`, `live.too_short` | length; true under 30 s |
+
+App check facts (`internal/probe/app_check.go`; steps record, names, check):
+
+| Fact | Values |
+|---|---|
+| `app.servers`, `app.conns` | servers (address and port) and connections recorded |
+| `app.stuck`, `app.cut` | servers with connects that waited over 3 s / were reset within 2 s of opening (no closing state) |
+| `app.fakeip` | all, some, none: servers behind a fake-ip router |
+| `app.named`, `app.dns_cache` | servers with a name; on/off: the Windows DNS cache opened |
+| `app.checked` | servers checked (20 at most) |
+| `app.blocked`, `app.blocked_hosts`, `app.blocked_fakeip` | a non-ad server is blocked (below) / their names / all of them behind fake-ip |
+| `app.sni`, `app.unreachable`, `app.maybe` | cut by name / no answer on its port or cut with any name / cut, the name not testable (closed, or the program's trouble on a server without name or TLS) |
+| `app.program_trouble`, `app.trouble_hosts` | the program had failed connects at least as often as working ones to a server |
+| `app.lossy` | a server lost 2+ of 5 connects |
+| `app.dpi_unlisted`, `app.game_ports` | a blocked server in neither zapret list / on a Game Filter TCP port |
 
 A link's trouble (a spike: an answer over max(3 × median, median + 50 ms), or a loss) counts only when some link behind it shows trouble at the same tick, and is the link's own only when every nearer link was calm. A link is unstable when its own trouble is ≥ 2 % of the ticks, or (not for `beyond`, an intermediate router answering pings to itself) when p95 − median of its own view reaches 50 ms (router 20 ms).
 
