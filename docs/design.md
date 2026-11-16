@@ -72,6 +72,10 @@ A site can open while its images, video or scripts don't. Two steps cover this, 
 - **Slow pages:** the time until the page is parsed and shown (DOMContentLoaded) is measured; over 8 s, or never within the 20 s budget, gives `page_slow` — unless the site's own block page (anti-bot, "turn off VPN") already explains it.
 - Browser runs never sign in or sync (Edge does both on its own otherwise, see bugs.md).
 
+## Updates (2026-11-16, the author's request)
+
+On start whynet asks GitHub Releases for the latest version. When it is newer, a banner offers "Да, обновить / Нет". "Yes" downloads `whynet.exe` from the release, checks its size and SHA-256 against GitHub's digest, renames the running exe aside (Windows allows renaming a running exe, not overwriting it), puts the new one in its place, starts it and quits; the next start removes the old file. On any failure the old exe stays and the release page opens for a manual download (e.g. an exe in Program Files can't be replaced without admin rights). The exe isn't code-signed, so the trust is the GitHub account and HTTPS.
+
 ## Which way to the site (2026-11-16)
 
 For a site behind Cloudflare, whynet asks the site's own `/cdn-cgi/trace` where it sees the person and compares that country with the one an independent server sees. "The site sees you from Germany (Frankfurt node): you reach it through a VPN or proxy" — or "directly". Made for people with a VPN on the router, where it's otherwise unclear which sites go where. The address the site sees is masked in the report (it may be the person's own VPS).

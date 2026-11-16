@@ -15,7 +15,8 @@ import (
 	"whynet/rules"
 )
 
-const Version = "0.1.1"
+// Version is a variable so a test build can claim to be older: -ldflags "-X whynet/internal/report.Version=0.1.0".
+var Version = "0.1.1"
 
 // cell makes text safe inside a Markdown table cell.
 func cell(s string) string {

@@ -34,7 +34,9 @@ whynet/
                            6 at a time, up to 20; stall watchdog and speed
     dpi.go                 bundle folder from a path, zapret hostlist matching (plain = with subdomains, ^ = exact)
     dpi_windows.go         DPI-bypass tools: processes (+exe, command line), services, WinDivert driver; no admin needed
-  internal/report/         the AI report (Markdown) and its file name; Version
+  internal/report/         the AI report (Markdown) and its file name; Version (a var, settable with -ldflags)
+  internal/update/         newest GitHub release (asset whynet.exe + its SHA-256 digest), version compare,
+                           download and swap: running exe -> exe.old, new -> exe; CleanOld on next start
   rules/                   rules engine + data, embedded: diagnoses.yaml, markers.yaml, ads.txt.gz (76k ad
                            and tracker domains, StevenBlack/hosts MIT, ads-LICENSE.txt)
   tools/adlist/            rebuilds rules/ads.txt.gz from the upstream list

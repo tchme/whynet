@@ -4,7 +4,7 @@ import '@fontsource/golos-text/600.css';
 import '@fontsource/jetbrains-mono/400.css';
 import './style.css';
 
-import { Info, Check, CheckInBrowser, FinishBrowser, Report, SaveReport, CopyReport } from '../wailsjs/go/main/App';
+import { Info, Check, CheckInBrowser, FinishBrowser, Report, SaveReport, CopyReport, CheckUpdate, Update } from '../wailsjs/go/main/App';
 import { EventsOn, WindowGetPosition, WindowGetSize, WindowSetPosition, WindowSetSize } from '../wailsjs/runtime/runtime';
 
 const GLYPH = { ok: '✓', fail: '✗', error: '✗', warn: '!', skip: '—', wait: '', run: '' };
@@ -21,7 +21,17 @@ const state = {
   host: '', verdict: null, error: '',
   details: false, modal: false, reveal: false,
   visible: false, progress: null, // a check with a visible browser window
+  update: null, updating: false, // a newer release offered at the top
 };
+
+function updateHTML() {
+  const u = state.update, ui = state.ui;
+  if (!u) return '';
+  if (state.updating) return `<div class="update" role="status">${esc(fill(ui.update_busy, u))}</div>`;
+  return `<div class="update" role="status"><span>${esc(fill(ui.update_text, u))}</span>
+    <span class="actions"><button class="btn primary" data-act="update-yes">${esc(ui.update_yes)}</button>
+    <button class="btn" data-act="update-no">${esc(ui.update_no)}</button></span></div>`;
+}
 
 function stepsHTML() {
   return state.steps.map(s => `<li class="${s.status}">
@@ -103,7 +113,7 @@ function render() {
     ? `<p class="hint">${esc(state.ui.idle_text)}</p>${state.error ? `<p class="hint error-text" role="alert">${esc(state.error)}</p>` : ''}`
     : `<div class="grid"><div><ol class="steps">${stepsHTML()}</ol><div class="version">whynet ${esc(state.version)}</div></div>${rightHTML()}</div>`
       + (state.details && state.phase === 'done' ? detailsHTML() : '');
-  out.innerHTML = `<div class="content" id="content">${body}</div>` + (state.modal ? modalHTML() : '');
+  out.innerHTML = `<div class="content" id="content">${updateHTML()}${body}</div>` + (state.modal ? modalHTML() : '');
   checkBtn.disabled = state.phase === 'running';
   if (state.modal) refreshPreview();
   fitWindow();
@@ -186,6 +196,12 @@ out.addEventListener('click', async e => {
   const el = e.target.closest('[data-act]');
   const act = el?.dataset.act;
   if (act === 'details') { state.details = !state.details; render(); }
+  else if (act === 'update-no') { state.update = null; render(); }
+  else if (act === 'update-yes') {
+    state.updating = true; render();
+    try { await Update(); } // on success the app restarts into the new version
+    catch (err) { const v = state.update.version; Object.assign(state, { update: null, updating: false }); render(); toast(fill(state.ui.update_failed, { error: err?.message ?? err, version: v })); }
+  }
   else if (act === 'in-browser') startCheck(input.value.trim() || state.host, true);
   else if (act === 'finish') { el.disabled = true; FinishBrowser(); }
   else if (act === 'open') { state.modal = true; render(); $('m-title')?.closest('.m').querySelector('[data-act="save"]').focus(); }
@@ -213,4 +229,5 @@ Info().then(info => {
   checkBtn.textContent = info.ui.check;
   render();
   input.focus();
+  CheckUpdate().then(rel => { if (rel) { state.update = rel; render(); } }).catch(() => {});
 });

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"maps"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -14,6 +16,7 @@ import (
 
 	"whynet/internal/probe"
 	"whynet/internal/report"
+	"whynet/internal/update"
 	"whynet/locales"
 	"whynet/rules"
 )
@@ -28,6 +31,7 @@ type App struct {
 	mu          sync.Mutex
 	running     bool
 	browserDone chan struct{} // closed by FinishBrowser to end a visible browser check
+	pending     *update.Release
 	last        *probe.Result
 	verdict     rules.Verdict
 }
@@ -44,7 +48,59 @@ func NewApp() (*App, error) {
 	return &App{rules: rs, markers: m, t: t}, nil
 }
 
-func (a *App) startup(ctx context.Context) { a.ctx = ctx }
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
+	// After an update the previous exe may still be closing: retry removing it for a while.
+	go func() {
+		exe, err := os.Executable()
+		if err != nil {
+			return
+		}
+		for range 10 {
+			update.CleanOld(exe)
+			time.Sleep(time.Second)
+		}
+	}()
+}
+
+// CheckUpdate returns a newer release from GitHub, or nil when there's none or GitHub can't be asked.
+func (a *App) CheckUpdate() *update.Release {
+	rel, err := update.Latest(a.ctx)
+	if err != nil || !update.Newer(rel.Version, report.Version) {
+		return nil
+	}
+	a.mu.Lock()
+	a.pending = rel
+	a.mu.Unlock()
+	return rel
+}
+
+// Update installs the release CheckUpdate found and restarts into it. When that fails, it opens
+// the release page for a manual download and returns the error; the old exe keeps working.
+func (a *App) Update() error {
+	a.mu.Lock()
+	rel := a.pending
+	a.mu.Unlock()
+	if rel == nil {
+		return errors.New("no update found")
+	}
+	exe, err := os.Executable()
+	if err == nil {
+		exe, err = filepath.EvalSymlinks(exe)
+	}
+	if err == nil {
+		err = update.Apply(a.ctx, rel, exe)
+	}
+	if err == nil {
+		err = exec.Command(exe).Start()
+	}
+	if err != nil {
+		runtime.BrowserOpenURL(a.ctx, rel.Page)
+		return err
+	}
+	runtime.Quit(a.ctx)
+	return nil
+}
 
 type StepView struct {
 	ID     string      `json:"id"`

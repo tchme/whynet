@@ -376,6 +376,11 @@ ui:
   browser_live: "Запросов: {requests} · не загрузилось: {failed} · прошло {seconds} с"
   browser_done: Готово
   browser_ok: но браузер с него загрузил
+  update_text: "Вышла новая версия whynet {version}. Обновить сейчас?"
+  update_yes: Да, обновить
+  update_no: Нет
+  update_busy: "Скачиваю whynet {version}… Программа перезапустится сама."
+  update_failed: "Не получилось обновить: {error}. Открыл страницу загрузки — скачай новую версию вручную."
   browser_missing: Не нашёл Edge или Chrome — проверка в окне браузера недоступна.
   kbps: КБ/с
   checking: Проверяю {host}…

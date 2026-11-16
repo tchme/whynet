@@ -145,3 +145,22 @@ export namespace main {
 
 }
 
+export namespace update {
+	
+	export class Release {
+	    version: string;
+	    page: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Release(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.page = source["page"];
+	    }
+	}
+
+}
+

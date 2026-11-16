@@ -10,6 +10,10 @@ export function CheckInBrowser(arg1) {
   return window['go']['main']['App']['CheckInBrowser'](arg1);
 }
 
+export function CheckUpdate() {
+  return window['go']['main']['App']['CheckUpdate']();
+}
+
 export function CopyReport(arg1) {
   return window['go']['main']['App']['CopyReport'](arg1);
 }
@@ -28,4 +32,8 @@ export function Report(arg1) {
 
 export function SaveReport(arg1) {
   return window['go']['main']['App']['SaveReport'](arg1);
+}
+
+export function Update() {
+  return window['go']['main']['App']['Update']();
 }

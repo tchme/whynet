@@ -27,7 +27,7 @@ Take `whynet.exe` from the [Releases](../../releases) page and run it. Windows m
 
 ## Privacy
 
-whynet sends nothing anywhere except what a check needs: DNS-over-HTTPS lookups of the checked domain (1.1.1.1, 8.8.8.8), a request to Cloudflare to learn your public IP and provider, and the page itself. No telemetry. The hidden browser uses a throwaway profile with sign-in and sync switched off, deleted afterwards.
+whynet sends nothing anywhere except what a check needs: DNS-over-HTTPS lookups of the checked domain (1.1.1.1, 8.8.8.8), a request to Cloudflare to learn your public IP and provider, and the page itself. On start it asks GitHub for the latest version number and offers to update; it updates only when you press "Yes" (the new exe is checked against the release's SHA-256). No telemetry. The hidden browser uses a throwaway profile with sign-in and sync switched off, deleted afterwards.
 
 ## Build from source
 
@@ -72,7 +72,7 @@ MIT, see [LICENSE](LICENSE). Built with [Wails](https://wails.io). The ad and tr
 
 ## Приватность
 
-whynet ничего не отправляет, кроме нужного для проверки: DNS-over-HTTPS-запросы про проверяемый домен (1.1.1.1, 8.8.8.8), запрос к Cloudflare, чтобы узнать внешний IP и провайдера, и сама страница. Телеметрии нет. Невидимый браузер работает во временном профиле без входа в аккаунт и синхронизации, профиль удаляется.
+whynet ничего не отправляет, кроме нужного для проверки: DNS-over-HTTPS-запросы про проверяемый домен (1.1.1.1, 8.8.8.8), запрос к Cloudflare, чтобы узнать внешний IP и провайдера, и сама страница. При запуске он спрашивает у GitHub номер последней версии и предлагает обновиться; обновляется, только если нажать «Да» (новый exe сверяется с контрольной суммой SHA-256 релиза). Телеметрии нет. Невидимый браузер работает во временном профиле без входа в аккаунт и синхронизации, профиль удаляется.
 
 ## Сборка из исходников
 

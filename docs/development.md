@@ -27,6 +27,14 @@ wails build                                  # build/bin/whynet.exe
 
 The window: `wails build` regenerates `frontend/wailsjs/` (bindings to `app.go`, committed) and embeds `frontend/dist`. Fonts come from the pinned `@fontsource/golos-text` and `@fontsource/jetbrains-mono` packages (OFL) and ship inside the exe, so the app needs no internet for them. npm 11 warns that esbuild's install script was not approved; the build works without it.
 
+## Releasing
+
+1. Bump the version in `wails.json` (`info.productVersion`) and `internal/report/report.go` (`Version`).
+2. `wails build`, commit, tag `vX.Y.Z`, push `main` and the tag.
+3. Create the GitHub release for the tag with the exe attached under the exact name **`whynet.exe`**: the in-app updater looks for that name and checks the SHA-256 digest GitHub publishes for it. Release notes: English, `---`, Russian.
+
+To test the updater before a release, build a copy that claims to be older and points at a fake release: `wails build -o whynet-test.exe -ldflags "-X whynet/internal/report.Version=0.1.0 -X whynet/internal/update.LatestURL=http://127.0.0.1:8765/latest"`, serve a `latest` JSON (`tag_name`, `assets[{name, size, digest, browser_download_url}]`) and the new exe with `python -m http.server 8765`, run the copy from a scratch folder, press "Да, обновить".
+
 Ad list: `go run ./tools/adlist` downloads the current StevenBlack/hosts list and rewrites `rules/ads.txt.gz`; update the date in `rules/ads-LICENSE.txt` and commit both.
 
 `wails` lives in `%USERPROFILE%\go\bin`; add it to PATH or call it by full path. When piping CLI output in Windows PowerShell 5.1, set `[Console]::OutputEncoding = [Text.Encoding]::UTF8` first, or Russian text arrives garbled (a real console window is fine).
