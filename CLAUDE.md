@@ -23,5 +23,6 @@ Windows 10/11 desktop app (Go + Wails v2) that tells a non-technical person why 
 - [docs/architecture.md](docs/architecture.md) — code map and data flow
 - [docs/diagnoses.md](docs/diagnoses.md) — every diagnosis: detection and how to reproduce
 - [docs/stability.md](docs/stability.md) — the stability check for games (design): ping chain, trace, Wi-Fi, picking a program
+- [docs/appcheck.md](docs/appcheck.md) — the app check (design): pick a program, record its TCP connections, check each server
 - [docs/development.md](docs/development.md) — setup, commands, conventions
 - [docs/bugs.md](docs/bugs.md) — verified pitfalls and fixed bugs
