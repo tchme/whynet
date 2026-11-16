@@ -49,3 +49,5 @@ Ad list: `go run ./tools/adlist` downloads the current StevenBlack/hosts list an
 - Every new diagnosis gets a rule, a text in `locales/ru.yaml` (`TestRulesAndTextsAgree` enforces both), a row in [diagnoses.md](diagnoses.md), a table case in `rules/rules_test.go` and, where possible, a lab case in `rules/lab_test.go` that produces the facts from a real local server.
 - A new fact key goes into the facts table in [architecture.md](architecture.md).
 - Work on a branch; `main` gets merged work. Push and releases only when the author asks.
+
+Driving the built window from a script: find buttons by their accessible names through UI Automation (`System.Windows.Automation`: Invoke, SelectionItem for the mode tabs, ExpandCollapse for the Details bar) instead of mouse clicks; screenshots with `PrintWindow(hwnd, hdc, 2)` (WebView2 needs PW_RENDERFULLCONTENT; screen copies catch whatever window is on top). Mouse coordinates broke across two monitors with different scaling.

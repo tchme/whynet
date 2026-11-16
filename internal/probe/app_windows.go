@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/netip"
+	"os"
+	"slices"
 	"strings"
 	"time"
 	"unsafe"
@@ -149,7 +151,9 @@ func ListPrograms(browsers []string) ([]Program, error) {
 		return nil, err
 	}
 	rows, _ := tcpTable() // without the table the list still works, only without counts
-	return programs(procs, internetConns(rows), browsers), nil
+	// Not whynet itself (its WebView helpers count under it).
+	self := uint32(os.Getpid())
+	return slices.DeleteFunc(programs(procs, internetConns(rows), browsers), func(p Program) bool { return slices.Contains(p.PIDs, self) }), nil
 }
 
 // FindProgram finds a running program by name, exe name or PID, the picker's filter off (see

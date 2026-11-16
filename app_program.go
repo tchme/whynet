@@ -159,6 +159,9 @@ func (a *App) appView(res *probe.AppResult, v rules.Verdict) *AppView {
 	}
 	for _, s := range res.Servers {
 		sv := a.serverView(s)
+		if sv.Zapret != "" && facts["local.dpi_tool"] == "none" {
+			sv.Zapret = a.t.App["zapret_off"] // installed, not running: its lists change nothing now
+		}
 		view.Zapret = view.Zapret || sv.Zapret != ""
 		view.Servers = append(view.Servers, sv)
 	}

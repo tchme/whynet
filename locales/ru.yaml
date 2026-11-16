@@ -461,6 +461,7 @@ app:
   seen_some: "подключено; не вышло {n} из {of}"
   zapret_yes: в списках
   zapret_no: нет в списках
+  zapret_off: не запущен
 
 steps:
   local:
