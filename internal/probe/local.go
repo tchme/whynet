@@ -7,8 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -64,21 +64,50 @@ func publicInfo(ctx context.Context) (info map[string]string, date time.Time, er
 	date, _ = http.ParseTime(resp.Header.Get("Date"))
 	kv := parseTrace(string(body))
 	info = map[string]string{"ip": kv["ip"], "country": kv["loc"], "cloudflare_warp": kv["warp"]}
-	if ip := net.ParseIP(kv["ip"]).To4(); ip != nil {
-		rev := fmt.Sprintf("%d.%d.%d.%d", ip[3], ip[2], ip[1], ip[0])
-		if _, txt, err := dohQuery(ctx, rev+".origin.asn.cymru.com", "TXT"); err == nil && len(txt) > 0 {
-			// "12389 | 95.24.0.0/14 | RU | ripencc | 2001-06-08"
-			asn := strings.TrimSpace(strings.Split(txt[0], "|")[0])
-			info["asn"] = "AS" + asn
-			if _, txt, err := dohQuery(ctx, "AS"+asn+".asn.cymru.com", "TXT"); err == nil && len(txt) > 0 {
-				// "12389 | RU | ripencc | 2001-06-08 | ROSTELECOM-AS, RU"
-				f := strings.Split(txt[0], "|")
-				info["isp"] = strings.TrimSpace(f[len(f)-1])
-			}
-		}
+	if asn, name := ASN(ctx, kv["ip"]); asn != "" {
+		info["asn"], info["isp"] = asn, name
 	}
 	return info, date, nil
 }
+
+// ASN names the network an IPv4 address belongs to ("AS12389", "ROSTELECOM-AS, RU") through
+// Team Cymru's DNS records, asked over DoH; "" for private addresses or when unknown.
+func ASN(ctx context.Context, ip string) (asn, name string) {
+	a, err := netip.ParseAddr(ip)
+	if err != nil || !a.Is4() || a.IsPrivate() || a.IsLoopback() || a.IsLinkLocalUnicast() || cgnat.Contains(a) {
+		return "", ""
+	}
+	b := a.As4()
+	rev := fmt.Sprintf("%d.%d.%d.%d", b[3], b[2], b[1], b[0])
+	_, txt, err := dohQuery(ctx, rev+".origin.asn.cymru.com", "TXT")
+	if err != nil || len(txt) == 0 {
+		return "", ""
+	}
+	num := originASN(txt[0])
+	if num == "" {
+		return "", ""
+	}
+	asn = "AS" + num
+	if _, txt, err := dohQuery(ctx, asn+".asn.cymru.com", "TXT"); err == nil && len(txt) > 0 {
+		// "12389 | RU | ripencc | 2001-06-08 | ROSTELECOM-AS, RU"
+		f := strings.Split(txt[0], "|")
+		name = strings.TrimSpace(f[len(f)-1])
+	}
+	return asn, name
+}
+
+// originASN reads the AS number from a Team Cymru origin record: "12389 | 95.24.0.0/14 | RU | ...".
+// A prefix announced by several networks lists them all ("13238 208398 | 77.88.8.0/24 | ..."):
+// the first one names it.
+func originASN(txt string) string {
+	if nums := strings.Fields(strings.Split(txt, "|")[0]); len(nums) > 0 {
+		return nums[0]
+	}
+	return ""
+}
+
+// cgnat is the carrier-grade NAT range: an ISP's own inside addresses.
+var cgnat = netip.MustParsePrefix("100.64.0.0/10")
 
 // serverDate is the clock fallback when the trace endpoint is unreachable. A wrong clock makes
 // every certificate look expired or not yet valid, which is exactly when the trace fails; so the

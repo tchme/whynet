@@ -83,6 +83,11 @@ func (m Markers) IsAd(host string) bool {
 	return false
 }
 
+// IsVPN reports whether an adapter belongs to a VPN client (its name or description has a marker).
+func (m Markers) IsVPN(a Adapter) bool {
+	return firstIn(strings.ToLower(a.Name+" "+a.Description), m.VPNAdapters) != ""
+}
+
 // isUnder reports whether host is one of the domains or their subdomain.
 func isUnder(host string, domains []string) bool {
 	for _, d := range domains {

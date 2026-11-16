@@ -183,6 +183,18 @@ func TestFlowsealSettings(t *testing.T) {
 	}
 }
 
+func TestOriginASN(t *testing.T) {
+	for in, want := range map[string]string{
+		"12389 | 95.24.0.0/14 | RU | ripencc | 2001-06-08": "12389",
+		"13238 208398 | 77.88.8.0/24 | RU | ripencc |":     "13238", // several origins: it broke the name lookup
+		"": "",
+	} {
+		if got := originASN(in); got != want {
+			t.Errorf("originASN(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestTraceAndMask(t *testing.T) {
 	kv := parseTrace("fl=1\nip=95.24.13.7\nloc=RU\nwarp=off\n")
 	if kv["ip"] != "95.24.13.7" || kv["loc"] != "RU" {

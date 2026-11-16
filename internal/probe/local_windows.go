@@ -39,12 +39,12 @@ func localInfo(ctx context.Context, host string, m Markers) Local {
 	note("os", err)
 	l.Evidence["os"] = osv
 
-	ads, err := adapters()
+	ads, err := Adapters()
 	note("adapters", err)
 	l.Evidence["adapters"] = ads
 	l.Facts["local.vpn"] = "false"
 	for _, a := range ads {
-		if firstIn(strings.ToLower(a.Name+" "+a.Description), m.VPNAdapters) != "" {
+		if m.IsVPN(a) {
 			l.Facts["local.vpn"] = "true"
 			l.Evidence["vpn_adapter"] = a.Name
 		}
@@ -133,16 +133,20 @@ func osVersion() (string, error) {
 	return fmt.Sprintf("%s %s (build %s)", name, disp, build), nil
 }
 
-type adapter struct {
+// Adapter is a network adapter that is up.
+type Adapter struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
+	Kind        string   `json:"kind,omitempty"` // wifi, cable, other
 	IPv4        []string `json:"ipv4,omitempty"`
 	Gateways    []string `json:"gateways,omitempty"`
 	DNS         []string `json:"dns,omitempty"`
+	Index       uint32   `json:"-"` // IPv4 interface index
+	GUID        string   `json:"-"` // "{...}", as the Wi-Fi API names interfaces
 }
 
-// adapters lists the network adapters that are up, with their gateways and DNS servers.
-func adapters() ([]adapter, error) {
+// Adapters lists the network adapters that are up, with their gateways and DNS servers.
+func Adapters() ([]Adapter, error) {
 	size := uint32(16 << 10)
 	var first *windows.IpAdapterAddresses
 	for range 3 {
@@ -158,12 +162,19 @@ func adapters() ([]adapter, error) {
 			return nil, err
 		}
 	}
-	var out []adapter
+	var out []Adapter
 	for a := first; a != nil; a = a.Next {
 		if a.OperStatus != windows.IfOperStatusUp || a.IfType == windows.IF_TYPE_SOFTWARE_LOOPBACK {
 			continue
 		}
-		ad := adapter{Name: windows.UTF16PtrToString(a.FriendlyName), Description: windows.UTF16PtrToString(a.Description)}
+		ad := Adapter{Name: windows.UTF16PtrToString(a.FriendlyName), Description: windows.UTF16PtrToString(a.Description),
+			Kind: "other", Index: a.IfIndex, GUID: windows.BytePtrToString(a.AdapterName)}
+		switch a.IfType {
+		case windows.IF_TYPE_IEEE80211:
+			ad.Kind = "wifi"
+		case windows.IF_TYPE_ETHERNET_CSMACD:
+			ad.Kind = "cable"
+		}
 		for u := a.FirstUnicastAddress; u != nil; u = u.Next {
 			if ip := u.Address.IP(); ip.To4() != nil {
 				ad.IPv4 = append(ad.IPv4, ip.String())

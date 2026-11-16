@@ -7,11 +7,167 @@ package live
 import (
 	"net/netip"
 	"time"
+
+	"whynet/internal/probe"
 )
+
+// Link ids, nearest first.
+const (
+	Router   = "router"
+	Beyond   = "beyond" // the first node beyond the router: the ISP, or the VPN server
+	CtlRU    = "ctl_ru" // a steady address in Russia
+	CtlWorld = "ctl_world"
+	Target   = "server"
+)
+
+// Controls are the two internet addresses every check compares against.
+var Controls = map[string]netip.Addr{
+	CtlRU:    netip.MustParseAddr("77.88.8.8"), // Yandex DNS, anycast
+	CtlWorld: netip.MustParseAddr("1.1.1.1"),   // Cloudflare DNS, anycast
+}
+
+// Link is one link of the chain.
+type Link struct {
+	ID      string     `json:"id"`
+	Addr    netip.Addr `json:"addr"`
+	Name    string     `json:"name,omitempty"`     // the server's name, when given by name
+	Kind    string     `json:"kind,omitempty"`     // router: wifi, cable, other; beyond: isp, vpn
+	StandIn netip.Addr `json:"stand_in,omitempty"` // the server ignores pings: the last answering hop of its route
+}
 
 // Reply is one ICMP answer.
 type Reply struct {
 	From netip.Addr    // who answered: the target, or a router on the way when the TTL ran out
 	RTT  time.Duration //
 	Kind string        // reply (the target), ttl (a router on the way), unreachable
+}
+
+// WiFi is the state of the Wi-Fi link to the router at one moment.
+type WiFi struct {
+	Signal  int    `json:"signal_pct"`         // Windows' signal quality, 0..100
+	RSSI    int    `json:"rssi_dbm,omitempty"` // dBm, e.g. -71
+	Channel int    `json:"channel,omitempty"`  //
+	Band    string `json:"band,omitempty"`     // 2.4, 5
+	PHY     string `json:"phy,omitempty"`      // 802.11ac (Wi-Fi 5)...
+	RxMbps  int    `json:"rx_mbps,omitempty"`  //
+	TxMbps  int    `json:"tx_mbps,omitempty"`  //
+	SSID    string `json:"ssid,omitempty"`     // masked in the report by default: it can name a person
+}
+
+// band tells the Wi-Fi band from the channel number.
+//
+// shortcut: 6 GHz reuses channel numbers 1-233, so a 6 GHz link reads as 2.4 or 5 here; read the
+// channel's centre frequency (WlanGetNetworkBssList) when Wi-Fi 6E/7 links show up in reports.
+func band(ch int) string {
+	switch {
+	case ch >= 1 && ch <= 14:
+		return "2.4"
+	case ch >= 32 && ch <= 177:
+		return "5"
+	}
+	return ""
+}
+
+// Result is a whole stability check: facts for the rules, everything else for the window and the report.
+type Result struct {
+	Input   string            `json:"input"`
+	Server  *probe.Server     `json:"server,omitempty"`
+	Started time.Time         `json:"started"`
+	Seconds int               `json:"seconds"`
+	Facts   map[string]string `json:"facts"`
+	Links   []LinkStats       `json:"links"`
+	Trace   []Hop             `json:"trace"`
+	WiFi    *WiFiSummary      `json:"wifi,omitempty"`
+	Lags    []LagMark         `json:"lag_marks,omitempty"`
+	Spikes  []Episode         `json:"spikes,omitempty"`   // every spell of trouble a link caused, up to maxEpisodes
+	Total   int               `json:"spikes_total"`       // all of them
+	Buckets []Bucket          `json:"buckets,omitempty"`  // the session in slices of time
+	Chart   Chart             `json:"-"`                  // for the window only
+	Local   map[string]any    `json:"computer,omitempty"` // OS, public address, adapters (the local step's evidence)
+	Errors  map[string]string `json:"errors,omitempty"`   // what failed on the way (Wi-Fi API, a panic...)
+	Mask    map[string]string `json:"-"`                  // private value -> what the report shows
+}
+
+// LinkStats sums up one link over the session. Times are milliseconds.
+type LinkStats struct {
+	Link
+	State   string  `json:"state"` // stable, unstable, silent
+	Sent    int     `json:"sent"`
+	Lost    int     `json:"lost"`
+	Median  float64 `json:"median_ms"`
+	P95     float64 `json:"p95_ms"`
+	Worst   float64 `json:"worst_ms"`
+	Jitter  float64 `json:"jitter_ms"`
+	Events  int     `json:"events"`     // spikes and losses, its own and repeated from nearer links
+	Own     int     `json:"own"`        // the ones this link caused ("по его вине")
+	OwnPct  float64 `json:"own_pct"`    //
+	OwnP95  float64 `json:"own_p95_ms"` // over the moments nearer links were calm
+	OwnMed  float64 `json:"own_median_ms"`
+	LossPct float64 `json:"loss_pct"`
+}
+
+// Hop is one node of the route, over every trace round.
+type Hop struct {
+	TTL        int     `json:"ttl"`
+	Addr       string  `json:"addr"` // "*" when it never answered
+	ASN        string  `json:"asn,omitempty"`
+	Network    string  `json:"network,omitempty"`
+	Sent       int     `json:"sent"`
+	Lost       int     `json:"lost"`
+	Median     float64 `json:"median_ms"`
+	Worst      float64 `json:"worst_ms"`
+	LossCounts bool    `json:"loss_counts"`    // its loss reaches every later hop: real, not a router ignoring pings
+	Jump       bool    `json:"jump,omitempty"` // the delay goes up here and stays up: where the route gets long
+	Note       string  `json:"note,omitempty"` // silent (never answers), rate_limited (loses, later hops don't), target, stand_in
+}
+
+// WiFiSummary is the Wi-Fi link over the session.
+type WiFiSummary struct {
+	Last      WiFi `json:"last"`
+	MinSignal int  `json:"min_signal_pct"`
+	AvgSignal int  `json:"avg_signal_pct"`
+	Readings  int  `json:"readings"`
+}
+
+// LagMark is a moment the person marked "лагнуло", read against the network around it.
+type LagMark struct {
+	At      time.Time `json:"at"`
+	Network bool      `json:"network"`            // some link caused trouble within ±2 s
+	Blame   string    `json:"blame,omitempty"`    // the nearest such link
+	WorstMs float64   `json:"worst_ms,omitempty"` // the worst answer around it, any link
+}
+
+// Episode is a spell of trouble one link caused: consecutive ticks with its own spikes or losses.
+type Episode struct {
+	At      time.Time `json:"at"`
+	Link    string    `json:"link"`
+	Seconds float64   `json:"seconds"`
+	WorstMs float64   `json:"worst_ms"` // 0 when every answer in it was lost
+	Lost    int       `json:"lost"`
+}
+
+// Bucket is a slice of the session: per link, the best, median and worst answer and the losses.
+type Bucket struct {
+	At    time.Time              `json:"at"`
+	Links map[string]BucketStats `json:"links"`
+}
+
+type BucketStats struct {
+	Min    float64 `json:"min_ms"`
+	Median float64 `json:"median_ms"`
+	Max    float64 `json:"max_ms"`
+	Lost   int     `json:"lost"`
+}
+
+// Chart is the session thinned for drawing: at most maxPoints per link, the worst answer of each
+// slice kept, so no spike disappears.
+type Chart struct {
+	Start  time.Time              `json:"start"`
+	Step   float64                `json:"step_s"` // seconds per point
+	Series map[string]ChartSeries `json:"series"`
+}
+
+type ChartSeries struct {
+	Ms    []float64 `json:"ms"`    // -1: lost
+	State []uint8   `json:"state"` // 0 calm, 1 this link's own trouble, 2 repeated from a nearer link
 }
