@@ -29,7 +29,7 @@ Every diagnosis whynet can give: how it is detected and how it is tested. Rules 
 | `content_late_loss` | Some files come late: packets get lost on the way to their server (likely) | `br.late` and the worst file's time went to connect/TLS, or one of the late servers loses ping tries (`res.late_lossy`) | table |
 | `content_late_server` | Some files come late: their server takes long to answer (likely) | `br.late`, phase `wait` | table |
 | `content_late` | Some files come late or never (likely) | `br.late`, any other phase (queue, DNS, download, no answer) | table; lab (one stuck image of a feed, a late counter ignored); real Edge against a local server delaying one image 3.5 s (phase `wait`) and never answering another (`none`, 8 s+) |
-| `own_blocked` | The person's own browser stopped requests to the page's own servers (likely: an ad blocker or another extension) | `own.blocked_site` (the "own" step from a HAR record) | table; `TestOwnStep` |
+| `own_blocked` | The person's own browser stopped requests to the page's own servers (likely: an ad blocker or another extension) | `own.blocked_site` (the "own" step from a HAR record) | table; `TestOwnStep`; live: dzen.ru in the author's Opera, its ad blocker stopped dzen's own app bundles (static.dzeninfra.ru): the grey blocks (2026-11-16) |
 | `own_failed` | Requests break in the person's browser while whynet's check finds the network fine (likely: the browser's VPN/proxy/secure DNS) | `own.failed` | table |
 | `own_late` | Files come late in the person's browser only (likely: the browser's VPN, proxy or "turbo" mode) | `own.late` | table |
 | `own_blocked_ads` | The person's browser stops ads and counters only (some sites wait for them) | `own.blocked` | table |

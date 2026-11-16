@@ -69,7 +69,8 @@ func TestMarkdownSymbols(t *testing.T) {
 	md := Markdown(res, rules.Verdict{ID: "unknown", Confidence: "likely"}, tx, true)
 	for _, want := range []string{"net::ERR_CONNECTION_RESET ×1", "| gone.x.com |  | — |", "| img.x.com |  | 7 (потери 3 из 5) |",
 		"| https://img.x.com/a.jpg | картинки | 3200 | подключение к серверу | connect 3000 · wait 100 · download 100 |  |",
-		"### 3. Запись твоего браузера", "Сайт записи: x.com · запросов: 142 · страница показалась через 678 мс",
+		"### 3. Запись твоего браузера " + tx.Status["warn"] + "\n", // no "(0 мс)": a record has no time of its own
+		"Сайт записи: x.com · запросов: 142 · страница показалась через 678 мс",
 		"| https://cmp.x.com/cmp.js | скрипты | blocked | 0 |  | net::ERR_BLOCKED_BY_CLIENT |  | file: ok=true, 1100 ms |",
 		"| https://ad.x.com/a | данные для скриптов | blocked | 0 |  |  | да | — |"} {
 		if !strings.Contains(md, want) {

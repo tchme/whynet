@@ -78,7 +78,11 @@ func Markdown(res *probe.Result, v rules.Verdict, t *locales.Texts, hide bool) s
 	w("\n## %s\n", r["steps"])
 	for i, s := range res.Steps {
 		st := t.Steps[s.ID]
-		w("\n### %d. %s %s (%d %s)\n\n%s\n\n", i+1, st.Name, t.Status[s.Status], s.Ms, r["ms"], st.What)
+		timing := fmt.Sprintf(" (%d %s)", s.Ms, r["ms"])
+		if s.ID == "own" {
+			timing = "" // a record from the person's browser: no time of its own
+		}
+		w("\n### %d. %s %s%s\n\n%s\n\n", i+1, st.Name, t.Status[s.Status], timing, st.What)
 		for _, k := range slices.Sorted(maps.Keys(s.Facts)) {
 			w("- `%s`: %s\n", k, s.Facts[k])
 		}
