@@ -30,7 +30,8 @@ func main() {
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
 		Bind:             []interface{}{app},
-		Windows:          &windows.Options{Theme: windows.Dark}, // dark title bar too, whatever the Windows theme
+		Windows:          &windows.Options{Theme: windows.Dark},      // dark title bar too, whatever the Windows theme
+		DragAndDrop:      &options.DragAndDrop{EnableFileDrop: true}, // a browser record (.har) dropped on the window
 	})
 	if err != nil {
 		println("Error:", err.Error())

@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>whynet — макет разбора записи своего браузера</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #161d24; --panel: #1c252e; --fg: #e2e8ec; --muted: #93a0ab; --line: #2a353f;
+  --accent: #34c3a1; --accent-fg: #08201a;
+  --ok: #55c788; --bad: #f07468; --warn: #e6ae52;
+  --ok-bg: #173022; --bad-bg: #3b1f1d; --warn-bg: #3a2c15;
+  --font: "Golos Text", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #0e1318; color: var(--fg); font: 15px/1.55 var(--font); padding: 24px 16px 60px; }
+.page { max-width: 980px; margin: 0 auto; display: grid; gap: 14px; }
+.intro { color: var(--muted); font-size: 14px; }
+.intro h1 { color: var(--fg); font: 600 22px var(--font); margin: 0 0 6px; }
+.intro ul { margin: 8px 0 0; padding-left: 20px; }
+.intro b { color: var(--fg); font-weight: 600; }
+.cap { margin: 26px 0 0; font: 600 13px var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.note { margin: 0; font-size: 13.5px; color: var(--muted); }
+.note b { color: var(--fg); font-weight: 600; }
+.new { font: 600 10.5px var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--accent-fg); background: var(--accent); border-radius: 4px; padding: 1px 6px; margin-left: 6px; vertical-align: 2px; }
+
+.win { position: relative; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; box-shadow: 0 24px 60px -30px #000; }
+.titlebar { height: 32px; display: flex; align-items: center; padding: 0 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); background: #131a20; }
+.titlebar span { margin-left: auto; letter-spacing: 14px; }
+.ask { display: flex; gap: 8px; padding: 16px 20px; border-bottom: 1px solid var(--line); align-items: center; flex-wrap: wrap; }
+.ask input { flex: 1; min-width: 200px; height: 40px; border: 1px solid var(--accent); border-radius: 8px; padding: 0 12px; background: var(--panel); color: var(--fg); font: 15px var(--font); }
+.seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 3px; }
+.seg button { font: 600 13px var(--font); border: 0; background: transparent; color: var(--muted); padding: 7px 12px; border-radius: 6px; cursor: pointer; }
+.seg button.on { background: var(--bg); color: var(--fg); box-shadow: 0 0 0 1px var(--line); }
+.seg small { font-weight: 500; color: var(--muted); }
+.btn { font: 600 14px var(--font); border-radius: 8px; padding: 9px 14px; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+.btn.link { border-color: transparent; padding-inline: 4px; color: var(--accent); }
+.btn.hl { box-shadow: 0 0 0 2px var(--accent); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+kbd { font: 500 12px var(--mono); background: var(--panel); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; color: var(--fg); white-space: nowrap; }
+code { font: 12.5px var(--mono); color: var(--fg); }
+
+.grid { display: grid; grid-template-columns: minmax(0, 330px) minmax(0, 1fr); gap: 20px; padding: 16px 20px 20px; align-items: start; }
+@media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; align-content: start; }
+.steps li { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: start; padding: 8px 10px; border-radius: 8px; font-size: 14px; }
+.steps li.warn { background: var(--warn-bg); }
+.steps .g { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 700 12px var(--font); background: var(--ok-bg); color: var(--ok); }
+.steps li.warn .g { background: transparent; color: var(--warn); }
+.steps .ms { font: 12px var(--mono); color: var(--muted); white-space: nowrap; }
+.steps .note { grid-column: 2 / -1; font-size: 12.5px; line-height: 1.4; color: var(--warn); }
+.steps li.added { box-shadow: inset 0 0 0 1px var(--accent); }
+.ver { font: 12px var(--mono); color: var(--muted); padding: 6px 10px; }
+
+.verdict { border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.verdict .top { display: flex; gap: 10px; align-items: center; }
+.big { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--warn-bg); color: var(--warn); font-weight: 700; }
+.pill { font: 500 12px var(--font); padding: 3px 10px; border-radius: 999px; background: var(--panel); color: var(--muted); }
+.verdict h2 { margin: 0; font: 600 20px/1.3 var(--font); text-wrap: balance; }
+.verdict p { margin: 0; }
+.advice { background: var(--panel); border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+.advice b { display: block; font: 600 11px var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+.mark { background: rgba(52, 195, 161, .16); border-radius: 4px; padding: 0 3px; }
+
+.details { padding: 0 20px 20px; display: grid; gap: 10px; }
+.dt { font: 600 11px var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-top: 8px; }
+.sum { font-size: 13.5px; color: var(--muted); }
+.sum b { color: var(--fg); font-weight: 600; }
+.tw { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font: 600 11px var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.m { font: 12px var(--mono); white-space: nowrap; }
+td.n, th.n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bad { color: var(--bad); } .good { color: var(--ok); } .dim { color: var(--muted); } .warnc { color: var(--warn); }
+.tag { font: 500 11px var(--font); border-radius: 4px; padding: 0 5px; margin-left: 6px; white-space: nowrap; }
+.tag.own { background: var(--bad-bg); color: var(--bad); }
+.tag.ad { background: var(--panel); color: var(--muted); }
+.collapsed { font-size: 13px; color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; padding: 8px 12px; }
+
+/* dialog */
+.scrim { position: absolute; inset: 32px 0 0; background: rgba(8, 12, 16, .72); display: grid; place-items: start center; padding: 26px 16px; }
+.m { width: min(700px, 100%); display: grid; gap: 14px; padding: 20px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 20px 50px -20px rgba(0, 0, 0, .7); }
+.m h2 { margin: 0; font: 600 19px var(--font); }
+.m p { margin: 0; color: var(--muted); font-size: 14px; }
+.howto { margin: 0; padding: 0; list-style: none; counter-reset: s; display: grid; gap: 8px; }
+.howto li { counter-increment: s; display: grid; grid-template-columns: 24px 1fr; gap: 10px; font-size: 14px; align-items: start; }
+.howto li::before { content: counter(s); width: 24px; height: 24px; border-radius: 50%; background: var(--panel); color: var(--accent); display: grid; place-items: center; font: 600 12.5px var(--font); }
+.howto[hidden] { display: none; }
+.howto small { display: block; color: var(--muted); font-size: 12.5px; }
+.drop { border: 2px dashed var(--line); border-radius: 10px; padding: 22px 16px; text-align: center; display: grid; gap: 4px; background: rgba(28, 37, 46, .5); }
+.drop b { font: 600 15px var(--font); }
+.drop span { color: var(--muted); font-size: 13px; }
+.private { font-size: 12.5px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; }
+.states { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+.state { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--bg); font-size: 14px; display: grid; gap: 6px; }
+.state .h { font: 600 12px var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.state.w { border-color: #5a4520; }
+.state.e { border-color: #5c2f2b; }
+.spin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 8px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.others { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+.other { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 14px; display: grid; gap: 4px; background: var(--bg); }
+.other b { font-weight: 600; }
+.other span { color: var(--muted); font-size: 13px; }
+
+/* button layouts */
+.vars { display: grid; gap: 18px; }
+.var { display: grid; grid-template-columns: minmax(0, 560px) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 860px) { .var { grid-template-columns: 1fr; } }
+.var .win { overflow: visible; }
+.var .verdict { margin: 16px; }
+.var .why { font-size: 13.5px; color: var(--muted); display: grid; gap: 6px; align-content: start; }
+.var .why h3 { margin: 0; color: var(--fg); font: 600 16px var(--font); }
+.var .why b { color: var(--fg); font-weight: 600; }
+.pick { font: 600 10.5px var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--accent-fg); background: var(--accent); border-radius: 4px; padding: 1px 6px; vertical-align: 2px; margin-left: 6px; }
+.split { display: inline-flex; }
+.split .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.split .btn + .btn { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 1px solid rgba(8, 32, 26, .35); }
+.split .btn.primary + .btn.primary { padding-inline: 12px; }
+.deeper { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 8px; }
+.deeper .cap2 { font-size: 13px; color: var(--muted); }
+.btn.sm { font-size: 13px; padding: 7px 11px; }
+.morebar { display: flex; justify-content: center; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding: 10px 16px; font: 600 13.5px var(--font); color: var(--accent); background: #131a20; border-radius: 0 0 10px 10px; }
+.morebar span { color: var(--muted); font-weight: 500; }
+.dd { position: relative; display: inline-block; }
+.menu { position: absolute; left: 0; top: calc(100% + 6px); z-index: 3; width: 320px; background: #10161c; border: 1px solid var(--line); border-radius: 10px; padding: 6px; box-shadow: 0 16px 40px -12px #000; display: grid; gap: 2px; }
+.menu div { padding: 8px 10px; border-radius: 7px; font-size: 14px; }
+.menu div:first-child { background: var(--panel); }
+.menu small { display: block; color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+.inadv { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+.laybar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; background: #0e1318; border-bottom: 1px solid var(--line); padding: 10px 0; font-size: 14px; }
+.laybar > span:first-child { font-weight: 600; }
+.laybar span[class] { color: var(--muted); font-size: 13px; }
+body[data-lay="a"] .lay-b, body[data-lay="b"] .lay-a, body[data-lay="a"] .lay-b-note, body[data-lay="b"] .lay-a-note { display: none; }
+.lay-a { display: grid; gap: 12px; }
+.menu[hidden] { display: none; }
+.win.open { overflow: visible; }
+.win.open .morebar { margin-top: 0; }
+.dd .new { margin-left: 6px; }
+.win.open .morebar:not(:last-child) { border-radius: 0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="intro">
+  <h1>Макет: разбор записи своего браузера (вариант A)</h1>
+  whynet проверяет сайт в своём чистом браузере, поэтому не видит, что мешает в твоём: расширения, блокировщик рекламы, встроенный VPN. Новая кнопка берёт запись сети из твоего браузера и сравнивает её со своей проверкой. Данные — твой случай с dzen.ru.
+  <ul>
+    <li><b>Кнопка «Разобрать мой браузер»</b> появляется после проверки, рядом с «Проверить в окне браузера».</li>
+    <li><b>Окно с инструкцией</b>: 3 шага под твой браузер, потом <kbd>Ctrl</kbd>+<kbd>V</kbd> прямо в окно, кнопка «Вставить» или перетаскивание файла <code>.har</code>.</li>
+    <li><b>Результат</b> — новый 8-й шаг «Запись твоего браузера», вердикт заново и таблица: что не загрузилось у тебя и как то же самое прошло у whynet.</li>
+  </ul>
+</div>
+
+
+<div class="laybar">
+  <span>Кнопки:</span>
+  <div class="seg" id="lay"><button class="on" data-l="a">А · два ряда</button><button data-l="b">Б · меню «Проверить глубже»</button></div>
+  <span class="lay-a-note">Отчёт сверху; ниже, за чертой, «У тебя в браузере не так, как здесь?» и две кнопки.</span>
+  <span class="lay-b-note">Всё в одну строку; нажми «Проверить глубже» — откроется меню.</span>
+</div>
+<p class="note">Переключатель меняет кнопки в экранах 1 и 3. «Подробнее» в обоих вариантах — полоса внизу окна. «Копировать» приклеена к «Сохранить отчёт для ИИ».</p>
+
+<!-- ============ 1 ============ -->
+<div class="cap">1 · После проверки — новая кнопка</div>
+<div class="win open">
+  <div class="titlebar">whynet<span>— ▢ ✕</span></div>
+  <div class="ask">
+    <div class="seg"><button class="on">Сайт</button><button>Стабильность <small>· для игр</small></button></div>
+    <input value="https://dzen.ru/a/ahSHONzFv2e9F-bd">
+    <button class="btn primary">Проверить</button>
+  </div>
+  <div class="grid">
+    <div>
+      <ul class="steps">
+        <li><span class="g">✓</span><span>Компьютер и сеть</span><span class="ms">272 мс</span></li>
+        <li><span class="g">✓</span><span>Поиск адреса сайта (DNS)</span><span class="ms">14 мс</span></li>
+        <li><span class="g">✓</span><span>Подключение к серверу</span><span class="ms">6 мс</span></li>
+        <li><span class="g">✓</span><span>Защищённое соединение (TLS)</span><span class="ms">17 мс</span></li>
+        <li><span class="g">✓</span><span>Ответ сайта</span><span class="ms">114 мс</span></li>
+        <li><span class="g">✓</span><span>Загрузка картинок, видео и скриптов</span><span class="ms">8531 мс</span></li>
+        <li class="warn"><span class="g">!</span><span>Проверка серверов содержимого</span><span class="ms">4557 мс</span>
+          <span class="note">Подключения к privacy-cs.mail.ru теряют пакеты: 2 из 5 попыток пришлось повторять.</span></li>
+      </ul>
+      <div class="ver">whynet 0.2.0</div>
+    </div>
+    <section class="verdict">
+      <div class="top"><span class="big">!</span><span class="pill">скорее всего</span></div>
+      <h2>Связь с сервером содержимого теряет пакеты</h2>
+      <p>Страница загрузилась, но при подключении к privacy-cs.mail.ru теряются пакеты: в 2 из 5 попыток Windows пришлось отправлять их заново. Картинки и блоки с этого сервера могут появляться с опозданием.</p>
+      <div class="advice"><b>Что сделать</b>Если у тебя в браузере блоки сайта не догружаются, а здесь всё загрузилось, <span class="mark">нажми «Разобрать мой браузер»</span> — whynet покажет, что именно не загрузилось у тебя. Или открой сайт в приватном окне: там работает — мешает расширение.</div>
+      <div class="lay-a">
+        <div class="actions"><span class="split"><button class="btn primary">Сохранить отчёт для ИИ</button><button class="btn primary">⧉ Копировать</button></span></div>
+        <div class="deeper">
+          <div class="cap2">У тебя в браузере не так, как здесь?</div>
+          <div class="actions"><button class="btn sm hl">Разобрать мой браузер</button><span class="new">новое</span><button class="btn sm">Открыть в окне браузера</button></div>
+        </div>
+      </div>
+      <div class="lay-b">
+        <div class="actions"><span class="split"><button class="btn primary">Сохранить отчёт для ИИ</button><button class="btn primary">⧉ Копировать</button></span>
+          <span class="dd"><button class="btn hl" data-dd>Проверить глубже ▾</button><span class="new">новое</span>
+            <div class="menu" hidden>
+              <div>Разобрать мой браузер<small>Вставить запись сети из своего браузера и сравнить с проверкой whynet</small></div>
+              <div>Открыть в окне браузера<small>Пройти проверку на робота, войти в аккаунт, включить видео</small></div>
+            </div></span>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="morebar">Подробнее <span>— серверы, файлы, факты</span> ▾</div>
+</div>
+<p class="note">Кнопка есть после любой проверки сайта. В совет вердиктов «всё в порядке» и «теряет пакеты» добавляется строчка про неё — именно там человек видит «у whynet всё хорошо, а у меня нет».</p>
+
+<!-- ============ 2 ============ -->
+<div class="cap">2 · Окно с инструкцией</div>
+<div class="win" style="min-height: 640px">
+  <div class="titlebar">whynet<span>— ▢ ✕</span></div>
+  <div class="ask" style="opacity:.35">
+    <div class="seg"><button class="on">Сайт</button><button>Стабильность <small>· для игр</small></button></div>
+    <input value="https://dzen.ru/a/ahSHONzFv2e9F-bd">
+    <button class="btn primary">Проверить</button>
+  </div>
+  <div class="scrim">
+    <div class="m" role="dialog">
+      <h2>Разобрать запись своего браузера</h2>
+      <p>whynet проверял сайт в своём чистом браузере. Чтобы увидеть, что мешает в твоём, скопируй запись его сети — это минута.</p>
+      <div class="seg" id="bseg">
+        <button class="on" data-b="chromium">Chrome · Edge · Opera · Яндекс</button>
+        <button data-b="firefox">Firefox</button>
+      </div>
+      <ol class="howto" id="howto-chromium">
+        <li><span>Открой проблемную страницу в своём браузере и нажми <kbd>F12</kbd>, вверху выбери вкладку <b>Network</b> (Сеть).</span></li>
+        <li><span>Обнови страницу — <kbd>F5</kbd> — и дождись, пока блоки снова зависнут.</span></li>
+        <li><span>Правой кнопкой по любой строке списка → <b>Copy</b> → <b>Copy all as HAR (sanitized)</b>.<small>Именно «all» — все запросы, а не один. «Sanitized» — без cookies и паролей. Можно и значком ⤓ «Export HAR»: он сохранит файл, его можно перетащить сюда.</small></span></li>
+      </ol>
+      <ol class="howto" id="howto-firefox" hidden>
+        <li><span>Открой проблемную страницу и нажми <kbd>F12</kbd>, вкладка <b>Сеть</b>.</span></li>
+        <li><span>Обнови страницу — <kbd>F5</kbd> — и дождись, пока блоки снова зависнут.</span></li>
+        <li><span>Правой кнопкой по любой строке → <b>Копировать всё как HAR</b>.<small>Или «Сохранить всё как HAR» — файл можно перетащить сюда.</small></span></li>
+      </ol>
+      <div class="drop">
+        <b>Нажми <kbd>Ctrl</kbd>+<kbd>V</kbd> — или перетащи сюда файл .har</b>
+        <span>whynet сам поймёт, с какого сайта запись</span>
+      </div>
+      <div class="private"><span>🔒</span><span>Из записи whynet берёт только адреса без параметров, тип файла, статус и время. Cookies, заголовки и содержимое страниц он не читает, никуда не отправляет и в отчёт не кладёт.</span></div>
+      <div class="actions" style="justify-content:flex-end">
+        <button class="btn">Выбрать файл…</button>
+        <button class="btn primary">Вставить из буфера</button>
+        <button class="btn link">Закрыть</button>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="note">Переключатель браузеров меняет только шаг 3 — попробуй. whynet подставит вкладку сам по браузеру, который в Windows стоит по умолчанию.</p>
+
+<div class="cap">2а · Что бывает после вставки</div>
+<div class="states">
+  <div class="state"><div class="h">Читаю</div><div><span class="spin"></span>Запись с dzen.ru: 142 запроса. Сравниваю с проверкой whynet…</div></div>
+  <div class="state w"><div class="h warnc">Скопирован один запрос</div><div>В записи только 1 запрос — похоже, скопирована одна строка. Нажми правой кнопкой по списку и выбери <b>Copy all as HAR</b>, а не «Copy as HAR».</div></div>
+  <div class="state e"><div class="h bad">Не запись</div><div>Это не похоже на запись HAR. Скопируй её заново по шагам выше.</div></div>
+  <div class="state"><div class="h">Другой сайт</div><div>Запись сделана на ru.pinterest.com, а проверял ты dzen.ru. Сначала проверю ru.pinterest.com, потом сравню.</div></div>
+</div>
+
+<!-- ============ 3 ============ -->
+<div class="cap">3 · Результат</div>
+<div class="win open">
+  <div class="titlebar">whynet<span>— ▢ ✕</span></div>
+  <div class="ask">
+    <div class="seg"><button class="on">Сайт</button><button>Стабильность <small>· для игр</small></button></div>
+    <input value="https://dzen.ru/a/ahSHONzFv2e9F-bd">
+    <button class="btn primary">Проверить</button>
+  </div>
+  <div class="grid">
+    <div>
+      <ul class="steps">
+        <li><span class="g">✓</span><span>Компьютер и сеть</span><span class="ms">272 мс</span></li>
+        <li><span class="g">✓</span><span>Поиск адреса сайта (DNS)</span><span class="ms">14 мс</span></li>
+        <li><span class="g">✓</span><span>Подключение к серверу</span><span class="ms">6 мс</span></li>
+        <li><span class="g">✓</span><span>Защищённое соединение (TLS)</span><span class="ms">17 мс</span></li>
+        <li><span class="g">✓</span><span>Ответ сайта</span><span class="ms">114 мс</span></li>
+        <li><span class="g">✓</span><span>Загрузка картинок, видео и скриптов</span><span class="ms">8531 мс</span></li>
+        <li class="warn"><span class="g">!</span><span>Проверка серверов содержимого</span><span class="ms">4557 мс</span>
+          <span class="note">Подключения к privacy-cs.mail.ru теряют пакеты: 2 из 5 попыток пришлось повторять.</span></li>
+        <li class="warn added"><span class="g">!</span><span>Запись твоего браузера <span class="new">новое</span></span><span class="ms">142 запроса</span>
+          <span class="note">7 запросов остановил сам браузер — privacy-cs.mail.ru, ad.mail.ru, top-fwz1.mail.ru. У whynet они загрузились.</span></li>
+      </ul>
+      <div class="ver">whynet 0.2.0</div>
+    </div>
+    <section class="verdict">
+      <div class="top"><span class="big">!</span><span class="pill">скорее всего</span></div>
+      <h2>Твой браузер сам блокирует часть страницы</h2>
+      <p>В записи твоего браузера 7 запросов не ушли в сеть: их остановил сам браузер. Так делает блокировщик рекламы или другое расширение. Среди них privacy-cs.mail.ru — это не реклама, а служебный скрипт, без которого сайт может не дорисовать блоки. Чистый браузер whynet загрузил все эти файлы — сеть ни при чём.</p>
+      <div class="advice"><b>Что сделать</b>Отключи блокировщик рекламы для dzen.ru (значок щита в адресной строке) и обнови страницу. Помогло — добавь сайт в исключения блокировщика. Не помогло — по очереди выключи другие расширения.</div>
+      <div class="lay-a">
+        <div class="actions"><span class="split"><button class="btn primary">Сохранить отчёт для ИИ</button><button class="btn primary">⧉ Копировать</button></span></div>
+        <div class="deeper">
+          <div class="cap2">У тебя в браузере не так, как здесь?</div>
+          <div class="actions"><button class="btn sm">Разобрать мой браузер</button><button class="btn sm">Открыть в окне браузера</button></div>
+        </div>
+      </div>
+      <div class="lay-b">
+        <div class="actions"><span class="split"><button class="btn primary">Сохранить отчёт для ИИ</button><button class="btn primary">⧉ Копировать</button></span>
+          <span class="dd"><button class="btn" data-dd>Проверить глубже ▾</button>
+            <div class="menu" hidden>
+              <div>Разобрать мой браузер<small>Вставить запись сети из своего браузера и сравнить с проверкой whynet</small></div>
+              <div>Открыть в окне браузера<small>Пройти проверку на робота, войти в аккаунт, включить видео</small></div>
+            </div></span>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="morebar">Скрыть подробности ▴</div>
+  <div class="details">
+    <div class="dt">Твой браузер: что не загрузилось или грузилось долго</div>
+    <div class="sum">Запись: <b>142 запроса</b> · остановил сам браузер — <b class="bad">7</b> · не ответили — <b>0</b> · дольше 3 с — <b>0</b> · страница показалась через <b>0,7 с</b></div>
+    <div class="tw"><table>
+      <thead><tr><th>Файл</th><th>Что это</th><th class="n">Время</th><th>Что случилось у тебя</th><th>У whynet</th></tr></thead>
+      <tbody>
+        <tr><td class="m">privacy-cs.mail.ru/static/cmp/v3/cmp.js</td><td>скрипт<span class="tag own">не реклама</span></td><td class="n dim">—</td><td class="bad">остановил сам браузер</td><td class="good">загрузился, 1,1 с</td></tr>
+        <tr><td class="m">privacy-cs.mail.ru/api/consent</td><td>данные для скриптов<span class="tag own">не реклама</span></td><td class="n dim">—</td><td class="bad">остановил сам браузер</td><td class="good">загрузился, 0,2 с</td></tr>
+        <tr><td class="m">ad.mail.ru/adq/</td><td>данные для скриптов<span class="tag ad">реклама</span></td><td class="n dim">—</td><td class="bad">остановил сам браузер</td><td class="good">загрузился</td></tr>
+        <tr><td class="m">top-fwz1.mail.ru/js/code.js</td><td>скрипт<span class="tag ad">счётчик</span></td><td class="n dim">—</td><td class="bad">остановил сам браузер</td><td class="good">загрузился</td></tr>
+        <tr><td class="m dim" colspan="5">ещё 3 запроса рекламы и счётчиков · показать</td></tr>
+      </tbody>
+    </table></div>
+    <div class="collapsed">Ниже — как было: «Медленные и незагрузившиеся файлы» и «Серверы, с которых грузится страница» из проверки whynet, и технические факты по шагам (у 8-го шага — <code>own.*</code>).</div>
+  </div>
+</div>
+
+<div class="cap">4 · Какие ещё ответы бывают</div>
+<div class="others">
+  <div class="other"><b>В твоём браузере файлы грузятся долго</b><span>У тебя картинки шли по 5–10 с на подключении, у whynet — 0,1 с. Обычно это встроенный VPN или прокси браузера: выключи его и сравни.</span></div>
+  <div class="other"><b>Твой браузер не получил ответ</b><span>Запросы оборвались сетевой ошибкой (сброс, тайм-аут) — и у whynet тоже. Это сеть: дальше как в обычных вердиктах (блокировка, DPI, запрет).</span></div>
+  <div class="other"><b>В записи всё загрузилось</b><span>Ни одного остановленного, упавшего или долгого запроса. Похоже, запись сделана, когда всё работало: запиши ещё раз, пока блоки висят.</span></div>
+  <div class="other"><b>Сломано и у тебя, и у whynet</b><span>Вердикт остаётся сетевым, а запись подтверждает его на твоём браузере и попадает в отчёт для ИИ.</span></div>
+</div>
+
+<div class="cap">Как это работает</div>
+<p class="note"><b>Что читается:</b> адрес без параметров, тип файла, статус, ошибка браузера, время по этапам (очередь, DNS, подключение, шифрование, ответ, скачивание). <b>Сравнение:</b> с проверкой, которую whynet только что сделал; если запись с другого сайта — сначала проверка того сайта. <b>Вердикт</b> решают те же правила, что и остальное: 8-й шаг даёт факты <code>own.*</code>. <b>Отчёт для ИИ</b> получает раздел «Запись браузера пользователя» с той же таблицей. <b>Firefox</b> помечает остановленные расширением запросы иначе, чем Chrome, — проверю на живой записи.</p>
+
+</div>
+<script>
+document.getElementById('bseg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  for (const x of e.currentTarget.children) x.classList.toggle('on', x === b);
+  document.getElementById('howto-chromium').hidden = b.dataset.b !== 'chromium';
+  document.getElementById('howto-firefox').hidden = b.dataset.b !== 'firefox';
+});
+
+const setLay = l => {
+  document.body.dataset.lay = l;
+  for (const b of document.querySelectorAll('#lay button')) b.classList.toggle('on', b.dataset.l === l);
+};
+document.getElementById('lay').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setLay(b.dataset.l); });
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-dd]');
+  const mine = t && t.parentElement.querySelector('.menu');
+  document.querySelectorAll('.menu').forEach(m => { if (m !== mine) m.hidden = true; });
+  if (mine) mine.hidden = !mine.hidden;
+});
+setLay(location.hash === '#b' ? 'b' : 'a');
+</script>
+</body>
+</html>

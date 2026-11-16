@@ -5,8 +5,8 @@ import '@fontsource/jetbrains-mono/400.css';
 import './style.css';
 
 import { Info, Check, CheckInBrowser, FinishBrowser, Report, SaveReport, CopyReport, CheckUpdate, Update,
-  StartLive, FinishLive, CancelLive, MarkLag } from '../wailsjs/go/main/App';
-import { EventsOn, WindowGetPosition, WindowGetSize, WindowSetPosition, WindowSetSize } from '../wailsjs/runtime/runtime';
+  StartLive, FinishLive, CancelLive, MarkLag, ReadHAR, PasteHAR, ReadHARFile, PickHAR, CompareHAR } from '../wailsjs/go/main/App';
+import { EventsOn, OnFileDrop, WindowGetPosition, WindowGetSize, WindowSetPosition, WindowSetSize } from '../wailsjs/runtime/runtime';
 
 const GLYPH = { ok: '✓', fail: '✗', error: '✗', warn: '!', skip: '—', wait: '', run: '' };
 const TONE = { ok: '✓', warn: '!', bad: '✗' };
@@ -24,6 +24,9 @@ const freshLive = () => ({
 
 const state = {
   ui: {}, L: {}, version: '', blank: [], steps: [], hosts: [], slow: [],
+  own: null, // the person's own browser record, once compared
+  ownModal: null, // { tab: chromium | firefox, status: '' | reading | warn, msg }
+  browser: 'chromium', // the default browser: which instructions to show first
   mode: 'site', // site | live
   phase: 'idle', // idle | running | done
   host: '', verdict: null, error: '',
@@ -46,7 +49,8 @@ function stepsHTML() {
   return state.steps.map(s => `<li class="${s.status}">
       <span class="ico ${s.status}">${GLYPH[s.status] ?? ''}</span>
       <span>${esc(s.name)}</span>
-      <span class="ms">${s.status === 'run' ? '…' : s.status === 'wait' || s.status === 'skip' ? '' : `${s.ms} мс`}</span>
+      <span class="ms">${s.status === 'run' ? '…' : s.status === 'wait' || s.status === 'skip' ? ''
+        : s.id === 'own' ? esc(fill(state.ui.own_requests, { n: state.own?.requests ?? '' })) : `${s.ms} мс`}</span>
       ${s.note ? `<span class="note">${esc(s.note)}</span>` : ''}
     </li>`).join('');
 }
@@ -70,13 +74,17 @@ function rightHTML() {
       <div class="top"><span class="big" aria-hidden="true">${TONE[v.tone] ?? '!'}</span><span class="pill">${esc(v.confidence)}</span></div>
       <h2>${esc(v.title)}</h2><p>${esc(v.explain)}</p>
       <div class="advice"><b>${esc(ui.advice)}</b>${esc(v.advice)}</div>
-      <div class="actions">
-        <button class="btn primary" data-act="open">${esc(ui.save_report)}</button>
-        <button class="btn" data-act="copy">${esc(ui.copy)}</button>
-        <button class="btn" data-act="in-browser">${esc(ui.in_browser)}</button>
-        <button class="btn link" data-act="details" aria-expanded="${state.details}">${esc(state.details ? ui.hide_details : ui.details)} ${state.details ? '▴' : '▾'}</button>
-      </div></section>`;
+      <div class="actions"><span class="split">
+        <button class="btn primary" data-act="open">${esc(ui.save_report)}</button><button class="btn primary" data-act="copy">⧉ ${esc(ui.copy)}</button>
+      </span></div>
+      <div class="deeper"><div class="deeper-cap">${esc(ui.deeper)}</div><div class="actions">
+        <button class="btn sm" data-act="own">${esc(ui.own_open)}</button>
+        <button class="btn sm" data-act="in-browser">${esc(ui.in_browser)}</button>
+      </div></div></section>`;
 }
+
+const moreBarHTML = () => `<button class="morebar" data-act="details" aria-expanded="${state.details}">${state.details
+  ? `${esc(state.ui.hide_details)} ▴` : `${esc(state.ui.details)} <span>— ${esc(state.ui.more_hint)}</span> ▾`}</button>`;
 
 function hostsHTML() {
   const ui = state.ui;
@@ -119,8 +127,27 @@ function slowHTML() {
       <tbody>${rows}</tbody></table></div>`;
 }
 
+// The person's own browser record against whynet's browser.
+function ownHTML() {
+  const o = state.own, ui = state.ui;
+  if (!o) return '';
+  const sum = fill(ui.own_sum, o) + (o.shown_ms ? fill(ui.own_shown, { s: num(o.shown_ms / 1000) }) : '');
+  const rows = (o.rows || []).map(r => `<tr>
+      <td class="host" title="${esc(r.file)}">${esc(shortFile(r.file))}</td>
+      <td>${esc(r.kind)}${r.site ? ` <span class="tag site">${esc(ui.own_tag_site)}</span>` : r.ad ? ` <span class="tag">${esc(ui.own_tag_ad)}</span>` : ''}</td>
+      <td class="num">${r.ms ? `${num(r.ms / 1000)} ${esc(ui.sec)}` : '—'}</td>
+      <td class="bad">${esc(r.what)}</td>
+      <td class="${r.whynet_ok ? 'good' : 'dim'}">${esc(r.whynet)}</td>
+    </tr>`).join('') + (o.more_ads ? `<tr><td class="dim" colspan="5">${esc(fill(ui.own_more_ads, { n: o.more_ads }))}</td></tr>` : '');
+  return `<div class="details-title">${esc(ui.own_table)}</div><div class="own-sum">${esc(sum)}</div>${rows ? `
+    <div class="table-wrap"><table class="hosts">
+      <thead><tr><th>${esc(ui.col_file)}</th><th>${esc(ui.col_kind)}</th><th class="num">${esc(ui.col_time)}</th>
+        <th>${esc(ui.own_col_what)}</th><th>${esc(ui.own_col_whynet)}</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>` : ''}`;
+}
+
 function detailsHTML() {
-  return `<div class="details">${slowHTML()}${hostsHTML()}
+  return `<div class="details">${ownHTML()}${slowHTML()}${hostsHTML()}
     <div class="details-title">${esc(state.ui.facts_title)}</div><div class="details-grid">${state.steps.map(s =>
     `<div class="fact-card"><b>${GLYPH[s.status] ?? ''} ${esc(s.name)}</b>${(s.facts || []).map(([k, v]) => `<span>${esc(k)}:</span> ${esc(v)}`).join('<br>')}</div>`).join('')}</div></div>`;
 }
@@ -136,6 +163,31 @@ function modalHTML() {
         <button class="btn primary" data-act="save">${esc(ui.save)}</button>
         <button class="btn" data-act="copy">${esc(ui.copy)}</button>
         <button class="btn link" data-act="close">${esc(ui.close)}</button>
+      </div></div></div>`;
+}
+
+// "[F12]" is a key, "**Network**" is bold: the instructions' only markup.
+const rich = t => esc(t).replace(/\[([^\]]+)\]/g, '<kbd>$1</kbd>').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+
+function ownModalHTML() {
+  const ui = state.ui, m = state.ownModal, ff = m.tab === 'firefox';
+  const steps = (ff ? ['own_f1', 'own_f2', 'own_f3'] : ['own_c1', 'own_c2', 'own_c3']).map((k, i) =>
+    `<li><span>${rich(ui[k])}${i === 2 ? `<small>${esc(ui[ff ? 'own_f3_hint' : 'own_c3_hint'])}</small>` : ''}</span></li>`).join('');
+  return `<div class="m-back" data-act="own-backdrop"><div class="m own" id="own-dialog" role="dialog" aria-modal="true" aria-labelledby="own-title">
+      <h2 id="own-title">${esc(ui.own_title)}</h2>
+      <p>${esc(ui.own_lead)}</p>
+      <div class="seg small" role="tablist">
+        <button type="button" role="tab" data-act="own-tab" data-tab="chromium" aria-selected="${!ff}">${esc(ui.own_tab_chromium)}</button>
+        <button type="button" role="tab" data-act="own-tab" data-tab="firefox" aria-selected="${ff}">${esc(ui.own_tab_firefox)}</button>
+      </div>
+      <ol class="howto">${steps}</ol>
+      <div class="drop"><b>${rich(ui.own_drop)}</b><span>${esc(ui.own_drop_hint)}</span></div>
+      ${m.msg ? `<div class="own-msg ${esc(m.status)}" role="alert">${m.status === 'reading' ? '<span class="spin"></span>' : ''}${esc(m.msg)}</div>` : ''}
+      <div class="private">${esc(ui.own_private)}</div>
+      <div class="actions end">
+        <button class="btn" data-act="own-pick" ${m.status === 'reading' ? 'disabled' : ''}>${esc(ui.own_pick_btn)}</button>
+        <button class="btn primary" data-act="own-paste" ${m.status === 'reading' ? 'disabled' : ''}>${esc(ui.own_paste)}</button>
+        <button class="btn link" data-act="own-close">${esc(ui.close)}</button>
       </div></div></div>`;
 }
 
@@ -437,8 +489,9 @@ function render() {
   const site = state.phase === 'idle'
     ? `<p class="hint">${esc(state.ui.idle_text)}</p>${state.error ? `<p class="hint error-text" role="alert">${esc(state.error)}</p>` : ''}`
     : `<div class="grid"><div><ol class="steps">${stepsHTML()}</ol><div class="version">whynet ${esc(state.version)}</div></div>${rightHTML()}</div>`
-      + (state.details && state.phase === 'done' ? detailsHTML() : '');
-  out.innerHTML = `<div class="content" id="content">${updateHTML()}${live ? liveHTML() : site}</div>` + (state.modal ? modalHTML() : '');
+      + (state.phase === 'done' ? moreBarHTML() : '') + (state.details && state.phase === 'done' ? detailsHTML() : '');
+  out.innerHTML = `<div class="content" id="content">${updateHTML()}${live ? liveHTML() : site}</div>`
+    + (state.modal ? modalHTML() : '') + (state.ownModal ? ownModalHTML() : '');
   const busy = state.phase === 'running' || ['starting', 'recording'].includes(state.live.phase);
   checkBtn.disabled = busy;
   input.disabled = live && busy;
@@ -464,7 +517,8 @@ async function fitWindow() {
       if (!(frame >= 0 && frame < 150)) frame = 40;
     }
     const want = form.offsetHeight + $('content').offsetHeight + frame;
-    const h = Math.min(Math.floor(screen.availHeight * 0.9), Math.max(want, state.modal ? 620 : 0));
+    const dialog = $('own-dialog');
+    const h = Math.min(Math.floor(screen.availHeight * 0.9), Math.max(want, state.modal ? 620 : 0, dialog ? dialog.scrollHeight + 32 + frame : 0));
     if (Math.abs(size.h - h) <= 2) return;
     // Growing keeps the top edge, unless the bottom would go under the taskbar: then move up.
     const pos = await WindowGetPosition();
@@ -506,12 +560,10 @@ EventsOn('browser-progress', p => {
 
 async function startCheck(site, visible) {
   if (!site || state.phase === 'running') return;
-  Object.assign(state, { phase: 'running', host: site, error: '', details: false, modal: false, reveal: false, hosts: [], slow: [],
-    visible, progress: null, steps: state.blank.map((s, i) => ({ ...s, status: i === 0 ? 'run' : 'wait' })) });
-  render();
+  running(site, visible);
   try {
     const view = await (visible ? CheckInBrowser(site) : Check(site));
-    Object.assign(state, { phase: 'done', host: view.host, verdict: view.verdict, steps: view.steps, hosts: view.hosts || [], slow: view.slow || [] });
+    showView(view);
     if (visible && view.steps.find(s => s.id === 'browser')?.facts?.some(([k, v]) => k === 'br.status' && v === 'unavailable')) {
       toast(state.ui.browser_missing);
     }
@@ -519,6 +571,36 @@ async function startCheck(site, visible) {
     Object.assign(state, { phase: 'idle', error: err?.message ?? String(err), steps: state.blank });
   }
   state.visible = false;
+  render();
+}
+
+function running(site, visible) {
+  Object.assign(state, { phase: 'running', host: site, error: '', details: false, modal: false, reveal: false, hosts: [], slow: [], own: null,
+    visible, progress: null, steps: state.blank.map((s, i) => ({ ...s, status: i === 0 ? 'run' : 'wait' })) });
+  render();
+}
+
+function showView(view) {
+  Object.assign(state, { phase: 'done', host: view.host, verdict: view.verdict, steps: view.steps,
+    hosts: view.hosts || [], slow: view.slow || [], own: view.own || null });
+}
+
+// A record pasted, picked or dropped: read it, then compare it with whynet's check (of its site, first, when needed).
+async function readOwn(reading) {
+  const m = state.ownModal;
+  if (!m || m.status === 'reading') return;
+  let info;
+  try { info = await reading; } catch (err) { Object.assign(m, { status: 'warn', msg: err?.message ?? String(err) }); render(); return; }
+  if (!info?.site) return; // the file dialog was cancelled
+  if (info.recheck) { state.ownModal = null; running(info.site, false); }
+  else { Object.assign(m, { status: 'reading', msg: fill(state.ui.own_reading, info) }); render(); }
+  try {
+    showView(await CompareHAR());
+    Object.assign(state, { ownModal: null, details: true });
+  } catch (err) {
+    if (state.ownModal) Object.assign(state.ownModal, { status: 'warn', msg: err?.message ?? String(err) });
+    else Object.assign(state, { phase: 'idle', error: err?.message ?? String(err), steps: state.blank });
+  }
   render();
 }
 
@@ -552,6 +634,13 @@ out.addEventListener('click', async e => {
     catch (err) { const v = state.update.version; Object.assign(state, { update: null, updating: false }); render(); toast(fill(state.ui.update_failed, { error: err?.message ?? err, version: v })); }
   }
   else if (act === 'in-browser') startCheck(input.value.trim() || state.host, true);
+  else if (act === 'own') { state.ownModal = { tab: state.browser, status: '', msg: '' }; render(); }
+  else if (act === 'own-tab') { state.ownModal.tab = el.dataset.tab; render(); }
+  else if (act === 'own-close' || (act === 'own-backdrop' && e.target === el)) {
+    if (state.ownModal?.status !== 'reading') { state.ownModal = null; render(); }
+  }
+  else if (act === 'own-paste') readOwn(PasteHAR());
+  else if (act === 'own-pick') readOwn(PickHAR());
   else if (act === 'finish') { el.disabled = true; FinishBrowser(); }
   else if (act === 'live-done') {
     el.disabled = true;
@@ -586,10 +675,21 @@ out.addEventListener('change', e => {
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && state.modal) { state.modal = false; render(); }
+  if (e.key === 'Escape' && state.ownModal && state.ownModal.status !== 'reading') { state.ownModal = null; render(); }
 });
 
+// Ctrl+V with the record dialog open: the copied record.
+document.addEventListener('paste', e => {
+  if (!state.ownModal) return;
+  e.preventDefault();
+  readOwn(ReadHAR(e.clipboardData?.getData('text') ?? ''));
+});
+
+// A .har file dropped on the window while the record dialog is open.
+OnFileDrop((x, y, paths) => { if (state.ownModal && paths?.length) readOwn(ReadHARFile(paths[0])); }, false);
+
 Info().then(info => {
-  Object.assign(state, { ui: info.ui, L: info.live || {}, version: info.version, blank: info.steps, steps: info.steps });
+  Object.assign(state, { ui: info.ui, L: info.live || {}, version: info.version, blank: info.steps, steps: info.steps, browser: info.browser || 'chromium' });
   const [siteBtn, liveBtn] = modeEl.querySelectorAll('button');
   siteBtn.textContent = state.L.mode_site;
   liveBtn.innerHTML = `${esc(state.L.mode_live)} <small>· ${esc(state.L.mode_live_hint)}</small>`;

@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -92,4 +93,17 @@ func closeWindows(pid uint32) {
 // hideWindow keeps the browser from flashing a console or window.
 func hideWindow(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000} // CREATE_NO_WINDOW
+}
+
+// DefaultBrowserFamily is "firefox" when Firefox opens web links on this PC, else "chromium".
+func DefaultBrowserFamily() string {
+	k, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice`, registry.QUERY_VALUE)
+	if err != nil {
+		return "chromium"
+	}
+	defer k.Close()
+	if id, _, _ := k.GetStringValue("ProgId"); strings.Contains(strings.ToLower(id), "firefox") {
+		return "firefox"
+	}
+	return "chromium"
 }

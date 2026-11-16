@@ -115,6 +115,74 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class OwnRow {
+	    file: string;
+	    kind: string;
+	    ms: number;
+	    what: string;
+	    whynet: string;
+	    whynet_ok: boolean;
+	    site: boolean;
+	    ad: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new OwnRow(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.file = source["file"];
+	        this.kind = source["kind"];
+	        this.ms = source["ms"];
+	        this.what = source["what"];
+	        this.whynet = source["whynet"];
+	        this.whynet_ok = source["whynet_ok"];
+	        this.site = source["site"];
+	        this.ad = source["ad"];
+	    }
+	}
+	export class OwnView {
+	    requests: number;
+	    blocked: number;
+	    failed: number;
+	    late: number;
+	    shown_ms: number;
+	    rows: OwnRow[];
+	    more_ads: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new OwnView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.requests = source["requests"];
+	        this.blocked = source["blocked"];
+	        this.failed = source["failed"];
+	        this.late = source["late"];
+	        this.shown_ms = source["shown_ms"];
+	        this.rows = this.convertValues(source["rows"], OwnRow);
+	        this.more_ads = source["more_ads"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class SlowView {
 	    file: string;
 	    kind: string;
@@ -221,6 +289,7 @@ export namespace main {
 	    steps: StepView[];
 	    hosts: HostView[];
 	    slow: SlowView[];
+	    own?: OwnView;
 	
 	    static createFrom(source: any = {}) {
 	        return new CheckView(source);
@@ -233,6 +302,7 @@ export namespace main {
 	        this.steps = this.convertValues(source["steps"], StepView);
 	        this.hosts = this.convertValues(source["hosts"], HostView);
 	        this.slow = this.convertValues(source["slow"], SlowView);
+	        this.own = this.convertValues(source["own"], OwnView);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -305,6 +375,22 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class HARInfo {
+	    site: string;
+	    requests: number;
+	    recheck: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new HARInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.site = source["site"];
+	        this.requests = source["requests"];
+	        this.recheck = source["recheck"];
+	    }
+	}
 	export class HopView {
 	    ttl: number;
 	    addr: string;
@@ -339,6 +425,7 @@ export namespace main {
 	    ui: Record<string, string>;
 	    live: Record<string, string>;
 	    version: string;
+	    browser: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new InfoView(source);
@@ -350,6 +437,7 @@ export namespace main {
 	        this.ui = source["ui"];
 	        this.live = source["live"];
 	        this.version = source["version"];
+	        this.browser = source["browser"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -504,6 +592,8 @@ export namespace main {
 		    return a;
 		}
 	}
+	
+	
 	
 	
 

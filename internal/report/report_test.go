@@ -60,10 +60,18 @@ func TestMarkdownSymbols(t *testing.T) {
 				Phases: map[string]int64{"download": 100, "connect": 3000, "wait": 100}}}}}},
 		{ID: "res", Status: "ok", Evidence: map[string]any{"hosts": []*probe.HostCheck{{Host: "gone.x.com", Result: "gone"},
 			{Host: "img.x.com", Result: "ok", PingMs: 7, Lost: 3, Tries: 5}}}},
+		{ID: "own", Status: "warn", Facts: map[string]string{"own.blocked": "true"}, Evidence: map[string]any{"record": &probe.OwnRecord{
+			Site: "x.com", Requests: 142, ShownMs: 678, Files: []*probe.OwnFile{
+				{URL: "https://cmp.x.com/cmp.js", Host: "cmp.x.com", Kind: "script", What: "blocked", Error: "net::ERR_BLOCKED_BY_CLIENT",
+					Whynet: &probe.OwnCompare{File: true, OK: true, Ms: 1100}},
+				{URL: "https://ad.x.com/a", Host: "ad.x.com", Kind: "data", What: "blocked", Ad: true}}}}},
 	}}
 	md := Markdown(res, rules.Verdict{ID: "unknown", Confidence: "likely"}, tx, true)
 	for _, want := range []string{"net::ERR_CONNECTION_RESET ×1", "| gone.x.com |  | — |", "| img.x.com |  | 7 (потери 3 из 5) |",
-		"| https://img.x.com/a.jpg | картинки | 3200 | подключение к серверу | connect 3000 · wait 100 · download 100 |  |"} {
+		"| https://img.x.com/a.jpg | картинки | 3200 | подключение к серверу | connect 3000 · wait 100 · download 100 |  |",
+		"### 3. Запись твоего браузера", "Сайт записи: x.com · запросов: 142 · страница показалась через 678 мс",
+		"| https://cmp.x.com/cmp.js | скрипты | blocked | 0 |  | net::ERR_BLOCKED_BY_CLIENT |  | file: ok=true, 1100 ms |",
+		"| https://ad.x.com/a | данные для скриптов | blocked | 0 |  |  | да | — |"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("report lacks %q", want)
 		}

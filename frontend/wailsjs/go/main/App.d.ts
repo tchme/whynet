@@ -11,6 +11,8 @@ export function CheckInBrowser(arg1:string):Promise<main.CheckView>;
 
 export function CheckUpdate():Promise<update.Release>;
 
+export function CompareHAR():Promise<main.CheckView>;
+
 export function CopyReport(arg1:boolean):Promise<void>;
 
 export function FinishBrowser():Promise<void>;
@@ -20,6 +22,14 @@ export function FinishLive():Promise<main.LiveView>;
 export function Info():Promise<main.InfoView>;
 
 export function MarkLag():Promise<void>;
+
+export function PasteHAR():Promise<main.HARInfo>;
+
+export function PickHAR():Promise<main.HARInfo>;
+
+export function ReadHAR(arg1:string):Promise<main.HARInfo>;
+
+export function ReadHARFile(arg1:string):Promise<main.HARInfo>;
 
 export function Report(arg1:boolean):Promise<string>;
 

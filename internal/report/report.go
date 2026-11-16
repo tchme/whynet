@@ -143,6 +143,33 @@ func Markdown(res *probe.Result, v rules.Verdict, t *locales.Texts, hide bool) s
 				w("| %s | %s | %s | %s | %s |\n", cell(h.Host), cell(strings.Join(kinds, ", ")), ping, cell(t.Results[h.Result]), cell(detail))
 			}
 		}
+		if rec, ok := s.Evidence["record"].(*probe.OwnRecord); ok {
+			w("\n## %s\n\n%s\n", r["own"], locales.Fill(r["own_line"], map[string]string{
+				"site": rec.Site, "requests": fmt.Sprint(rec.Requests), "shown": fmt.Sprint(rec.ShownMs)}))
+			if len(rec.Files) > 0 {
+				w("\n%s\n|---|---|---|---|---|---|---|---|\n", r["own_cols"])
+			}
+			for _, f := range rec.Files[:min(40, len(rec.Files))] {
+				var phases []string
+				for _, k := range probe.PhaseOrder {
+					if ms, ok := f.Phases[k]; ok {
+						phases = append(phases, fmt.Sprintf("%s %d", k, ms))
+					}
+				}
+				ad, whynet := "", "—"
+				if f.Ad {
+					ad = t.Values["true"]
+				}
+				switch wn := f.Whynet; {
+				case wn != nil && wn.File:
+					whynet = fmt.Sprintf("file: ok=%v, %d ms", wn.OK, wn.Ms)
+				case wn != nil:
+					whynet = fmt.Sprintf("server: %d of %d came", wn.Loaded, wn.Requests)
+				}
+				w("| %s | %s | %s | %d | %s | %s | %s | %s |\n", cell(f.URL), t.Kinds[f.Kind], f.What, f.Ms,
+					strings.Join(phases, " · "), cell(f.Error), ad, whynet)
+			}
+		}
 	}
 
 	var raw bytes.Buffer

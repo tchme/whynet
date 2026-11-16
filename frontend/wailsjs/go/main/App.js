@@ -18,6 +18,10 @@ export function CheckUpdate() {
   return window['go']['main']['App']['CheckUpdate']();
 }
 
+export function CompareHAR() {
+  return window['go']['main']['App']['CompareHAR']();
+}
+
 export function CopyReport(arg1) {
   return window['go']['main']['App']['CopyReport'](arg1);
 }
@@ -36,6 +40,22 @@ export function Info() {
 
 export function MarkLag() {
   return window['go']['main']['App']['MarkLag']();
+}
+
+export function PasteHAR() {
+  return window['go']['main']['App']['PasteHAR']();
+}
+
+export function PickHAR() {
+  return window['go']['main']['App']['PickHAR']();
+}
+
+export function ReadHAR(arg1) {
+  return window['go']['main']['App']['ReadHAR'](arg1);
+}
+
+export function ReadHARFile(arg1) {
+  return window['go']['main']['App']['ReadHARFile'](arg1);
 }
 
 export function Report(arg1) {

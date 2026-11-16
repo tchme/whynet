@@ -20,18 +20,24 @@ import (
 
 // BrowserResult is what a real browser saw while loading the page: every request and how it ended.
 type BrowserResult struct {
-	Status   string         `json:"status"` // ok, nav_failed, unavailable, error
-	Browser  string         `json:"browser,omitempty"`
-	Error    string         `json:"error,omitempty"`
-	Title    string         `json:"title,omitempty"` // the page title the browser ended on
-	text     string         // start of the page's visible text: matched against markers, never reported (may be personal)
-	Visible  bool           `json:"visible,omitempty"`
-	DomMs    int64          `json:"dom_ms,omitempty"`  // navigation to "page parsed and shown"; 0: never
-	LoadMs   int64          `json:"load_ms,omitempty"` // navigation to the load event; 0: never
-	Requests int            `json:"requests"`
-	Failed   int            `json:"failed"`
-	Hosts    []*BrowserHost `json:"hosts,omitempty"`
-	Slow     []*SlowFile    `json:"slow,omitempty"` // failed first, then the slowest
+	Status   string              `json:"status"` // ok, nav_failed, unavailable, error
+	Browser  string              `json:"browser,omitempty"`
+	Error    string              `json:"error,omitempty"`
+	Title    string              `json:"title,omitempty"` // the page title the browser ended on
+	text     string              // start of the page's visible text: matched against markers, never reported (may be personal)
+	Visible  bool                `json:"visible,omitempty"`
+	DomMs    int64               `json:"dom_ms,omitempty"`  // navigation to "page parsed and shown"; 0: never
+	LoadMs   int64               `json:"load_ms,omitempty"` // navigation to the load event; 0: never
+	Requests int                 `json:"requests"`
+	Failed   int                 `json:"failed"`
+	Hosts    []*BrowserHost      `json:"hosts,omitempty"`
+	Slow     []*SlowFile         `json:"slow,omitempty"` // failed first, then the slowest
+	files    map[string]fileSeen // by address without the query: for comparing with the person's own browser
+}
+
+type fileSeen struct {
+	ok bool
+	ms int64
 }
 
 // SlowFile is one file of the page that came late, never came or failed: the thing to name, not just its server.
@@ -425,7 +431,7 @@ func (a *cdpAgg) inflight() int {
 }
 
 func (a *cdpAgg) result() BrowserResult {
-	res := BrowserResult{Status: "ok"}
+	res := BrowserResult{Status: "ok", files: map[string]fileSeen{}}
 	byHost := map[string]*BrowserHost{}
 	bigBytes, bigSecs := map[string]int64{}, map[string]float64{}
 	for _, id := range a.order {
@@ -441,6 +447,16 @@ func (a *cdpAgg) result() BrowserResult {
 		}
 		h.Requests++
 		res.Requests++
+		if !r.aborted {
+			end := r.end
+			if !r.done {
+				end = a.lastTs
+			}
+			seen := fileSeen{ok: r.failed == "" && (r.done || r.responded), ms: int64((end - r.start) * 1000)}
+			if prev, dup := res.files[noQuery(r.url)]; !dup || !prev.ok {
+				res.files[noQuery(r.url)] = seen
+			}
+		}
 		h.Bytes += r.bytes
 		if r.kind != "" && !slices.Contains(h.Types, r.kind) {
 			h.Types = append(h.Types, r.kind)

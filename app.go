@@ -35,6 +35,7 @@ type App struct {
 	browserDone chan struct{} // closed by FinishBrowser to end a visible browser check
 	pending     *update.Release
 	last        *probe.Result
+	ownRec      *probe.OwnRecord // read from the window, waiting for CompareHAR
 	verdict     rules.Verdict
 
 	liveRules   []rules.Rule
@@ -140,6 +141,7 @@ type CheckView struct {
 	Steps   []StepView  `json:"steps"`
 	Hosts   []HostView  `json:"hosts"`
 	Slow    []SlowView  `json:"slow"`
+	Own     *OwnView    `json:"own,omitempty"` // the person's own browser record, once compared
 }
 
 // SlowView is one file that came late or never, for the "Details" table.
@@ -284,6 +286,7 @@ type InfoView struct {
 	UI      map[string]string `json:"ui"`
 	Live    map[string]string `json:"live"`
 	Version string            `json:"version"`
+	Browser string            `json:"browser"` // chromium or firefox: the default browser, for the record instructions
 }
 
 // tones colour the verdict; anything not listed is "bad".
@@ -293,6 +296,7 @@ var tones = map[string]string{
 	"proxy_in_way": "warn", "https_intercepted": "warn", "proxy_path_broken": "warn", "sni_blocked_router": "warn", "unknown": "warn",
 	"content_stall": "warn", "content_blocked": "warn", "content_slow": "warn", "content_flaky": "warn", "page_slow": "warn",
 	"content_late_loss": "warn", "content_late_server": "warn", "content_late": "warn", "content_lossy": "warn",
+	"own_blocked": "warn", "own_blocked_ads": "warn", "own_failed": "warn", "own_late": "warn", "own_clean": "warn",
 	"dpi_conflict": "warn", "dpi_not_listed": "warn", "dpi_strategy_fails": "warn", "dpi_off": "warn",
 }
 
@@ -302,7 +306,7 @@ func (a *App) Info() InfoView {
 	for i, id := range probe.StepIDs {
 		steps[i] = StepView{ID: id, Name: a.t.Steps[id].Name, Status: "wait"}
 	}
-	return InfoView{Steps: steps, UI: a.t.UI, Live: a.t.Live, Version: report.Version}
+	return InfoView{Steps: steps, UI: a.t.UI, Live: a.t.Live, Version: report.Version, Browser: probe.DefaultBrowserFamily()}
 }
 
 // Check runs one check, sending each finished step as a "step" event.
@@ -367,7 +371,11 @@ func (a *App) check(site string, env probe.Env, limit time.Duration) (*CheckView
 	a.mu.Lock()
 	a.last, a.verdict, a.lastKind = res, v, "site"
 	a.mu.Unlock()
+	return a.view(res, v), nil
+}
 
+// view is a finished check as the window shows it.
+func (a *App) view(res *probe.Result, v rules.Verdict) *CheckView {
 	facts := res.Facts()
 	d := a.t.Diagnoses[v.ID]
 	tone := tones[v.ID]
@@ -383,7 +391,8 @@ func (a *App) check(site string, env probe.Env, limit time.Duration) (*CheckView
 	}
 	view.Hosts = a.hostViews(res)
 	view.Slow = a.slowViews(res)
-	return view, nil
+	view.Own = a.ownView(res)
+	return view
 }
 
 func (a *App) stepView(s probe.Step) StepView {

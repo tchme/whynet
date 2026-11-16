@@ -187,6 +187,28 @@
   confidence: likely
   when: {br.slow_load: true}
 
+# The person's own browser record (HAR, "Разобрать мой браузер"): what it stopped itself, what broke
+# or came late there while whynet's clean browser got it. Network verdicts above still win.
+- id: own_blocked
+  confidence: likely
+  when: {own.blocked_site: true}
+
+- id: own_failed
+  confidence: likely
+  when: {own.failed: true}
+
+- id: own_late
+  confidence: likely
+  when: {own.late: true}
+
+- id: own_blocked_ads
+  confidence: likely
+  when: {own.blocked: true}
+
+- id: own_clean
+  confidence: likely
+  when: {own.clean: true}
+
 # The browser's only failures are names no DNS knows: dead links in the page (youtube.com, live).
 - id: all_ok
   confidence: high

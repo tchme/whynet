@@ -90,6 +90,16 @@ func TestMatch(t *testing.T) {
 		{with("res.browser_dead", "true", "br.worst", "dns"), "all_ok"},
 		// dzen.ru, live 2026-11-16: everything loaded, privacy-cs.mail.ru lost 3 of 5 connects
 		{with("br.status", "ok", "res.lossy", "true", "res.lossy_hosts", "privacy-cs.mail.ru", "res.lossy_lost", "3", "res.lossy_tries", "5"), "content_lossy"},
+		// the person's own browser record: what it stopped or broke outranks whynet's own "fine" or "lossy";
+		// a network verdict from whynet's check still wins
+		{with("res.lossy", "true", "own.blocked", "true", "own.blocked_site", "true", "own.failed", "true"), "own_blocked"},
+		{with("own.blocked", "true", "own.failed", "true"), "own_failed"},
+		{with("own.blocked", "true", "own.late", "true"), "own_late"},
+		{with("own.blocked", "true"), "own_blocked_ads"},
+		{with("res.lossy", "true", "own.clean", "true"), "own_clean"},
+		{with("tls.status", "reset", "tls.control", "ok", "local.dpi_tool", "none", "local.dpi_installed", "false", "own.blocked_site", "true"), "sni_blocked"},
+		{with("res.worst", "sni", "own.clean", "true"), "content_blocked"},
+		{with("br.late", "true", "br.late_phase", "connect", "own.clean", "true"), "own_clean"},
 	}
 	for _, c := range cases {
 		if got := rules.Match(rs, c.facts); got.ID != c.want {
@@ -137,7 +147,7 @@ func TestRulesAndTextsAgree(t *testing.T) {
 		}
 	}
 	placeholder := regexp.MustCompile(`\{([a-z_.]+)\}`)
-	known := regexp.MustCompile(`^(host|(local|dns|tcp|tls|http|br|res)\.[a-z_]+)$`)
+	known := regexp.MustCompile(`^(host|(local|dns|tcp|tls|http|br|res|own)\.[a-z_]+)$`)
 	for id, d := range tx.Diagnoses {
 		if !used[id] {
 			t.Errorf("text %s has no rule", id)
