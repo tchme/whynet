@@ -18,21 +18,22 @@
 
 ## Скачать
 
-Возьми `whynet.exe` на странице [Releases](../../releases/latest) и запусти. Windows может показать предупреждение «неизвестный издатель»: exe не подписан. Edge или Chrome нужны только для проверки содержимого страницы (в Windows 10/11 Edge есть). Новые версии программа находит сама и предлагает обновиться.
+Возьми `whynet.exe` на странице [Releases](../../releases/latest) и запусти. Windows может показать предупреждение «неизвестный издатель»: exe не подписан. Edge, Chrome, Brave или Vivaldi нужны только для проверки содержимого страницы (в Windows 10/11 Edge есть; Яндекс Браузер и Opera для неё не подходят). Новые версии программа находит сама и предлагает обновиться.
 
 ## Что умеет
 
 | | |
 |---|---|
-| **Проверка сайта** | Компьютер и сеть, DNS, подключение, TLS, ответ сайта. Находит блокировку по имени (DPI), подмену DNS, заглушки провайдера, прокси, плохой сертификат, неверные часы, не работающий обход блокировок. |
+| **Проверка сайта** | Компьютер и сеть, DNS, подключение, TLS, ответ сайта. Находит блокировку по имени (DPI), подмену DNS, заглушки провайдера (любого: по тексту закона о блокировках), прокси, лимит запросов, плохой сертификат, неверные часы, не работающий обход блокировок. |
 | **Содержимое страницы** | Страница открывается в невидимом Edge/Chrome, записывается каждый запрос. Для каждого сервера, с которого грузятся картинки, видео и скрипты: пинг (5 попыток, потери пакетов), скорость, замирание после первых КБ. Реклама и счётчики видны, но виноватыми не считаются. |
 | **Медленные файлы** | Какой именно файл грузился долго или не загрузился, с какого адреса и на каком этапе ушло время: DNS, подключение, шифрование, ответ сервера или скачивание. |
 | **Твой браузер** | Если у тебя блоки не догружаются, а у whynet всё в порядке, скопируй запись сети из своего браузера (F12 → Network → Copy all as HAR). whynet сравнит её со своей проверкой и покажет, что остановил сам браузер, например блокировщик рекламы. Cookies из записи не читаются. |
 | **Окно браузера** | Обычное окно, которым пользуешься ты сам (пройти проверку на робота, войти, включить видео), пока whynet записывает, что грузит страница. |
-| **Стабильность для игр** | Пингует роутер, провайдера, интернет и игровой сервер одновременно и показывает, какое звено даёт скачки пинга. Кнопка Ctrl+Alt+L отмечает момент, когда лагнуло. |
+| **Стабильность для игр** | Пингует роутер, провайдера, интернет и игровой сервер одновременно и показывает, какое звено даёт скачки пинга. Кнопка Ctrl+Alt+L отмечает момент, когда лагнуло. Если на пинги отвечает VPN-клиент на этом компьютере, whynet это замечает и не выдаёт «всё стабильно». |
+| **Проверка программы** | Выбираешь запущенную программу (Discord, лаунчер, игру), повторяешь в ней то, что не работает, а whynet записывает, к каким серверам она подключается по TCP, и проверяет каждый: отвечает ли, режут ли по имени, покрывает ли его zapret. Без прав администратора; UDP (голос, сама игра) пока не виден. |
 | **Отчёт для ИИ** | Одна кнопка сохраняет всё, что узнал whynet, в один Markdown-файл с инструкцией для нейросети наверху. Перетащи его в ChatGPT или Claude и ничего не пиши. |
 
-Около 40 диагнозов, у каждого понятное объяснение и совет. Если уверенности нет, whynet так и говорит: «скорее всего» и почему.
+Больше 60 диагнозов, у каждого понятное объяснение и совет. Если уверенности нет, whynet так и говорит: «скорее всего» и почему.
 
 ## Отчёт для ИИ
 
@@ -49,6 +50,7 @@ whynet ничего не отправляет, кроме нужного для 
 ```
 go test ./...                              # тесты, включая лабораторию с имитацией поломок
 go run ./cmd/whynet-cli -save youtube.com  # консольная версия, сохраняет отчёт для ИИ
+go run ./cmd/whynet-cli -app -for 20s discord  # проверка программы из консоли
 wails build                                # build/bin/whynet.exe
 ```
 
@@ -76,21 +78,22 @@ One small `.exe`, no installation, no admin rights. It walks the path from your 
 
 ## Download
 
-Take `whynet.exe` from the [Releases](../../releases/latest) page and run it. Windows may show an "unknown publisher" warning: the exe is not code-signed. Edge or Chrome is needed only for the content checks (Edge ships with Windows 10/11). The app finds new versions itself and offers to update.
+Take `whynet.exe` from the [Releases](../../releases/latest) page and run it. Windows may show an "unknown publisher" warning: the exe is not code-signed. Edge, Chrome, Brave or Vivaldi is needed only for the content checks (Edge ships with Windows 10/11; Yandex Browser and Opera don't work for it). The app finds new versions itself and offers to update.
 
 ## What it does
 
 | | |
 |---|---|
-| **Site check** | Computer and network, DNS, connection, TLS, the site's answer. Finds blocking by site name (DPI), DNS spoofing, ISP block pages, proxies, bad certificates, a wrong clock, a broken bypass tool. |
+| **Site check** | Computer and network, DNS, connection, TLS, the site's answer. Finds blocking by site name (DPI), DNS spoofing, ISP block pages (any ISP's, recognised by the blocking law's text), proxies, rate limits, bad certificates, a wrong clock, a broken bypass tool. |
 | **Page content** | The page opens in a hidden Edge/Chrome and every request is recorded. For each server the page loads images, video and scripts from: ping (5 tries, packet loss), speed, freezes after the first KB. Ads and trackers are listed but never blamed. |
 | **Slow files** | Which exact file loaded slowly or not at all, from which address, and where the time went: DNS, connect, TLS, the server's answer or download. |
 | **Your own browser** | When blocks hang for you but whynet finds nothing, copy a network record from your browser (F12 → Network → Copy all as HAR). whynet compares it with its own check and shows what your browser stopped itself, such as an ad blocker. Cookies in the record are never read. |
 | **Browser window** | A plain window you use yourself (pass a bot check, log in, play a video) while whynet records what the page loads. |
-| **Stability for games** | Pings the router, the ISP, the internet and a game server at once and shows which link makes the ping jump. Ctrl+Alt+L marks the moment it lagged. |
+| **Stability for games** | Pings the router, the ISP, the internet and a game server at once and shows which link makes the ping jump. Ctrl+Alt+L marks the moment it lagged. If a VPN client on this PC answers the pings itself, whynet notices and doesn't claim "all stable". |
+| **App check** | Pick a running program (Discord, a launcher, a game), repeat in it what fails, and whynet records which servers it connects to over TCP and checks each one: does it answer, is it cut by name, does zapret cover it. No admin rights; UDP (voice, the game itself) is not visible yet. |
 | **AI report** | One button saves everything whynet learned into a single Markdown file with an instruction for the AI at the top. Drop it into ChatGPT or Claude and ask nothing. |
 
-About 40 diagnoses, each with a plain explanation and what to do. When whynet can't tell, it says "probably" and why.
+More than 60 diagnoses, each with a plain explanation and what to do. When whynet can't tell, it says "probably" and why.
 
 ## The AI report
 
@@ -107,6 +110,7 @@ Needs Go, Node.js and [Wails v2](https://wails.io).
 ```
 go test ./...                              # tests, including a lab of simulated failures
 go run ./cmd/whynet-cli -save youtube.com  # console version, saves the AI report
+go run ./cmd/whynet-cli -app -for 20s discord  # app check from the console
 wails build                                # build/bin/whynet.exe
 ```
 
