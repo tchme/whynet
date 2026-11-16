@@ -63,8 +63,9 @@ func serve(t *testing.T, code int, body string) *httptest.Server {
 	return srv
 }
 
-// dpiServer resets the connection when the ClientHello names blocked, like an ISP's DPI.
-func dpiServer(t *testing.T, cert tls.Certificate, blocked string) string {
+// dpiServer resets the connection when the ClientHello names blocked, like an ISP's DPI. With
+// closeOthers it also closes (no RST) every other name, as a balancer without a certificate for it does.
+func dpiServer(t *testing.T, cert tls.Certificate, blocked string, closeOthers bool) string {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -79,8 +80,11 @@ func dpiServer(t *testing.T, cert tls.Certificate, blocked string) string {
 			go func() {
 				tc := tls.Server(c, &tls.Config{Certificates: []tls.Certificate{cert},
 					GetConfigForClient: func(h *tls.ClientHelloInfo) (*tls.Config, error) {
-						if h.ServerName == blocked {
+						switch {
+						case h.ServerName == blocked:
 							c.(*net.TCPConn).SetLinger(0) // close with RST
+							c.Close()
+						case closeOthers:
 							c.Close()
 						}
 						return nil, nil
@@ -102,8 +106,11 @@ func TestLab(t *testing.T) {
 	t.Cleanup(stub.Close)
 	pool := x509.NewCertPool()
 	pool.AddCert(good.Certificate())
+	limited := serve(t, 429, "Too Many Requests")
 	pool.AddCert(broken.Certificate())
-	dpi := dpiServer(t, good.TLS.Certificates[0], "example.com")
+	pool.AddCert(limited.Certificate())
+	dpi := dpiServer(t, good.TLS.Certificates[0], "example.com", false)
+	balancer := dpiServer(t, good.TLS.Certificates[0], "example.com", true)
 
 	l := &lab{pool: pool, routes: map[string]string{
 		"10.0.0.1:443": good.Listener.Addr().String(),
@@ -112,6 +119,8 @@ func TestLab(t *testing.T) {
 		"10.0.0.3:80":  stub.Listener.Addr().String(),
 		"10.0.0.4:443": "refused",
 		"10.0.0.5:443": broken.Listener.Addr().String(),
+		"10.0.0.6:443": balancer,
+		"10.0.0.7:443": limited.Listener.Addr().String(),
 	}}
 	ip := func(s ...string) []string { return s }
 	notFound := &net.DNSError{Err: "no such host", Name: "example.com", IsNotFound: true}
@@ -125,6 +134,8 @@ func TestLab(t *testing.T) {
 		{"DPI cuts the name", "example.com", l.env(ip("10.0.0.2"), nil, ip("10.0.0.2"), nil), "sni_blocked"},
 		{"ISP stub over HTTP", "example.com", l.env(ip("10.0.0.3"), nil, ip("10.0.0.3"), nil), "isp_stub"},
 		{"spoofed DNS", "example.com", l.env(ip("10.0.0.9"), nil, ip("10.0.0.1"), nil), "dns_spoofed"},
+		{"DPI cuts the name, the server closes the neutral one", "example.com", l.env(ip("10.0.0.6"), nil, ip("10.0.0.6"), nil), "sni_suspected"},
+		{"HTTP 429", "example.com", l.env(ip("10.0.0.7"), nil, ip("10.0.0.7"), nil), "rate_limited"},
 		{"black hole", "example.com", l.env(ip("10.0.0.9"), nil, ip("10.0.0.9"), nil), "ip_unreachable"},
 		{"refused", "example.com", l.env(ip("10.0.0.4"), nil, ip("10.0.0.4"), nil), "server_broken"},
 		{"HTTP 502", "example.com", l.env(ip("10.0.0.5"), nil, ip("10.0.0.5"), nil), "server_broken"},

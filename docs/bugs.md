@@ -199,3 +199,29 @@ Checked in the running exe on the author's PC (2026-11-16: Start, Ctrl+Alt+L pre
 - **Cause:** the record held 2 requests, dzen's page and its sign-in hop through sso.passport.yandex.ru, both documents: the Network tab was most likely filtered to "Doc" (or opened after the load). Two requests say nothing about a page that loads dozens; `own_clean` judged them anyway.
 - **Fix:** a record under 5 requests is not judged (`ErrFewRequests`): the dialog asks to pick the "All" filter, reload and copy again; the instructions name the filter. Counts in the texts no longer need a Russian plural ("2 запросов").
 - **Verified:** `TestParseHAR` (that record's two documents give `ErrFewRequests`); live the same day: the author's next record (filter All, 17 requests) gave `own_blocked`: their Opera's ad blocker stopped 4 of dzen's own app bundles on static.dzeninfra.ru (`net::ERR_BLOCKED_BY_CLIENT`, kept in the sanitized copy), the cause of the grey blocks.
+
+## linkedin.com: "the server doesn't answer" while it answered (Google's balancer)
+
+- **Symptom:** two friends' runs, 2026-11-16 (Beeline and ER-Telecom): linkedin.com `ip_unreachable`, "Сервер по адресу 130.211.32.14 не отвечает", though the TCP connect passed in 31-66 ms.
+- **Cause:** after the real name was cut, the control handshake with `example.org` ended in a clean close (EOF), and anything but success or a TLS alert counted as `tls.control=failed`, "cut with any name". The server itself closes names it has no certificate for: the two ISPs cut the real name differently (timeout on Beeline, reset on ER-Telecom) and both saw the same EOF for the neutral one.
+- **Fix:** EOF on the control is `tls.control=closed`; real name reset/timeout with `closed` gives `sni_suspected` (likely). A real name that also ends in EOF stays `unknown`: a server closing every name is not DPI.
+- **Verified:** lab case (a server that resets one name and closes the rest), table cases, both reports replayed through the rules. Not re-run live: from the author's PC (Beeline) the neutral name to 130.211.32.14 also fails, which can't tell the server from the ISP.
+
+## ER-Telecom's block page was not recognised
+
+- **Symptom:** a friend's run on ER-Telecom (Dom.ru): linkedin.com and instagram.com redirect plain HTTP to `http://lawfilter.ertelecom.ru` with the page "Доступ закрыт"; whynet said `ip_unreachable` and `sni_blocked`.
+- **Fix:** `lawfilter.ertelecom.ru` in the `stubs` markers (matched in the final URL). The page's text "Доступ закрыт" is not a marker: too common on ordinary 403 pages, and `isp_stub` is "high".
+- **Verified:** the reports replayed: both give `isp_stub`.
+
+## HTTP 429 gave "unknown"
+
+- **Symptom:** instagram.com through a friend's router VPN: "Не удалось определить причину"; his browser showed `HTTP ERROR 429` too.
+- **Fix:** `rate_limited` (likely) on `http.status=429`: the site limits the address, often a VPN's shared one.
+- **Verified:** lab case (a server answering 429), table case, the report replayed.
+
+## The browser step was skipped without saying why (no Edge, no Chrome)
+
+- **Symptom:** a friend's Windows 10: `br.status=unavailable` in every report, no reason in it.
+- **Cause:** only Edge and Chrome were looked for; that PC has neither (Edge removed, most likely).
+- **Fix:** Brave and Vivaldi are looked for too, App Paths values are unquoted (Opera's installer writes the path in quotes), and the evidence says what was looked for. Tried live on the author's PC and left out: Yandex Browser refuses remote debugging ("DevTools remote debugging is disallowed by the system admin"), Opera GX opens the port but its navigation ends in `ERR_ABORTED`.
+- **Verified:** Yandex Browser and Opera GX were run through `BrowserSession` here (results above; no processes or profile folders left). Brave and Vivaldi were not run: not installed on the author's PC.

@@ -13,22 +13,33 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-// findBrowser returns Edge, or Chrome when Edge is missing (Windows 10 and 11 alike), or "".
+// browsers in order of preference, all Chromium (the same switches and DevTools protocol): Edge,
+// then Chrome, then plain Chromium builds for a PC with Edge removed (a friend's Windows 10 had neither).
+// Not usable (2026-11-16): Yandex Browser refuses remote debugging ("disallowed by the system admin"),
+// Opera GX opens the port but aborts the navigation (ERR_ABORTED).
+// shortcut: Brave and Vivaldi were not run live (none on the author's PC); confirm on the first report that has them.
+var browsers = []struct{ exe, dir string }{
+	{"msedge.exe", `Microsoft\Edge\Application`},
+	{"chrome.exe", `Google\Chrome\Application`},
+	{"brave.exe", `BraveSoftware\Brave-Browser\Application`},
+	{"vivaldi.exe", `Vivaldi\Application`},
+}
+
+// findBrowser returns the first browser of the list installed here (Windows 10 and 11 alike), or "".
 func findBrowser() string {
 	var candidates []string
-	for _, exe := range []string{"msedge.exe", "chrome.exe"} {
+	for _, b := range browsers {
 		for _, root := range []registry.Key{registry.LOCAL_MACHINE, registry.CURRENT_USER} {
-			if k, err := registry.OpenKey(root, `SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\`+exe, registry.QUERY_VALUE); err == nil {
+			if k, err := registry.OpenKey(root, `SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\`+b.exe, registry.QUERY_VALUE); err == nil {
 				if p, _, err := k.GetStringValue(""); err == nil {
-					candidates = append(candidates, p)
+					candidates = append(candidates, strings.Trim(p, `"`)) // some installers quote the path
 				}
 				k.Close()
 			}
 		}
-		sub := map[string]string{"msedge.exe": `Microsoft\Edge\Application`, "chrome.exe": `Google\Chrome\Application`}[exe]
 		for _, env := range []string{"ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA"} {
 			if base := os.Getenv(env); base != "" {
-				candidates = append(candidates, filepath.Join(base, sub, exe))
+				candidates = append(candidates, filepath.Join(base, b.dir, b.exe))
 			}
 		}
 	}

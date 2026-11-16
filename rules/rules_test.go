@@ -35,6 +35,10 @@ func TestMatch(t *testing.T) {
 		{with("local.clock", "wrong", "tls.status", "cert_expired"), "clock_wrong"},
 		{with("tls.status", "cert_expired"), "bad_certificate"},
 		{with("http.class", "4xx", "http.status", "451", "http.geo", "true"), "geo_blocked"},
+		{with("http.class", "4xx", "http.status", "429"), "rate_limited"},
+		{with("tls.status", "timeout", "tls.control", "closed", "http.class", "fail", "http.status", "timeout"), "sni_suspected"},
+		{with("tls.status", "reset", "tls.control", "closed", "http.stub", "true"), "isp_stub"},                     // ER-Telecom: linkedin.com
+		{with("tls.status", "eof", "tls.control", "closed", "http.class", "fail", "http.status", "eof"), "unknown"}, // closes every name: not DPI
 		{with("tls.intercepted", "true"), "https_intercepted"},
 		{with("local.proxy", "on"), "proxy_in_way"},
 		{with("http.class", "4xx", "http.status", "403", "http.challenge", "true"), "bot_check"},

@@ -30,8 +30,16 @@ func (p *prober) tls(s *Step) {
 		switch cls {
 		case "reset", "timeout", "eof", "error":
 			_, cerr := p.handshake(p.ip, controlSNI, true)
-			// a TLS alert is still an answer from the server: the path is open
-			ctrl := map[bool]string{true: "ok", false: "failed"}[cerr == nil || tlsClass(cerr) == "alert"]
+			// a TLS alert is still an answer from the server: the path is open. A plain close is the
+			// server refusing a name it has no certificate for (linkedin.com behind Google's balancer):
+			// the path is open too, but the name test can't be made.
+			ctrl := "failed"
+			switch c := tlsClass(cerr); {
+			case cerr == nil || c == "alert":
+				ctrl = "ok"
+			case c == "eof":
+				ctrl = "closed"
+			}
 			s.Facts["tls.control"] = ctrl
 			s.Evidence["control"] = map[string]any{"sni": controlSNI, "result": tlsClass(cerr), "error": errText(cerr)}
 		}

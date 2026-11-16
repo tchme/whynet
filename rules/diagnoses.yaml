@@ -75,6 +75,13 @@
   confidence: high
   when: {tcp.status: ok, tls.status: [reset, timeout, eof], tls.control: ok}
 
+# The server itself closes the neutral name, so the path is open but the name can't be compared.
+# Live 2026-11-16, linkedin.com (130.211.32.14, Google's balancer): Beeline timed the real name out,
+# ER-Telecom reset it, the neutral name was closed the same way on both ISPs.
+- id: sni_suspected
+  confidence: likely
+  when: {tcp.status: ok, tls.status: [reset, timeout], tls.control: closed}
+
 - id: isp_dns_down
   confidence: high
   when: {dns.system: [timeout, error, empty], dns.doh: ok, tls.status: ok}
@@ -99,6 +106,12 @@
 - id: geo_blocked
   confidence: high
   when: {http.geo: true}
+
+# "Too many requests" from the site: it limits the address, often one many people share (a VPN's).
+# Live 2026-11-16: instagram.com through a friend's router VPN, his own browser got 429 too.
+- id: rate_limited
+  confidence: likely
+  when: {http.status: 429}
 
 - id: server_broken
   confidence: high

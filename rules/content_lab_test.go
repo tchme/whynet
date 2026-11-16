@@ -68,7 +68,7 @@ func TestContentLab(t *testing.T) {
 		case <-time.After(3 * time.Second):
 		}
 	})
-	dpi := dpiServer(t, cert, "img.example.com")
+	dpi := dpiServer(t, cert, "img.example.com", false)
 
 	var browser func(context.Context, string) probe.BrowserResult // nil: no browser step
 	run := func(html string) (map[string]string, rules.Verdict) {

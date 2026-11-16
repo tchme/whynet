@@ -7,6 +7,7 @@ stubs:
   - blocklist.rkn.gov.ru
   - warning.rt.ru
   - blackhole.beeline.ru     # Beeline, seen live 2026-11-16
+  - lawfilter.ertelecom.ru   # ER-Telecom (Dom.ru): 302 there, page "Доступ закрыт"; seen live 2026-11-16
   - ресурс заблокирован
   - доступ к информационному ресурсу ограничен
   - доступ к ресурсу ограничен

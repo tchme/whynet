@@ -43,7 +43,7 @@ whynet/
     netlog.go              visible window: a plain browser (no debugging port: anti-bot checks spot it) with
                            --log-net-log; the log is tailed live and parsed into the same per-server totals;
                            the page's own requests are those whose network_isolation_key top site is the page's
-    browser_windows.go     find Edge, else Chrome (App Paths, Program Files, LocalAppData); hide its window;
+    browser_windows.go     find Edge, else Chrome, Brave, Vivaldi (App Paths, Program Files, LocalAppData); hide its window;
                            window title and WM_CLOSE for the plain window (one shared EnumWindows callback)
     resources.go           "res" step: content servers from the HTML (x/net/html), from markers' `related`
                            and from the browser's failures and late files, then the rest it used (ads last); DNS/TCP/TLS/control + one sample file per server,
@@ -117,7 +117,7 @@ stability: target -> live.Start(ctx, Env, target, onUpdate) -> Session (ticks, t
 | `tcp.status` / `tcp.ip` | ok, timeout, reset, refused, unreachable, eof, error, skip / address used |
 | `tcp.dpi_ipset` | true, false, excluded, unknown: is `tcp.ip` in the bundle's `lists\ipset-*.txt` (CIDR ranges; an empty `ipset-all.txt` is Flowseal's "any" mode, true for every address; the matching entry is in the evidence). Only when the bundle's lists were read |
 | `tls.status` | ok, reset, timeout, eof, alert, cert_expired, cert_name, cert_untrusted, cert_invalid, error, skip |
-| `tls.control` | ok, failed: handshake to the same address with a neutral SNI (`example.org`), only after a cut |
+| `tls.control` | ok, closed, failed: handshake to the same address with a neutral SNI (`example.org`), only after a cut; `closed` = the server closed it cleanly (EOF: no certificate for that name), so the path is open but nothing was compared |
 | `tls.alt` | like `tls.status`: real SNI to the DoH address, only when `dns.match=differ` |
 | `tls.intercepted` / `tls.interceptor` | true / the marker found in the chain |
 | `http.scheme` | https (TLS worked), http (fallback, where ISP stubs show up) |
@@ -125,7 +125,7 @@ stability: target -> live.Start(ctx, Env, target, onUpdate) -> Session (ticks, t
 | `http.stub`, `http.geo`, `http.challenge` | true when seen |
 | `local.country` | where the internet sees this computer by default (Cloudflare trace via 1.1.1.1) |
 | `http.seen_country` / `http.seen_colo` / `http.via_vpn` | Cloudflare-fronted sites only: where the site itself sees the person (its `/cdn-cgi/trace`) / the Cloudflare node / true when that differs from `local.country`, i.e. the way to this site goes through a VPN or proxy. Shown as an info note under a healthy step too |
-| `br.status` | ok, nav_failed, error, unavailable (no Edge/Chrome), off (disabled, or the page itself failed) |
+| `br.status` | ok, nav_failed, error, unavailable (no Edge, Chrome, Brave or Vivaldi; the evidence says so), off (disabled, or the page itself failed) |
 | `br.requests` / `br.failed` | requests the page made / that failed (cancelled ones and `ERR_ABORTED` excluded) |
 | `br.problem`, `br.failed_hosts`, `br.worst` | true / up to 3 servers / reset, timeout, dns, refused, eof, cert, tls, quic, other. Ads don't count; nor does a server whose only failures are silent requests while others succeeded |
 | `br.dom_s` / `br.loaded` / `br.slow_load` | seconds until the page showed ("20+" if never) / false when it never showed / true over 8 s |

@@ -567,7 +567,7 @@ func browserRun(ctx context.Context, target string) BrowserResult {
 func BrowserSession(ctx context.Context, target string, opts BrowserOpts) (res BrowserResult) {
 	exe := findBrowser()
 	if exe == "" {
-		return BrowserResult{Status: "unavailable"}
+		return BrowserResult{Status: "unavailable", Error: "no Edge, Chrome, Brave or Vivaldi found (Yandex Browser and Opera refuse automation)"}
 	}
 	res.Browser = filepath.Base(exe)
 	fail := func(err error) BrowserResult {
