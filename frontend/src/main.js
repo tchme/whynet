@@ -179,14 +179,31 @@ function legendHTML(view) {
 }
 
 function liveChainRecHTML() {
-  const lv = state.live, L = state.L;
-  return lv.links.map(l => {
-    const own = lv.own[l.id] || 0;
-    return `<li id="link-${l.id}" class="${own ? 'bad' : ''}"><span class="ico ${own ? 'warn' : 'run'}">${own ? '!' : ''}</span>
+  const lv = state.live;
+  return lv.links.map(l => `<li id="link-${l.id}"><span class="ico run"></span>
       <span class="what"><span class="key" style="background:${LINK_COLOR[l.id]}"></span>${esc(l.name)}<small>${esc(l.addr)}</small></span>
-      <span class="num">${esc(L.now)} <b>${ms(lv.now[l.id])}</b><br>${esc(fill(L.own, { n: own }))}</span></li>`;
-  }).join('');
+      <span class="num"></span></li>`).join('');
 }
+
+// Numbers change in place: replacing the rows every second would restart the spinners and jerk them.
+function patchLiveChain() {
+  const lv = state.live, L = state.L;
+  for (const l of lv.links) {
+    const li = $(`link-${l.id}`);
+    if (!li) continue;
+    const own = lv.own[l.id] || 0, ico = li.querySelector('.ico');
+    li.classList.toggle('bad', own > 0);
+    if (own > 0 !== ico.classList.contains('warn')) {
+      ico.className = `ico ${own > 0 ? 'warn' : 'run'}`;
+      ico.textContent = own > 0 ? '!' : '';
+    }
+    const html = `${esc(L.now)} <b>${ms(lv.now[l.id])}</b><br>${esc(fill(L.own, { n: own }))}`;
+    const num = li.querySelector('.num');
+    if (num.dataset.v !== html) { num.innerHTML = html; num.dataset.v = html; }
+  }
+}
+
+function progressKey(sec) { return `${sec < MIN_SECONDS}${sec >= ENOUGH}`; }
 
 function progressHTML(sec) {
   const L = state.L, early = sec < MIN_SECONDS, full = sec >= ENOUGH;
@@ -219,8 +236,10 @@ function updateLiveRec() {
   if (lv.phase !== 'recording' || !$('live-time')) return;
   $('live-time').textContent = clock(sec);
   $('live-lags').textContent = lv.lags ? fill(L.lag_count, { n: lv.lags }) : '';
-  $('live-prog').innerHTML = progressHTML(sec);
-  $('live-chain').innerHTML = liveChainRecHTML();
+  const prog = $('live-prog'), key = progressKey(sec);
+  if (prog.dataset.k !== key) { prog.innerHTML = progressHTML(sec); prog.dataset.k = key; }
+  else prog.querySelector('.fill').style.width = `${Math.min(100, sec / ENOUGH * 100)}%`;
+  patchLiveChain();
   const early = sec < MIN_SECONDS, done = $('live-done');
   done.disabled = early;
   done.textContent = early ? fill(L.done_in, { n: MIN_SECONDS - sec }) : L.done;
@@ -228,6 +247,7 @@ function updateLiveRec() {
   const n = Math.min(LIVE_POINTS, Math.max(0, ...Object.values(lv.series).map(s => s.length)));
   const recent = Object.fromEntries(Object.entries(lv.series).map(([id, s]) => [id, s.slice(-LIVE_POINTS)]));
   $('live-chart').innerHTML = linesSVG(recent, lv.links.map(l => l.id), n, 600);
+  fitWindow(); // the hint changes length once the verdict is available: the window follows
 }
 
 function liveDoneChainHTML(v) {

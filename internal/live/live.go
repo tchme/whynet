@@ -169,5 +169,5 @@ type Chart struct {
 
 type ChartSeries struct {
 	Ms    []float64 `json:"ms"`    // -1: lost
-	State []uint8   `json:"state"` // 0 calm, 1 this link's own trouble, 2 repeated from a nearer link
+	State []int     `json:"state"` // 0 calm, 1 this link's own trouble, 2 repeated from a nearer link ([]uint8 would be base64 in JSON)
 }

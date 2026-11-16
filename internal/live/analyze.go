@@ -379,7 +379,7 @@ func chart(r recording, n int, own, event [][]bool) Chart {
 	for li, l := range r.links {
 		var s ChartSeries
 		for from := 0; from < n; from += per {
-			worst, lost, st := -1.0, false, uint8(0)
+			worst, lost, st := -1.0, false, 0
 			for t := from; t < min(from+per, n); t++ {
 				switch v := r.samples[li][t]; {
 				case v == lostRTT:

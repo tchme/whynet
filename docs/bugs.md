@@ -163,3 +163,12 @@ Windows does not always let a script bring a window to the front. Test keystroke
 - **Cause:** Team Cymru's origin record lists every AS that announces a prefix, space-separated, in its first field; the code took the whole field as one number and asked for the name of "AS13238 208398". The site check's "Провайдер" line had the same bug for such ISPs.
 - **Fix:** `originASN` takes the first number; `probe.ASN` is shared by the site check and the trace.
 - **Verified:** `TestOriginASN`; live: 77.88.8.8 → AS13238 YANDEX, 89.179.0.1 → AS8402 CORBINA (Beeline).
+
+## Found by driving the built app (stability check)
+
+Checked in the running exe on the author's PC (2026-11-16: Start, Ctrl+Alt+L pressed by a script, Done, details, hover, compare). Three things the stubbed-window screenshots had not shown:
+
+- **The lanes chart was solid "repeated spike" red.** `ChartSeries.State` was `[]uint8`; `encoding/json` writes a byte slice as a base64 string, so the window read characters of a string instead of 0/1/2. Now `[]int`; `TestChartJSON` checks the JSON is a list.
+- **The window did not grow while recording.** The hint under the chart gets longer once the verdict is available, but the window was fitted only on a full render, and the recording screen is patched in place. The "Готово" button ended up under the bottom edge. `updateLiveRec` now calls `fitWindow`.
+- **Spinners and the progress bar jerked every second.** The links list and the bar were rebuilt as HTML each second, which restarts CSS animations. The numbers are now patched in place (`patchLiveChain`), the bar only changes its width.
+- Also: two new ru.yaml values had ": " inside a plain value (see the YAML pitfall above) and broke every text test and the build with `mapping values are not allowed`; quoted.

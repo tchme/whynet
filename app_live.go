@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"strconv"
+	"strings"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -267,7 +268,7 @@ func (a *App) compare(before, after *live.Result) *CompareView {
 		return nil
 	}
 	ms := func(v float64) string {
-		return strconv.FormatFloat(math.Round(v*10)/10, 'f', -1, 64) + " " + a.t.Live["ms"]
+		return comma(strconv.FormatFloat(math.Round(v*10)/10, 'f', -1, 64)) + " " + a.t.Live["ms"]
 	}
 	row := func(label string, x, y float64, f func(float64) string) CompareRow {
 		return CompareRow{Label: a.t.Live[label], Before: f(x), After: f(y), Better: y < x, Worse: y > x}
@@ -276,7 +277,7 @@ func (a *App) compare(before, after *live.Result) *CompareView {
 		row("row_usual", b.Median, n.Median, ms),
 		row("row_worst", b.Worst, n.Worst, ms),
 		row("row_spikes", float64(b.Events), float64(n.Events), func(v float64) string { return strconv.Itoa(int(v)) }),
-		row("row_loss", b.LossPct, n.LossPct, func(v float64) string { return strconv.FormatFloat(v, 'f', 1, 64) + " %" }),
+		row("row_loss", b.LossPct, n.LossPct, func(v float64) string { return comma(strconv.FormatFloat(v, 'f', 1, 64)) + " %" }),
 	}}
 }
 
@@ -286,3 +287,6 @@ func (a *App) shutdown(context.Context) {
 		s.Cancel()
 	}
 }
+
+// comma writes a decimal number the Russian way.
+func comma(s string) string { return strings.Replace(s, ".", ",", 1) }

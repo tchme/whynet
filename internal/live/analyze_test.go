@@ -1,8 +1,10 @@
 package live
 
 import (
+	"encoding/json"
 	"math/rand"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -228,5 +230,14 @@ func TestAnalyzeToVerdict(t *testing.T) {
 		if got := rules.Match(rs, res.Facts); got.ID != c.want {
 			t.Errorf("%s: got %s, want %s (facts %v)", c.want, got.ID, c.want, res.Facts)
 		}
+	}
+}
+
+// The window reads the chart from JSON: states must be a list of numbers, not a base64 string.
+func TestChartJSON(t *testing.T) {
+	res := analyze(synth(40, 6, chainLinks("cable", false), bases, nil))
+	b, err := json.Marshal(res.Chart.Series[Router])
+	if err != nil || !strings.Contains(string(b), `"state":[0,`) {
+		t.Errorf("chart series JSON: %s (%v)", b[:min(len(b), 120)], err)
 	}
 }
