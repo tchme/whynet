@@ -186,6 +186,41 @@ func TestAnalyzeFakeAnswers(t *testing.T) {
 	wantFacts(t, res, map[string]string{"live.fake_answers": ""})
 }
 
+// The computer's lane: a calm network while the CPU sat at 100 % is measured, and a lag mark
+// carries the CPU load of the 10 s it looks back over.
+func TestAnalyzeCPU(t *testing.T) {
+	r := synth(400, 6, chainLinks("cable", false), bases, nil)
+	r.cpu = make([]int8, 400)
+	for i := range r.cpu {
+		r.cpu[i] = 20
+	}
+	r.cpu[0] = -1
+	for i := 300; i < 340; i++ { // 20 s at 100 %
+		r.cpu[i] = 100
+	}
+	r.lags = []time.Time{r.start.Add(165 * time.Second), r.start.Add(50 * time.Second)} // tick 330, tick 100
+	res := analyze(r)
+	if res.CPU == nil || res.CPU.Max != 100 || res.CPU.Readings != 399 || res.CPU.BusyPct != 10 || res.CPU.Avg != 28 {
+		t.Fatalf("summary %+v", res.CPU)
+	}
+	wantFacts(t, res, map[string]string{"live.cpu_max": "100", "live.cpu_busy_pct": "10.0", "live.internet": "stable"})
+	if res.Lags[0].CPU != 100 || res.Lags[1].CPU != 20 {
+		t.Errorf("lag marks: %d, %d", res.Lags[0].CPU, res.Lags[1].CPU)
+	}
+	if b := res.Buckets[30]; b.CPU != 100 { // 150-155 s
+		t.Errorf("bucket at 150 s: %d", b.CPU)
+	}
+	if c := res.Chart.CPU; len(c) != 400 || c[0] != -1 || c[310] != 100 {
+		t.Errorf("chart: %d points", len(c))
+	}
+	// Not measured: no summary, no lane, -1 in marks and buckets.
+	r.cpu = nil
+	res = analyze(r)
+	if res.CPU != nil || res.Chart.CPU != nil || res.Lags[0].CPU != -1 || res.Buckets[0].CPU != -1 {
+		t.Errorf("without CPU: %+v %v %d", res.CPU, res.Chart.CPU, res.Lags[0].CPU)
+	}
+}
+
 // A long session stays small: about 60 buckets, at most maxPoints chart points.
 func TestAnalyzeLongSession(t *testing.T) {
 	res := analyze(synth(7200, 4, chainLinks("cable", true), bases, nil))

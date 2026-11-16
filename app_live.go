@@ -76,6 +76,7 @@ type ChartView struct {
 	Start  int64                       `json:"start"` // unix ms
 	Step   float64                     `json:"step"`
 	Series map[string]live.ChartSeries `json:"series"`
+	CPU    []int                       `json:"cpu,omitempty"` // CPU load % per point, -1 unknown
 }
 
 type LiveView struct {
@@ -86,7 +87,8 @@ type LiveView struct {
 	Trace      []HopView         `json:"trace"`
 	TraceTitle string            `json:"trace_title"`
 	WiFi       *live.WiFiSummary `json:"wifi,omitempty"`
-	Lags       []LagView         `json:"lags"`
+	CPU        *live.CPUSummary  `json:"cpu,omitempty"`
+	Lags     []LagView         `json:"lags"`
 	Chart      ChartView         `json:"chart"`
 	Compare    *CompareView      `json:"compare,omitempty"`
 	Note       string            `json:"note,omitempty"` // the server was found through DoH
@@ -208,7 +210,8 @@ func (a *App) liveView(res *live.Result, v rules.Verdict, prev *live.Result) *Li
 			Explain: locales.Fill(d.Explain, res.Facts), Advice: locales.Fill(d.Advice, res.Facts)},
 		Extras:  report.LiveExtras(a.t, res),
 		Seconds: res.Seconds,
-		Chart:   ChartView{Start: res.Chart.Start.UnixMilli(), Step: res.Chart.Step, Series: res.Chart.Series},
+		Chart:   ChartView{Start: res.Chart.Start.UnixMilli(), Step: res.Chart.Step, Series: res.Chart.Series, CPU: res.Chart.CPU},
+		CPU:     res.CPU,
 	}
 	if res.Server != nil && res.Server.Via == "doh" {
 		view.Note = a.t.Live["doh"]

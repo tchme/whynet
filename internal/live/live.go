@@ -78,7 +78,8 @@ type Result struct {
 	Links   []LinkStats       `json:"links"`
 	Trace   []Hop             `json:"trace"`
 	WiFi    *WiFiSummary      `json:"wifi,omitempty"`
-	Lags    []LagMark         `json:"lag_marks,omitempty"`
+	CPU     *CPUSummary       `json:"cpu,omitempty"`
+	Lags  []LagMark         `json:"lag_marks,omitempty"`
 	Spikes  []Episode         `json:"spikes,omitempty"`   // every spell of trouble a link caused, up to maxEpisodes
 	Total   int               `json:"spikes_total"`       // all of them
 	Buckets []Bucket          `json:"buckets,omitempty"`  // the session in slices of time
@@ -129,6 +130,15 @@ type WiFiSummary struct {
 	Readings  int  `json:"readings"`
 }
 
+// CPUSummary is the whole computer's CPU load over the session, read every tick without admin
+// rights. It is evidence only: no verdict blames the computer until frame times are measured.
+type CPUSummary struct {
+	Avg      int     `json:"avg_pct"`
+	Max      int     `json:"max_pct"`
+	BusyPct  float64 `json:"busy_pct"` // share of the readings at CPUBusy (90 %) or more
+	Readings int     `json:"readings"`
+}
+
 // LagMark is a moment the person marked "лагнуло": a bookmark, with the network jump nearest to it.
 type LagMark struct {
 	At      time.Time `json:"at"`
@@ -136,6 +146,7 @@ type LagMark struct {
 	AgoS    float64   `json:"ago_s,omitempty"`    // how long before the mark it jumped (negative: after)
 	Link    string    `json:"link,omitempty"`     // the link that caused that jump
 	WorstMs float64   `json:"worst_ms,omitempty"` // the worst answer at that moment, any link
+	CPU     int       `json:"cpu_max_pct"`        // the highest CPU load over the same 10 s before (1 s after); -1 not measured
 }
 
 // Episode is a spell of trouble one link caused: consecutive ticks with its own spikes or losses.
@@ -151,6 +162,7 @@ type Episode struct {
 type Bucket struct {
 	At    time.Time              `json:"at"`
 	Links map[string]BucketStats `json:"links"`
+	CPU   int                    `json:"cpu_max_pct"` // the highest CPU load in the slice; -1 not measured
 }
 
 type BucketStats struct {
@@ -166,6 +178,7 @@ type Chart struct {
 	Start  time.Time              `json:"start"`
 	Step   float64                `json:"step_s"` // seconds per point
 	Series map[string]ChartSeries `json:"series"`
+	CPU    []int                  `json:"cpu,omitempty"` // the highest CPU load per point, -1 unknown; empty when not measured
 }
 
 type ChartSeries struct {

@@ -193,3 +193,27 @@ func TestReadRoute(t *testing.T) {
 		t.Errorf("loss from hop 5 on, jump at 5: %+v", hops[3:6])
 	}
 }
+
+// The CPU load is the busy share of the time since the previous reading; the first reading and a
+// failed one have nothing to compare with.
+func TestReadCPU(t *testing.T) {
+	reads := []struct {
+		idle, total uint64
+		err         error
+	}{{1000, 4000, nil}, {1250, 5000, nil}, {0, 0, errors.New("no")}, {1250, 6000, nil}, {1350, 6100, nil}}
+	i := 0
+	s := &Session{env: Env{CPUTimes: func() (uint64, uint64, error) { r := reads[i]; i++; return r.idle, r.total, r.err }}}
+	var prev [2]uint64
+	for range reads {
+		s.readCPU(&prev)
+	}
+	want := []int8{-1, 75, -1, 100, 0}
+	for k, v := range want {
+		if s.cpu[k] != v {
+			t.Errorf("reading %d: %d %%, want %d", k, s.cpu[k], v)
+		}
+	}
+	if s.cpuErr == nil {
+		t.Error("the failed read is not kept")
+	}
+}

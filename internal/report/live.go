@@ -67,6 +67,10 @@ func LiveExtras(t *locales.Texts, res *live.Result) []string {
 	if s := res.Facts["live.router_periodic_s"]; s != "" && res.Facts["live.router_kind"] == "wifi" {
 		out = append(out, locales.Fill(L["periodic"], map[string]string{"s": s}))
 	}
+	if res.CPU != nil && res.CPU.Max >= live.CPUBusy {
+		out = append(out, locales.Fill(L["cpu_line"], map[string]string{"avg": strconv.Itoa(res.CPU.Avg), "max": strconv.Itoa(res.CPU.Max),
+			"busy": strings.Replace(fmtPct1(res.CPU.BusyPct), ".", ",", 1)}))
+	}
 	names := map[string]string{}
 	for _, l := range res.Links {
 		names[l.ID] = LinkName(t, l.Link)
@@ -83,11 +87,26 @@ func LagText(t *locales.Texts, m live.LagMark, names map[string]string, short bo
 	vars := map[string]string{"time": m.At.Format("15:04:05"), "link": names[m.Link], "worst": fmtMs(m.WorstMs),
 		"ago": strings.Replace(strconv.FormatFloat(m.AgoS, 'f', -1, 64), ".", ",", 1)}
 	key := map[bool]string{true: "lag_network", false: "lag_calm"}[m.Spike]
+	cpuKey := "lag_cpu"
 	if short {
 		key = map[bool]string{true: "lag_short_network", false: "lag_short_calm"}[m.Spike]
+		cpuKey = "lag_short_cpu"
 	}
-	return locales.Fill(t.Live[key], vars)
+	s := locales.Fill(t.Live[key], vars)
+	if m.CPU >= 0 {
+		s += locales.Fill(t.Live[cpuKey], map[string]string{"cpu": strconv.Itoa(m.CPU)})
+	}
+	return s
 }
+
+func cpuCell(v int) string {
+	if v < 0 {
+		return "—"
+	}
+	return strconv.Itoa(v) + " %"
+}
+
+func fmtPct1(v float64) string { return strconv.FormatFloat(v, 'f', 1, 64) }
 
 func cmp(a, b string) string {
 	if a != "" {
@@ -171,11 +190,15 @@ func LiveMarkdown(res *live.Result, v rules.Verdict, t *locales.Texts, hide bool
 			L["report_wifi"], L["wifi_signal"], res.WiFi.AvgSignal, res.WiFi.MinSignal, res.WiFi.Readings, x.RSSI,
 			L["wifi_band"], cmp(x.Band, "?"), L["wifi_channel"], x.Channel, L["wifi_phy"], cmp(x.PHY, "?"), x.RxMbps, x.TxMbps, x.SSID)
 	}
+	if res.CPU != nil {
+		w("\n## %s\n\n- average %d %%, max %d %%, at %d %% or more: %s %% of the time (%d readings, every 0.5 s, whole computer)\n",
+			L["report_cpu"], res.CPU.Avg, res.CPU.Max, live.CPUBusy, fmtPct1(res.CPU.BusyPct), res.CPU.Readings)
+	}
 	if len(res.Lags) > 0 {
 		w("\n## %s\n\n", L["report_lags"])
 		for _, m := range res.Lags {
-			w("- %s: network jumped within 10 s before the mark: %v; seconds before: %v; link: %s; worst: %s ms\n",
-				m.At.Format("15:04:05"), m.Spike, m.AgoS, cmp(m.Link, "-"), fmtMs(m.WorstMs))
+			w("- %s: network jumped within 10 s before the mark: %v; seconds before: %v; link: %s; worst: %s ms; CPU max: %s\n",
+				m.At.Format("15:04:05"), m.Spike, m.AgoS, cmp(m.Link, "-"), fmtMs(m.WorstMs), cpuCell(m.CPU))
 		}
 	}
 	if len(res.Spikes) > 0 {
@@ -192,7 +215,12 @@ func LiveMarkdown(res *live.Result, v rules.Verdict, t *locales.Texts, hide bool
 		for _, l := range res.Links {
 			w(" %s |", l.ID)
 		}
-		w("\n|---|%s\n", strings.Repeat("---|", len(res.Links)))
+		cols := len(res.Links)
+		if res.CPU != nil {
+			w(" CPU max |")
+			cols++
+		}
+		w("\n|---|%s\n", strings.Repeat("---|", cols))
 		for _, bk := range res.Buckets {
 			w("| %s |", bk.At.Format("15:04:05"))
 			for _, l := range res.Links {
@@ -201,6 +229,9 @@ func LiveMarkdown(res *live.Result, v rules.Verdict, t *locales.Texts, hide bool
 				} else {
 					w(" — |")
 				}
+			}
+			if res.CPU != nil {
+				w(" %s |", cpuCell(bk.CPU))
 			}
 			w("\n")
 		}

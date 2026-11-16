@@ -183,6 +183,7 @@ Stability check facts (`internal/live/analyze.go`; ids: router, beyond, ctl_ru, 
 | `live.server_stand_in` | the hop pinged instead of a server that ignores pings |
 | `live.router_periodic_s` | 60: the router's own spikes repeat about every minute (background Wi-Fi scan) |
 | `live.wifi_signal`, `live.wifi_band`, `live.wifi_rssi` | average signal %, 2.4 / 5, last RSSI dBm |
+| `live.cpu_avg`, `live.cpu_max`, `live.cpu_busy_pct` | the whole computer's CPU load over the session: average %, max %, share of 0.5 s readings at 90 % or more (evidence only, no rule uses them) |
 | `live.lag_marks` | how many "лагнуло" marks (bookmarks: each looks back 10 s for the nearest jump; no rule uses them) |
 | `live.route_jump_hop` | TTL where the delay goes up and stays |
 | `live.seconds`, `live.too_short` | length; true under 30 s |

@@ -208,6 +208,7 @@ function ownModalHTML() {
 
 const LINK_COLOR = { router: '#f07468', beyond: '#e6ae52', ctl_ru: '#8fa3b3', ctl_world: '#c2cdd6', server: '#6fb6ff' };
 const ENOUGH = 180, MIN_SECONDS = 30, LIVE_POINTS = 240; // 3 minutes; 2 minutes of 0.5 s ticks on the live chart
+const CPU_BUSY = 90; // live.CPUBusy
 const num = v => v < 10 ? v.toLocaleString('ru-RU', { maximumFractionDigits: 1 }) : String(Math.round(v));
 const ms = v => (v == null || v < 0) ? '—' : `${num(v)} ${state.L.ms}`;
 const clock = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -232,7 +233,8 @@ function linesSVG(series, ids, n, w, marks = []) {
 
 // Lanes: one row per link; red where the link caused trouble, pale red where it repeated a nearer link's.
 function lanesSVG(chart, ids, n, w, marks = []) {
-  const H = 180, top = 6, lh = (H - top * 2) / ids.length, cw = w / Math.max(n, 1);
+  const cpu = chart.cpu?.length ? chart.cpu : null;
+  const H = 180, top = 6, lh = (H - top * 2) / (ids.length + (cpu ? 1 : 0)), cw = w / Math.max(n, 1);
   let svg = '';
   ids.forEach((id, li) => {
     const y = top + li * lh, s = chart.series[id];
@@ -244,9 +246,23 @@ function lanesSVG(chart, ids, n, w, marks = []) {
       const color = lost ? (own || !st ? '#ff4d3d' : '#ff4d3d55') : (own ? '#f07468' : '#f0746855');
       svg += `<rect x="${(i * cw).toFixed(2)}" y="${y + 3}" width="${Math.max(cw, 1.2).toFixed(2)}" height="${lh - 6}" fill="${color}"/>`;
     }
-    svg += `<text x="8" y="${y + lh / 2 + 4}" fill="#e2e8ec" font-size="11.5" font-family="Golos Text, Segoe UI, sans-serif" paint-order="stroke" stroke="#1c252e" stroke-width="3">${esc(linkName(id))}</text>`;
+    svg += laneLabel(y, lh, linkName(id));
   });
+  // The computer's lane: a bar per point as high as the CPU load, orange from CPU_BUSY up.
+  if (cpu) {
+    const y = top + ids.length * lh + 3, h = lh - 6;
+    svg += `<rect x="0" y="${y}" width="${w}" height="${h}" fill="#1f2a35"/>`;
+    cpu.forEach((p, i) => {
+      if (p <= 0) return;
+      svg += `<rect x="${(i * cw).toFixed(2)}" y="${(y + h - h * p / 100).toFixed(2)}" width="${Math.max(cw, 1.2).toFixed(2)}" height="${(h * p / 100).toFixed(2)}" fill="${p >= CPU_BUSY ? '#f0a35e' : '#4f6a85'}"/>`;
+    });
+    svg += laneLabel(y - 3, lh, state.L.link_cpu);
+  }
   return svg + lagSVG(marks, n, w);
+}
+
+function laneLabel(y, lh, text) {
+  return `<text x="8" y="${y + lh / 2 + 4}" fill="#e2e8ec" font-size="11.5" font-family="Golos Text, Segoe UI, sans-serif" paint-order="stroke" stroke="#1c252e" stroke-width="3">${esc(text)}</text>`;
 }
 
 // A "лагнуло" mark: the line where the keys were pressed, and the 10 s before it shaded — where
@@ -267,7 +283,9 @@ function legendHTML(view) {
     <span><span class="lane-key" style="background:#f07468"></span>${esc(L.legend_own)}</span>
     <span><span class="lane-key" style="background:#f0746855"></span>${esc(L.legend_repeat)}</span>
     <span><span class="lane-key" style="background:#ff4d3d"></span>${esc(L.legend_lost)}</span>
-    <span><span class="lane-key" style="background:#c792ea"></span>${esc(L.legend_lag)}</span>`;
+    <span><span class="lane-key" style="background:#c792ea"></span>${esc(L.legend_lag)}</span>`
+    + (state.live.view?.chart.cpu?.length ? `<span><span class="lane-key" style="background:#4f6a85"></span>${esc(L.legend_cpu)}</span>
+    <span><span class="lane-key" style="background:#f0a35e"></span>${esc(L.legend_cpu_busy)}</span>` : '');
   return state.live.links.map(l => `<span><span class="key" style="background:${LINK_COLOR[l.id]}"></span>${esc(l.name)}</span>`).join('');
 }
 
@@ -403,6 +421,7 @@ function liveDetailsHTML(v) {
       ${w.phy ? `<span>${esc(L.wifi_phy)}:</span> ${esc(w.phy)}<br>` : ''}${w.rx_mbps ? `<span>${esc(L.wifi_rate)}:</span> ${w.rx_mbps} ${esc(L.mbps)}<br>` : ''}
       <span>${esc(L.wifi_ssid_hidden)}</span></div>` : '';
   const lags = v.lags?.length ? `<div class="fact-card"><b>${esc(L.lags_title)}</b>${v.lags.map(m => `<span>${esc(m.time)}:</span> ${esc(m.text)}`).join('<br>')}</div>` : '';
+  const cpu = v.cpu ? `<div class="fact-card"><b>${esc(L.link_cpu)}</b>${esc(fill(L.cpu_line, { avg: v.cpu.avg_pct, max: v.cpu.max_pct, busy: num(v.cpu.busy_pct) }))}</div>` : '';
   return `<div class="details">
     <div class="charthead"><div class="details-title">${esc(L.chart_title)}</div>
       <div class="seg small" role="tablist"><button type="button" data-act="view-lanes" aria-selected="${view === 'lanes'}">${esc(L.view_lanes)}</button>
@@ -410,7 +429,7 @@ function liveDetailsHTML(v) {
     <div class="chartbox hover" id="full-box"><svg class="chart" id="full-chart" viewBox="0 0 900 180" preserveAspectRatio="none"></svg><div class="tip" id="tip" hidden></div></div>
     <div class="legend">${legendHTML(view)}</div>
     <div class="details-title">${esc(L.links_title)}</div>${links}${trace}
-    ${wifi || lags ? `<div class="details-grid">${wifi}${lags}</div>` : ''}</div>`;
+    ${wifi || cpu || lags ? `<div class="details-grid">${wifi}${cpu}${lags}</div>` : ''}</div>`;
 }
 
 function drawFullChart() {
@@ -438,7 +457,8 @@ function chartHover(e) {
   tip.innerHTML = `<div class="tt">${esc(time)}</div>` + v.links.map(l => {
     const val = v.chart.series[l.id].ms[i];
     return `<div class="row"><span><span class="key" style="background:${LINK_COLOR[l.id]}"></span>${esc(l.name)}</span><span>${val < 0 ? esc(L.lost) : ms(val)}</span></div>`;
-  }).join('') + (lag ? `<div class="why lag">${esc(L.tip_lag)} ${esc(lag.time)}: ${esc(lag.text)}</div>` : '')
+  }).join('') + (v.chart.cpu?.length ? `<div class="row"><span><span class="key" style="background:#4f6a85"></span>${esc(L.cpu_title)}</span><span>${v.chart.cpu[i] < 0 ? '—' : `${v.chart.cpu[i]} %`}</span></div>` : '')
+    + (lag ? `<div class="why lag">${esc(L.tip_lag)} ${esc(lag.time)}: ${esc(lag.text)}</div>` : '')
     + (blame ? `<div class="why">${fill(esc(L.tip_blame), { link: `<b>${esc(linkName(blame))}</b>` })}</div>` : `<div class="why calm">${esc(L.tip_calm).replace(/:\s*(.+)$/, ': <b>$1</b>')}</div>`);
   tip.hidden = false;
   const bx = box.getBoundingClientRect(), px = e.clientX - bx.left, tw = tip.offsetWidth;

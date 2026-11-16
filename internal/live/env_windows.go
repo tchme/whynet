@@ -16,6 +16,7 @@ func DefaultEnv(m probe.Markers) Env {
 	return Env{
 		Echo:     systemEcho,
 		WiFi:     systemWiFi,
+		CPUTimes: systemCPUTimes,
 		Adapters: probe.Adapters,
 		RouteIf:  routeIf,
 		Resolve:  probe.ResolveServer,

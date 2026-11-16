@@ -28,6 +28,7 @@ type recording struct {
 	tick    time.Duration
 	hops    []Hop
 	wifi    []WiFi
+	cpu     []int8 // per tick: CPU load %, -1 unknown; empty when not measured
 	lags    []time.Time
 	pathVPN bool
 }
@@ -275,6 +276,7 @@ func analyze(r recording) Result {
 				}
 			}
 		}
+		m.CPU = cpuMax(r.cpu, mark-int(LagBefore/r.tick), mark+int(lagAfter/r.tick)+1)
 		if best >= 0 {
 			m.Spike = true
 			m.AgoS = math.Round(float64(mark-best)*r.tick.Seconds()*10) / 10
@@ -302,6 +304,12 @@ func analyze(r recording) Result {
 		if w.Last.RSSI != 0 {
 			res.Facts["live.wifi_rssi"] = strconv.Itoa(w.Last.RSSI)
 		}
+	}
+	if c := summarizeCPU(r.cpu); c != nil {
+		res.CPU = c
+		res.Facts["live.cpu_avg"] = strconv.Itoa(c.Avg)
+		res.Facts["live.cpu_max"] = strconv.Itoa(c.Max)
+		res.Facts["live.cpu_busy_pct"] = fmtPct(c.BusyPct)
 	}
 	res.Trace = r.hops
 	for _, h := range r.hops {
@@ -352,6 +360,40 @@ func summarizeWiFi(ws []WiFi) *WiFiSummary {
 	return s
 }
 
+// CPUBusy is the load a game can stutter at: the CPU has nothing left for it.
+const CPUBusy = 90
+
+func summarizeCPU(cpu []int8) *CPUSummary {
+	s := &CPUSummary{}
+	sum, busy := 0, 0
+	for _, v := range cpu {
+		if v < 0 {
+			continue
+		}
+		s.Readings++
+		sum += int(v)
+		s.Max = max(s.Max, int(v))
+		if v >= CPUBusy {
+			busy++
+		}
+	}
+	if s.Readings == 0 {
+		return nil
+	}
+	s.Avg = (sum + s.Readings/2) / s.Readings
+	s.BusyPct = pct(busy, s.Readings)
+	return s
+}
+
+// cpuMax is the highest CPU load over ticks [from, to); -1 when none was read.
+func cpuMax(cpu []int8, from, to int) int {
+	m := -1
+	for t := max(from, 0); t < min(to, len(cpu)); t++ {
+		m = max(m, int(cpu[t]))
+	}
+	return m
+}
+
 // buckets slices the session: 5 s up to 5 minutes, then about 60 rows whatever the length.
 func buckets(r recording, n int) []Bucket {
 	if n == 0 || r.tick <= 0 {
@@ -365,7 +407,7 @@ func buckets(r recording, n int) []Bucket {
 	per := max(1, int(size/r.tick))
 	var out []Bucket
 	for from := 0; from < n; from += per {
-		b := Bucket{At: r.start.Add(time.Duration(from) * r.tick), Links: map[string]BucketStats{}}
+		b := Bucket{At: r.start.Add(time.Duration(from) * r.tick), Links: map[string]BucketStats{}, CPU: cpuMax(r.cpu, from, from+per)}
 		for li, l := range r.links {
 			var ms []float64
 			lost := 0
@@ -420,6 +462,11 @@ func chart(r recording, n int, own, event [][]bool) Chart {
 			s.State = append(s.State, st)
 		}
 		c.Series[l.ID] = s
+	}
+	if len(r.cpu) > 0 {
+		for from := 0; from < n; from += per {
+			c.CPU = append(c.CPU, cpuMax(r.cpu, from, from+per))
+		}
 	}
 	return c
 }

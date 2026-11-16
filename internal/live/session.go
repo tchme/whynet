@@ -17,6 +17,7 @@ import (
 type Env struct {
 	Echo     EchoFunc
 	WiFi     func(guid string) (WiFi, bool, error)
+	CPUTimes func() (idle, total uint64, err error) // the computer's CPU time since boot; nil: not measured
 	Adapters func() ([]probe.Adapter, error)
 	RouteIf  func(ip netip.Addr) (uint32, error) // the interface the route to ip leaves through
 	Resolve  func(ctx context.Context, input string) (probe.Server, error)
@@ -65,6 +66,8 @@ type Session struct {
 	samples [][]int32
 	wifi    []WiFi
 	wifiErr error
+	cpu     []int8 // per tick: the computer's CPU load since the previous tick, %, or -1
+	cpuErr  error
 	lags    []time.Time
 	errs    map[string]string
 	running running
@@ -204,8 +207,10 @@ func (s *Session) loop(ctx context.Context) {
 	}
 	tracing := false
 	var traceMu sync.Mutex
+	var cpuPrev [2]uint64
 	for t := 0; ; t++ {
 		s.ping(t)
+		s.readCPU(&cpuPrev)
 		if s.env.TraceEvery > 0 && t > 0 && t%s.env.TraceEvery == 0 {
 			traceMu.Lock()
 			if !tracing {
@@ -278,6 +283,29 @@ func (s *Session) ping(t int) {
 			s.mu.Unlock()
 		}()
 	}
+}
+
+// readCPU records the computer's CPU load since the previous tick; -1 for the first tick or a
+// failed read. prev holds the previous idle and total times.
+func (s *Session) readCPU(prev *[2]uint64) {
+	if s.env.CPUTimes == nil {
+		return
+	}
+	pct := int8(-1)
+	idle, total, err := s.env.CPUTimes()
+	if err == nil {
+		if d := total - prev[1]; prev[1] > 0 && total > prev[1] {
+			busy := d - min(idle-prev[0], d)
+			pct = int8((100*busy + d/2) / d)
+		}
+		*prev = [2]uint64{idle, total}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err != nil {
+		s.cpuErr = err
+	}
+	s.cpu = append(s.cpu, pct)
 }
 
 // standIn puts the last answering node of the route in place of a server that ignores pings.
@@ -418,10 +446,13 @@ func (s *Session) Finish(ctx context.Context) Result {
 	hops := s.tracer.result(ctx, s.env.ASN)
 	s.mu.Lock()
 	rec := recording{links: s.links, samples: s.samples, start: s.started, tick: s.env.Tick,
-		hops: hops, wifi: s.wifi, lags: s.lags, pathVPN: s.pathVPN}
+		hops: hops, wifi: s.wifi, cpu: s.cpu, lags: s.lags, pathVPN: s.pathVPN}
 	errs := maps.Clone(s.errs)
 	if s.wifiErr != nil {
 		errs["wifi"] = s.wifiErr.Error()
+	}
+	if s.cpuErr != nil {
+		errs["cpu"] = s.cpuErr.Error()
 	}
 	s.mu.Unlock()
 
