@@ -167,6 +167,39 @@ type AppServer struct {
 	RealIP   string `json:"real_ip,omitempty"`   // behind a fake-ip router: the name's real address (DoH)
 	ASN      string `json:"asn,omitempty"`
 	Owner    string `json:"owner,omitempty"` // the network's name
+
+	// whynet's own check of the server (app_check.go).
+	Ad      bool   `json:"ad,omitempty"`     // an ad or analytics server: listed, never blamed
+	Checked bool   `json:"checked"`          // false: over the limit of servers checked
+	Result  string `json:"result,omitempty"` // ok, open (answers; the name can't be tested), sni, closed, ip
+	Detail  string `json:"detail,omitempty"`
+	PingMs  int64  `json:"ping_ms,omitempty"` // connect time on its own port (a handshake behind fake-ip)
+	PingTLS bool   `json:"ping_tls,omitempty"`
+	Lost    int    `json:"lost,omitempty"`
+	Tries   int    `json:"tries,omitempty"`
+	// zapret: the name in its lists, the address in its ipset ("true", "false", "excluded"), the port
+	// in its Game Filter's TCP range.
+	DPIName  string `json:"dpi_name,omitempty"`
+	DPIIP    string `json:"dpi_ip,omitempty"`
+	GamePort bool   `json:"game_port,omitempty"`
+	Ms       int64  `json:"ms,omitempty"`
+}
+
+// Troubled: the program itself saw this server's connects go unanswered or get reset.
+func (s *AppServer) Troubled() bool { return s.Stuck > 0 || s.Cut > 0 }
+
+// Blocked: whynet's check found it cut, or the program had trouble with a server whose name
+// can't be tested.
+func (s *AppServer) Blocked() bool {
+	return s.Result == "sni" || s.Result == "closed" || s.Result == "ip" || s.Result == "open" && s.Troubled()
+}
+
+// Label is how texts name the server: its name, or its address and port.
+func (s *AppServer) Label() string {
+	if s.Name != "" {
+		return s.Name
+	}
+	return netip.AddrPortFrom(netip.MustParseAddr(s.IP), s.Port).String()
 }
 
 // conn is one connection being followed across reads of the table.

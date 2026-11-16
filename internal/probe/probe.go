@@ -50,9 +50,9 @@ func (r *Result) Facts() map[string]string {
 type Markers struct {
 	Stubs []string `yaml:"stubs"`
 	// Any ISP's stub: one word of the blocking law and one of "access restricted" on the same page.
-	StubLaw    []string `yaml:"stub_law"`
-	StubAction []string `yaml:"stub_action"`
-	Geo        []string `yaml:"geo"`
+	StubLaw      []string `yaml:"stub_law"`
+	StubAction   []string `yaml:"stub_action"`
+	Geo          []string `yaml:"geo"`
 	Interceptors []string `yaml:"interceptors"`
 	VPNAdapters  []string `yaml:"vpn_adapters"`
 	// DPI-bypass tools: process exe name and Windows service name -> tool.

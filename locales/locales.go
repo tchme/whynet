@@ -27,18 +27,21 @@ type Texts struct {
 	// The stability check's verdicts and words (window, report), apart from the site check's.
 	LiveDiagnoses map[string]Diagnosis `yaml:"live_diagnoses"`
 	Live          map[string]string    `yaml:"live"`
-	Steps         map[string]StepText  `yaml:"steps"`
-	Status        map[string]string    `yaml:"status"`
-	Confidence    map[string]string    `yaml:"confidence"`
-	Report        map[string]string    `yaml:"report"`
-	Values        map[string]string    `yaml:"values"`
-	Notes         []Note               `yaml:"notes"`
-	Kinds         map[string]string    `yaml:"kinds"`
-	Results       map[string]string    `yaml:"results"`
-	Phases        map[string]string    `yaml:"phases"`    // where a slow file's time went
-	Countries     map[string]string    `yaml:"countries"` // ISO code -> name as in "из <name>"
-	Colos         map[string]string    `yaml:"colos"`     // Cloudflare node (airport code) -> city
-	UI            map[string]string    `yaml:"ui"`
+	// The app check's verdicts and words.
+	AppDiagnoses map[string]Diagnosis `yaml:"app_diagnoses"`
+	App          map[string]string    `yaml:"app"`
+	Steps        map[string]StepText  `yaml:"steps"`
+	Status       map[string]string    `yaml:"status"`
+	Confidence   map[string]string    `yaml:"confidence"`
+	Report       map[string]string    `yaml:"report"`
+	Values       map[string]string    `yaml:"values"`
+	Notes        []Note               `yaml:"notes"`
+	Kinds        map[string]string    `yaml:"kinds"`
+	Results      map[string]string    `yaml:"results"`
+	Phases       map[string]string    `yaml:"phases"`    // where a slow file's time went
+	Countries    map[string]string    `yaml:"countries"` // ISO code -> name as in "из <name>"
+	Colos        map[string]string    `yaml:"colos"`     // Cloudflare node (airport code) -> city
+	UI           map[string]string    `yaml:"ui"`
 }
 
 // Load reads one language, e.g. "ru".

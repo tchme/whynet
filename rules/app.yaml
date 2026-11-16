@@ -1,0 +1,62 @@
+# The app check's rules (docs/appcheck.md): first match wins, the same syntax as diagnoses.yaml.
+# Facts: app.* from the record, names and check steps, local.* from the local step.
+# "Blocked" covers whynet's own findings (cut by name, cut with any name, closed) and the
+# program's own trouble on a server whose name can't be tested.
+
+- id: app_no_traffic
+  confidence: likely
+  when: {app.servers: "0"}
+
+# A DPI-bypass tool on this PC rewrites the program's packets too: it comes before the ISP.
+- id: app_dpi_conflict
+  confidence: likely
+  when: {local.dpi_tool: several, app.blocked: true}
+
+# Flowseal's game sections use --ipset=ipset-all.txt: with the IPSet Filter at "none" they reach no address.
+- id: app_game_filter_none
+  confidence: likely
+  when: {local.dpi_tool: zapret, local.dpi_game_filter: [all, tcp], local.dpi_ipset_filter: none, app.game_ports: true, app.blocked: true}
+
+- id: app_dpi_not_listed
+  confidence: likely
+  when: {local.dpi_tool: zapret, app.dpi_unlisted: true, app.blocked: true}
+
+- id: app_dpi_fails
+  confidence: likely
+  when: {local.dpi_tool: [zapret, goodbyedpi], app.blocked: true}
+
+# Every troubled server sits behind a fake-ip router: the cut is on the router's path (its VPN, or the
+# ISP for names the router sends direct).
+- id: app_router_path
+  confidence: likely
+  when: {app.blocked: true, app.blocked_fakeip: true}
+
+- id: app_blocked_name
+  confidence: high
+  when: {app.sni: true}
+
+- id: app_blocked_maybe
+  confidence: likely
+  when: {app.maybe: true}
+
+- id: app_unreachable
+  confidence: likely
+  when: {app.unreachable: true}
+
+- id: app_lossy
+  confidence: likely
+  when: {app.lossy: true}
+
+# The program had trouble, but every server passed whynet's own check: a DPI that cuts some connections
+# only, or the servers were busy then.
+- id: app_flaky
+  confidence: likely
+  when: {app.program_trouble: true}
+
+- id: app_ok
+  confidence: high
+  when: {app.checked: "!0"}
+
+- id: unknown
+  confidence: likely
+  when: {}

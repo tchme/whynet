@@ -55,9 +55,14 @@ func (p *prober) tls(s *Step) {
 }
 
 func (p *prober) handshake(ip, sni string, insecure bool) (*tls.ConnectionState, error) {
+	return p.handshakeAt(net.JoinHostPort(ip, "443"), sni, insecure)
+}
+
+// handshakeAt is a TLS handshake with sni to any address and port (programs use more than 443).
+func (p *prober) handshakeAt(addr, sni string, insecure bool) (*tls.ConnectionState, error) {
 	ctx, cancel := p.timeout()
 	defer cancel()
-	raw, err := p.env.Dial(ctx, "tcp", net.JoinHostPort(ip, "443"))
+	raw, err := p.env.Dial(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}

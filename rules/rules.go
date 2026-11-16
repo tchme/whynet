@@ -16,7 +16,7 @@ import (
 	"whynet/internal/probe"
 )
 
-//go:embed diagnoses.yaml live.yaml markers.yaml ads.txt.gz
+//go:embed diagnoses.yaml live.yaml app.yaml markers.yaml ads.txt.gz
 var files embed.FS
 
 type Rule struct {
@@ -56,17 +56,22 @@ func Load() ([]Rule, probe.Markers, error) {
 
 // LoadLive reads the stability check's rules (live.yaml): kept apart so the site rules never
 // fire on a stability check's facts, nor the other way round.
-func LoadLive() ([]Rule, error) {
+func LoadLive() ([]Rule, error) { return loadRules("live.yaml") }
+
+// LoadApp reads the app check's rules (app.yaml), apart from the site's for the same reason.
+func LoadApp() ([]Rule, error) { return loadRules("app.yaml") }
+
+func loadRules(name string) ([]Rule, error) {
 	var rs []Rule
-	b, err := files.ReadFile("live.yaml")
+	b, err := files.ReadFile(name)
 	if err == nil {
 		err = yaml.Unmarshal(b, &rs)
 	}
 	if err == nil {
-		err = check("live.yaml", rs)
+		err = check(name, rs)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("live.yaml: %w", err)
+		return nil, fmt.Errorf("%s: %w", name, err)
 	}
 	return rs, nil
 }
