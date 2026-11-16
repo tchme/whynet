@@ -115,10 +115,38 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class SlowView {
+	    file: string;
+	    kind: string;
+	    ms: number;
+	    unfinished: boolean;
+	    where: string;
+	    ping_ms: number;
+	    lost: number;
+	    tries: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SlowView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.file = source["file"];
+	        this.kind = source["kind"];
+	        this.ms = source["ms"];
+	        this.unfinished = source["unfinished"];
+	        this.where = source["where"];
+	        this.ping_ms = source["ping_ms"];
+	        this.lost = source["lost"];
+	        this.tries = source["tries"];
+	    }
+	}
 	export class HostView {
 	    host: string;
 	    kinds: string;
 	    ping_ms: number;
+	    lost: number;
+	    tries: number;
 	    kbps: number;
 	    requests: number;
 	    failed: number;
@@ -134,6 +162,8 @@ export namespace main {
 	        this.host = source["host"];
 	        this.kinds = source["kinds"];
 	        this.ping_ms = source["ping_ms"];
+	        this.lost = source["lost"];
+	        this.tries = source["tries"];
 	        this.kbps = source["kbps"];
 	        this.requests = source["requests"];
 	        this.failed = source["failed"];
@@ -190,6 +220,7 @@ export namespace main {
 	    verdict: VerdictView;
 	    steps: StepView[];
 	    hosts: HostView[];
+	    slow: SlowView[];
 	
 	    static createFrom(source: any = {}) {
 	        return new CheckView(source);
@@ -201,6 +232,7 @@ export namespace main {
 	        this.verdict = this.convertValues(source["verdict"], VerdictView);
 	        this.steps = this.convertValues(source["steps"], StepView);
 	        this.hosts = this.convertValues(source["hosts"], HostView);
+	        this.slow = this.convertValues(source["slow"], SlowView);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -472,6 +504,7 @@ export namespace main {
 		    return a;
 		}
 	}
+	
 	
 
 }
