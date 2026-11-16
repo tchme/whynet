@@ -1,5 +1,23 @@
 export namespace live {
 	
+	export class CPUSummary {
+	    avg_pct: number;
+	    max_pct: number;
+	    busy_pct: number;
+	    readings: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CPUSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.avg_pct = source["avg_pct"];
+	        this.max_pct = source["max_pct"];
+	        this.busy_pct = source["busy_pct"];
+	        this.readings = source["readings"];
+	    }
+	}
 	export class ChartSeries {
 	    ms: number[];
 	    state: number[];
@@ -203,6 +221,7 @@ export namespace main {
 	    start: number;
 	    step: number;
 	    series: Record<string, live.ChartSeries>;
+	    cpu?: number[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ChartView(source);
@@ -213,6 +232,7 @@ export namespace main {
 	        this.start = source["start"];
 	        this.step = source["step"];
 	        this.series = this.convertValues(source["series"], live.ChartSeries, true);
+	        this.cpu = source["cpu"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -628,6 +648,7 @@ export namespace main {
 	    trace: HopView[];
 	    trace_title: string;
 	    wifi?: live.WiFiSummary;
+	    cpu?: live.CPUSummary;
 	    lags: LagView[];
 	    chart: ChartView;
 	    compare?: CompareView;
@@ -646,6 +667,7 @@ export namespace main {
 	        this.trace = this.convertValues(source["trace"], HopView);
 	        this.trace_title = source["trace_title"];
 	        this.wifi = this.convertValues(source["wifi"], live.WiFiSummary);
+	        this.cpu = this.convertValues(source["cpu"], live.CPUSummary);
 	        this.lags = this.convertValues(source["lags"], LagView);
 	        this.chart = this.convertValues(source["chart"], ChartView);
 	        this.compare = this.convertValues(source["compare"], CompareView);
