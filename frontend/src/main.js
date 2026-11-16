@@ -509,21 +509,48 @@ function render() {
 
 // The window grows and shrinks with what it shows, up to 90% of the screen; past that it scrolls.
 let frame = null;
-async function fitWindow() {
+let narrowW = null; // the width before "Details" widened the window: back to it when they close
+const MAX_W = 1400; // wider than this a table wraps its longest cells instead
+
+// How many px the widest table in "Details" lacks to show every column without scrolling.
+function lackWidth() {
+  let lack = 0;
+  for (const t of document.querySelectorAll('.details table')) {
+    t.style.width = 'max-content';
+    lack = Math.max(lack, t.offsetWidth - t.parentElement.clientWidth);
+    t.style.width = '';
+  }
+  return lack;
+}
+
+async function fitWindow(again = true) {
   try {
     const size = await WindowGetSize();
     if (frame === null) {
       frame = size.h - window.innerHeight; // title bar and borders
       if (!(frame >= 0 && frame < 150)) frame = 40;
     }
+    // Width: "Details" open widens the window to its tables (up to the screen), closing them narrows it back.
+    let w = size.w;
+    const lack = state.details && state.phase === 'done' && state.mode === 'site' ? lackWidth() : 0;
+    if (lack > 2) {
+      narrowW ??= size.w;
+      w = Math.max(size.w, Math.min(Math.floor(screen.availWidth * 0.95), MAX_W, size.w + lack));
+    } else if (!state.details && narrowW) {
+      w = narrowW;
+      narrowW = null;
+    }
     const want = form.offsetHeight + $('content').offsetHeight + frame;
     const dialog = $('own-dialog');
     const h = Math.min(Math.floor(screen.availHeight * 0.9), Math.max(want, state.modal ? 620 : 0, dialog ? dialog.scrollHeight + 32 + frame : 0));
-    if (Math.abs(size.h - h) <= 2) return;
-    // Growing keeps the top edge, unless the bottom would go under the taskbar: then move up.
+    if (Math.abs(size.h - h) <= 2 && w === size.w) return;
+    // Growing keeps the top-left corner, unless the window would go off the screen: then it moves up or left.
     const pos = await WindowGetPosition();
-    if (pos.y + h > screen.availHeight) WindowSetPosition(pos.x, Math.max(0, screen.availHeight - h));
-    WindowSetSize(size.w, h);
+    const x = pos.x + w > screen.availWidth ? Math.max(0, screen.availWidth - w) : pos.x;
+    const y = pos.y + h > screen.availHeight ? Math.max(0, screen.availHeight - h) : pos.y;
+    if (x !== pos.x || y !== pos.y) WindowSetPosition(x, y);
+    WindowSetSize(w, h);
+    if (w !== size.w && again) setTimeout(() => fitWindow(false), 80); // wider rows wrap less: refit the height once
   } catch { /* outside Wails (vite preview): nothing to resize */ }
 }
 

@@ -64,6 +64,8 @@ func (a *App) readHAR(b []byte) (HARInfo, error) {
 	switch {
 	case errors.Is(err, probe.ErrOneRequest):
 		return HARInfo{}, errors.New(a.t.UI["own_one"])
+	case errors.Is(err, probe.ErrFewRequests):
+		return HARInfo{}, errors.New(a.t.UI["own_few"])
 	case errors.Is(err, probe.ErrEmptyHAR):
 		return HARInfo{}, errors.New(a.t.UI["own_empty"])
 	case err != nil:

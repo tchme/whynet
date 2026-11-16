@@ -192,3 +192,10 @@ Checked in the running exe on the author's PC (2026-11-16: Start, Ctrl+Alt+L pre
 - **Cause:** "now" for open requests was the timestamp of the latest DevTools event; when the network went quiet, that clock stopped, so a request stuck after the last event never reached the 5 s "no answer" mark.
 - **Fix:** at the end of the hidden run the event clock is moved on by the time since the last event.
 - **Verified:** the same real-Edge run: the stuck image 8.1 s, `net::ERR_TIMED_OUT (no answer while whynet watched)`.
+
+## A filtered browser record gave "everything loaded" (dzen.ru, the author's Opera)
+
+- **Symptom:** the author's first full record of dzen.ru, with the grey blocks on screen, gave `own_clean`: "все 2 запросов из записи прошли".
+- **Cause:** the record held 2 requests, dzen's page and its sign-in hop through sso.passport.yandex.ru, both documents: the Network tab was most likely filtered to "Doc" (or opened after the load). Two requests say nothing about a page that loads dozens; `own_clean` judged them anyway.
+- **Fix:** a record under 5 requests is not judged (`ErrFewRequests`): the dialog asks to pick the "All" filter, reload and copy again; the instructions name the filter. Counts in the texts no longer need a Russian plural ("2 запросов").
+- **Verified:** `TestParseHAR` (that record's two documents give `ErrFewRequests`). Not yet re-run with a full record from the author's Opera.

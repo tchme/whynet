@@ -3,6 +3,7 @@ package probe
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -42,6 +43,14 @@ func harText(t *testing.T, firefox bool, entries ...map[string]any) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// padded adds plain requests that loaded fine: a record needs a handful to be judged at all.
+func padded(entries ...map[string]any) []map[string]any {
+	for i := len(entries); i < minHARRequests; i++ {
+		entries = append(entries, map[string]any{"url": fmt.Sprintf("https://dzen.ru/ok%d.png", i), "type": "image", "status": 200, "time": 20, "mime": "image/png"})
+	}
+	return entries
 }
 
 func TestParseHAR(t *testing.T) {
@@ -95,10 +104,10 @@ func TestParseHAR(t *testing.T) {
 	}
 
 	// Firefox: the page title is not its address, no resource types: the first request and the MIME type tell.
-	ff, err := ParseHAR(harText(t, true,
+	ff, err := ParseHAR(harText(t, true, padded(
 		map[string]any{"url": "https://dzen.ru/a/xyz", "status": 200, "time": 300, "mime": "text/html"},
 		map[string]any{"url": "https://avatars.dzeninfra.ru/c", "status": 0, "time": 0, "mime": "image/webp"},
-	), m)
+	)...), m)
 	if err != nil || ff.Site != "dzen.ru" || len(ff.Files) != 1 || ff.Files[0].Kind != "image" || ff.Files[0].What != "none" {
 		t.Errorf("firefox record: %+v %v", ff, err)
 	}
@@ -111,6 +120,9 @@ func TestParseHAR(t *testing.T) {
 		{`{"foo": 1}`, ErrNotHAR},
 		{string(harText(t, false)), ErrEmptyHAR},
 		{string(harText(t, false, map[string]any{"url": "https://static.dzeninfra.ru/x.js", "type": "xhr", "status": 200, "time": 246})), ErrOneRequest}, // the author's first try
+		// the author's second try: the Network tab filtered to documents, dzen's page and its sign-in hop
+		{string(harText(t, false, map[string]any{"url": "https://dzen.ru/a/xyz", "type": "document", "status": 200, "time": 300},
+			map[string]any{"url": "https://sso.passport.yandex.ru/push", "type": "document", "status": 200, "time": 400})), ErrFewRequests},
 	} {
 		if _, err := ParseHAR([]byte(c.text), m); !errors.Is(err, c.want) {
 			t.Errorf("%.30s: %v, want %v", c.text, err, c.want)
@@ -121,13 +133,13 @@ func TestParseHAR(t *testing.T) {
 // The record against whynet's own browser: the same file, else the same server.
 func TestOwnStep(t *testing.T) {
 	m := Markers{Ads: []string{"ad.mail.ru"}}
-	rec, err := ParseHAR(harText(t, false,
+	rec, err := ParseHAR(harText(t, false, padded(
 		map[string]any{"url": "https://dzen.ru/a/xyz", "type": "document", "status": 200, "time": 300},
 		map[string]any{"url": "https://privacy-cs.mail.ru/static/cmp.js", "type": "script", "status": 0, "error": "net::ERR_BLOCKED_BY_CLIENT", "time": 1},
 		map[string]any{"url": "https://ad.mail.ru/adq/", "type": "fetch", "status": 0, "error": "net::ERR_BLOCKED_BY_CLIENT", "time": 1},
 		map[string]any{"url": "https://avatars.dzeninfra.ru/a.jpg", "type": "image", "status": 200, "time": 4100,
 			"timings": map[string]any{"connect": 3050, "ssl": 40, "wait": 100, "receive": 900}},
-	), m)
+	)...), m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +147,7 @@ func TestOwnStep(t *testing.T) {
 		files: map[string]fileSeen{"https://privacy-cs.mail.ru/static/cmp.js": {ok: true, ms: 1100}}}
 	res := &Result{Host: "dzen.ru", Steps: []Step{{ID: "browser", Evidence: map[string]any{"browser": br}}}}
 	s := OwnStep(rec, res)
-	for k, v := range map[string]string{"own.site": "dzen.ru", "own.requests": "4", "own.blocked": "true", "own.blocked_n": "2",
+	for k, v := range map[string]string{"own.site": "dzen.ru", "own.requests": "5", "own.blocked": "true", "own.blocked_n": "2",
 		"own.blocked_hosts": "privacy-cs.mail.ru, ad.mail.ru", "own.blocked_site": "true", "own.blocked_site_hosts": "privacy-cs.mail.ru",
 		"own.late": "true", "own.late_hosts": "avatars.dzeninfra.ru", "own.late_file": "avatars.dzeninfra.ru/a.jpg", "own.late_s": "4.1",
 		"own.late_phase": "connect", "own.failed": "", "own.clean": ""} {
@@ -160,10 +172,12 @@ func TestOwnStep(t *testing.T) {
 		t.Errorf("status %s", s.Status)
 	}
 
-	clean, _ := ParseHAR(harText(t, false,
+	clean, err := ParseHAR(harText(t, false, padded(
 		map[string]any{"url": "https://dzen.ru/a/xyz", "type": "document", "status": 200, "time": 300},
-		map[string]any{"url": "https://dzen.ru/b.jpg", "type": "image", "status": 200, "time": 30},
-	), m)
+	)...), m)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if s := OwnStep(clean, res); s.Facts["own.clean"] != "true" || s.Status != "ok" {
 		t.Errorf("clean record: %v %s", s.Facts, s.Status)
 	}

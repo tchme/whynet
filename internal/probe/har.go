@@ -19,7 +19,12 @@ var (
 	ErrNotHAR     = errors.New("not a HAR record")
 	ErrEmptyHAR   = errors.New("the HAR record has no requests")
 	ErrOneRequest = errors.New("the HAR record has one request: one row was copied, not all")
+	// ErrFewRequests: a page that loads blocks makes dozens of requests. A handful means a filter in
+	// the Network tab ("Doc": the author's first full record had dzen's 2 documents) or a late start.
+	ErrFewRequests = errors.New("the HAR record has too few requests to judge the page")
 )
+
+const minHARRequests = 5
 
 // OwnRecord is a person's own browser record, without cookies, headers or bodies (never read).
 type OwnRecord struct {
@@ -101,6 +106,9 @@ func ParseHAR(b []byte, m Markers) (*OwnRecord, error) {
 		return nil, ErrEmptyHAR
 	case 1:
 		return nil, ErrOneRequest
+	}
+	if len(h.Log.Entries) < minHARRequests {
+		return nil, ErrFewRequests
 	}
 	rec := &OwnRecord{Creator: h.Log.Creator.Name, Requests: len(h.Log.Entries)}
 	page := ""
