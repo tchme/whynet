@@ -8,13 +8,16 @@ import (
 	"time"
 )
 
+// LagBefore is how far back a "лагнуло" mark looks for the jump it was about.
+const LagBefore = 10 * time.Second
+
 const (
 	lostRTT     = -1 // no answer within the timeout
 	skipRTT     = -2 // not measured (the server's ticks before its stand-in took over)
 	minSeconds  = 30
 	maxEpisodes = 200
 	maxPoints   = 900
-	lagWindow   = 2 * time.Second
+	lagAfter    = time.Second
 )
 
 // recording is everything a session measured; analyze turns it into a Result.
@@ -245,33 +248,37 @@ func analyze(r recording) Result {
 		res.Facts["live.router_periodic_s"] = strconv.Itoa(p)
 	}
 
-	// "Лагнуло" marks against the network around them.
-	calm := 0
+	// "Лагнуло" marks are bookmarks: a person presses the keys a second or three after the lag,
+	// so each mark looks back LagBefore for the nearest moment the network jumped (and lagAfter
+	// ahead, for an early press). A mark with no jump near it proves nothing on its own: no verdict
+	// is drawn from marks.
 	for _, at := range r.lags {
 		m := LagMark{At: at}
-		from := int((at.Sub(r.start) - lagWindow) / r.tick)
-		to := int((at.Sub(r.start) + lagWindow) / r.tick)
-		for li, l := range r.links {
-			for t := max(from, 0); t <= min(to, n-1); t++ {
-				if v := r.samples[li][t]; v >= 0 {
-					m.WorstMs = math.Max(m.WorstMs, float64(v)/1000)
-				}
-				if own[li][t] && !m.Network {
-					m.Network, m.Blame = true, l.ID
+		mark := int(at.Sub(r.start) / r.tick)
+		best := -1
+		for t := max(mark-int(LagBefore/r.tick), 0); t <= min(mark+int(lagAfter/r.tick), n-1); t++ {
+			for li := range r.links {
+				if confirmed[li][t] && (best < 0 || abs(t-mark) < abs(best-mark)) {
+					best = t
 				}
 			}
 		}
-		if !m.Network {
-			calm++
+		if best >= 0 {
+			m.Spike = true
+			m.AgoS = math.Round(float64(mark-best)*r.tick.Seconds()*10) / 10
+			for li, l := range r.links {
+				if v := r.samples[li][best]; v >= 0 {
+					m.WorstMs = math.Max(m.WorstMs, float64(v)/1000)
+				}
+				if own[li][best] && m.Link == "" {
+					m.Link = l.ID // the nearest link that caused it
+				}
+			}
 		}
 		res.Lags = append(res.Lags, m)
 	}
 	if len(r.lags) > 0 {
 		res.Facts["live.lag_marks"] = strconv.Itoa(len(r.lags))
-		res.Facts["live.lag_marks_calm"] = strconv.Itoa(calm)
-	}
-	if calm > 0 {
-		res.Facts["live.lag_calm"] = "true"
 	}
 
 	if w := summarizeWiFi(r.wifi); w != nil {
@@ -427,6 +434,8 @@ func percentile(v []float64, p float64) float64 {
 	i := int(math.Ceil(p/100*float64(len(s)))) - 1
 	return s[max(0, min(i, len(s)-1))]
 }
+
+func abs(x int) int { return max(x, -x) }
 
 func pct(a, b int) float64 { return math.Round(1000*float64(a)/float64(b)) / 10 }
 

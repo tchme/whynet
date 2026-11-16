@@ -129,12 +129,13 @@ type WiFiSummary struct {
 	Readings  int  `json:"readings"`
 }
 
-// LagMark is a moment the person marked "лагнуло", read against the network around it.
+// LagMark is a moment the person marked "лагнуло": a bookmark, with the network jump nearest to it.
 type LagMark struct {
 	At      time.Time `json:"at"`
-	Network bool      `json:"network"`            // some link caused trouble within ±2 s
-	Blame   string    `json:"blame,omitempty"`    // the nearest such link
-	WorstMs float64   `json:"worst_ms,omitempty"` // the worst answer around it, any link
+	Spike   bool      `json:"spike"`              // the network jumped within 10 s before the mark (or 1 s after)
+	AgoS    float64   `json:"ago_s,omitempty"`    // how long before the mark it jumped (negative: after)
+	Link    string    `json:"link,omitempty"`     // the link that caused that jump
+	WorstMs float64   `json:"worst_ms,omitempty"` // the worst answer at that moment, any link
 }
 
 // Episode is a spell of trouble one link caused: consecutive ticks with its own spikes or losses.

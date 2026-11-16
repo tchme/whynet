@@ -126,7 +126,7 @@ const clock = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 const linkName = id => state.live.links.find(l => l.id === id)?.name ?? id;
 
 // Lines: one per link, ms on a fixed scale to 550 (game pings and the spikes above them).
-function linesSVG(series, ids, n, w, lagIdx = []) {
+function linesSVG(series, ids, n, w, marks = []) {
   const H = 180, max = 550, y = v => H - 8 - (Math.min(v, max) / max) * (H - 16);
   const x = i => n > 1 ? (i / (n - 1)) * w : 0;
   let svg = '';
@@ -139,11 +139,11 @@ function linesSVG(series, ids, n, w, lagIdx = []) {
     svg += segs.map(p => p.length === 1 ? `<circle cx="${p[0].split(',')[0]}" cy="${p[0].split(',')[1]}" r="1.5" fill="${LINK_COLOR[id]}"/>`
       : `<polyline fill="none" stroke="${LINK_COLOR[id]}" stroke-width="${id === 'router' ? 1.6 : 1.1}" stroke-linejoin="round" vector-effect="non-scaling-stroke" points="${p.join(' ')}"/>`).join('');
   }
-  return svg + lagSVG(lagIdx, n, w);
+  return svg + lagSVG(marks, n, w);
 }
 
 // Lanes: one row per link; red where the link caused trouble, pale red where it repeated a nearer link's.
-function lanesSVG(chart, ids, n, w, lagIdx = []) {
+function lanesSVG(chart, ids, n, w, marks = []) {
   const H = 180, top = 6, lh = (H - top * 2) / ids.length, cw = w / Math.max(n, 1);
   let svg = '';
   ids.forEach((id, li) => {
@@ -158,13 +158,18 @@ function lanesSVG(chart, ids, n, w, lagIdx = []) {
     }
     svg += `<text x="8" y="${y + lh / 2 + 4}" fill="#e2e8ec" font-size="11.5" font-family="Golos Text, Segoe UI, sans-serif" paint-order="stroke" stroke="#1c252e" stroke-width="3">${esc(linkName(id))}</text>`;
   });
-  return svg + lagSVG(lagIdx, n, w);
+  return svg + lagSVG(marks, n, w);
 }
 
-function lagSVG(lagIdx, n, w) {
-  return lagIdx.map(i => {
-    const x = n > 1 ? (i / (n - 1)) * w : 0;
-    return `<line x1="${x}" x2="${x}" y1="0" y2="180" stroke="#c792ea" stroke-width="1.5" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/><rect x="${x - 26}" y="2" width="52" height="15" rx="4" fill="#c792ea"/><text x="${x}" y="13" text-anchor="middle" fill="#1b1124" font-size="10.5" font-weight="600" font-family="Golos Text, Segoe UI, sans-serif">${esc(state.L.mark?.toLowerCase())}</text>`;
+// A "лагнуло" mark: the line where the keys were pressed, and the 10 s before it shaded — where
+// whynet looked for the jump the person meant (people press a second or three late).
+function lagSVG(marks, n, w) {
+  const x = i => (n > 1 ? (i / (n - 1)) * w : 0);
+  return marks.map(({ i, back }) => {
+    const x0 = x(Math.max(0, i - back)), x1 = x(i);
+    return `<rect x="${x0}" y="0" width="${Math.max(0, x1 - x0)}" height="180" fill="#c792ea" opacity=".13"/>
+      <line x1="${x1}" x2="${x1}" y1="0" y2="180" stroke="#c792ea" stroke-width="1.5" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>
+      <rect x="${x1 - 26}" y="2" width="52" height="15" rx="4" fill="#c792ea"/><text x="${x1}" y="13" text-anchor="middle" fill="#1b1124" font-size="10.5" font-weight="600" font-family="Golos Text, Segoe UI, sans-serif">${esc(state.L.mark?.toLowerCase())}</text>`;
   }).join('');
 }
 
@@ -309,7 +314,7 @@ function liveDetailsHTML(v) {
       <span>${esc(L.wifi_band)}:</span> ${esc((w.band || '?').replace('.', ','))} ${esc(L.ghz)}${w.channel ? `, ${esc(L.wifi_channel)} ${w.channel}` : ''}<br>
       ${w.phy ? `<span>${esc(L.wifi_phy)}:</span> ${esc(w.phy)}<br>` : ''}${w.rx_mbps ? `<span>${esc(L.wifi_rate)}:</span> ${w.rx_mbps} ${esc(L.mbps)}<br>` : ''}
       <span>${esc(L.wifi_ssid_hidden)}</span></div>` : '';
-  const lags = v.lags?.length ? `<div class="fact-card"><b>${esc(L.lags_title)}</b>${v.lags.map(m => `<span>${esc(m.time)}:</span> ${esc(m.network ? L.lag_short_network : L.lag_short_calm)}`).join('<br>')}</div>` : '';
+  const lags = v.lags?.length ? `<div class="fact-card"><b>${esc(L.lags_title)}</b>${v.lags.map(m => `<span>${esc(m.time)}:</span> ${esc(m.text)}`).join('<br>')}</div>` : '';
   return `<div class="details">
     <div class="charthead"><div class="details-title">${esc(L.chart_title)}</div>
       <div class="seg small" role="tablist"><button type="button" data-act="view-lanes" aria-selected="${view === 'lanes'}">${esc(L.view_lanes)}</button>
@@ -324,9 +329,9 @@ function drawFullChart() {
   const v = state.live.view, svg = $('full-chart');
   if (!v || !svg) return;
   const ids = v.links.map(l => l.id), n = Math.max(...ids.map(id => v.chart.series[id]?.ms.length || 0));
-  const lagIdx = (v.lags || []).map(m => Math.round(m.at / v.chart.step));
-  svg.innerHTML = (state.live.chart === 'lanes' ? lanesSVG(v.chart, ids, n, 900, lagIdx)
-    : linesSVG(Object.fromEntries(ids.map(id => [id, v.chart.series[id].ms])), ids, n, 900, lagIdx))
+  const marks = (v.lags || []).map(m => ({ i: Math.round(m.at / v.chart.step), back: Math.round(m.back / v.chart.step) }));
+  svg.innerHTML = (state.live.chart === 'lanes' ? lanesSVG(v.chart, ids, n, 900, marks)
+    : linesSVG(Object.fromEntries(ids.map(id => [id, v.chart.series[id].ms])), ids, n, 900, marks))
     + '<line id="cursor" x1="-10" x2="-10" y1="0" y2="180" stroke="#e2e8ec" opacity=".5" vector-effect="non-scaling-stroke"/>';
 }
 
@@ -341,11 +346,11 @@ function chartHover(e) {
   cur.setAttribute('x1', x); cur.setAttribute('x2', x);
   const time = new Date(v.chart.start + i * v.chart.step * 1000).toLocaleTimeString('ru-RU');
   const blame = ids.find(id => v.chart.series[id].state[i] === 1);
-  const lag = (v.lags || []).some(m => Math.abs(m.at - i * v.chart.step) <= 2);
+  const at = i * v.chart.step, lag = (v.lags || []).find(m => at >= m.at - m.back && at <= m.at + 1);
   tip.innerHTML = `<div class="tt">${esc(time)}</div>` + v.links.map(l => {
     const val = v.chart.series[l.id].ms[i];
     return `<div class="row"><span><span class="key" style="background:${LINK_COLOR[l.id]}"></span>${esc(l.name)}</span><span>${val < 0 ? esc(L.lost) : ms(val)}</span></div>`;
-  }).join('') + (lag ? `<div class="why lag">${esc(L.tip_lag)}</div>` : '')
+  }).join('') + (lag ? `<div class="why lag">${esc(L.tip_lag)} ${esc(lag.time)}: ${esc(lag.text)}</div>` : '')
     + (blame ? `<div class="why">${fill(esc(L.tip_blame), { link: `<b>${esc(linkName(blame))}</b>` })}</div>` : `<div class="why calm">${esc(L.tip_calm).replace(/:\s*(.+)$/, ': <b>$1</b>')}</div>`);
   tip.hidden = false;
   const bx = box.getBoundingClientRect(), px = e.clientX - bx.left, tw = tip.offsetWidth;

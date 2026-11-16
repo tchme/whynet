@@ -138,7 +138,7 @@ Stability check facts (`internal/live/analyze.go`; ids: router, beyond, ctl_ru, 
 | `live.server_stand_in` | the hop pinged instead of a server that ignores pings |
 | `live.router_periodic_s` | 60: the router's own spikes repeat about every minute (background Wi-Fi scan) |
 | `live.wifi_signal`, `live.wifi_band`, `live.wifi_rssi` | average signal %, 2.4 / 5, last RSSI dBm |
-| `live.lag_marks`, `live.lag_marks_calm`, `live.lag_calm` | marks, marks on a calm network, true when any |
+| `live.lag_marks` | how many "лагнуло" marks (bookmarks: each looks back 10 s for the nearest jump; no rule uses them) |
 | `live.route_jump_hop` | TTL where the delay goes up and stays |
 | `live.seconds`, `live.too_short` | length; true under 30 s |
 

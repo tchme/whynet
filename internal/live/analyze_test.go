@@ -81,11 +81,12 @@ func TestAnalyzeFriendWiFi(t *testing.T) {
 		}
 		return 0
 	})
-	r.lags = []time.Time{t0.Add(31 * 500 * time.Millisecond), t0.Add(90 * time.Second)} // on a spike, on calm
+	// On a spike; 2 s after one (a late press, the usual case); with no jump in the 10 s before.
+	r.lags = []time.Time{t0.Add(31 * 500 * time.Millisecond), t0.Add(78 * time.Second), t0.Add(90 * time.Second)}
 	res := analyze(r)
 	wantFacts(t, res, map[string]string{"live.router": "unstable", "live.router_kind": "wifi", "live.beyond": "stable",
 		"live.internet": "stable", "live.server": "stable", "live.router_periodic_s": "60", "live.seconds": "185",
-		"live.lag_marks": "2", "live.lag_marks_calm": "1", "live.lag_calm": "true"})
+		"live.lag_marks": "3", "live.lag_calm": ""})
 	if s := stats(res, Target); s.Own != 0 || s.Events == 0 {
 		t.Errorf("server: own %d events %d; it should only repeat the router", s.Own, s.Events)
 	}
@@ -95,8 +96,14 @@ func TestAnalyzeFriendWiFi(t *testing.T) {
 	if res.Total != 3 || res.Spikes[0].Link != Router || res.Spikes[0].Seconds != 1.5 {
 		t.Errorf("episodes: %d %+v", res.Total, res.Spikes)
 	}
-	if !res.Lags[0].Network || res.Lags[0].Blame != Router || res.Lags[1].Network {
-		t.Errorf("lag marks: %+v", res.Lags)
+	if m := res.Lags[0]; !m.Spike || m.Link != Router || m.AgoS != 0 || m.WorstMs < 250 {
+		t.Errorf("mark on a spike: %+v", m)
+	}
+	if m := res.Lags[1]; !m.Spike || m.Link != Router || m.AgoS != 2 {
+		t.Errorf("late mark: %+v", m)
+	}
+	if m := res.Lags[2]; m.Spike {
+		t.Errorf("mark with no jump before it: %+v", m)
 	}
 	if s := res.Chart.Series[Target]; len(s.Ms) != 370 || s.State[31] != 2 || res.Chart.Series[Router].State[31] != 1 {
 		t.Errorf("chart: server state %d, router state %d", s.State[31], res.Chart.Series[Router].State[31])

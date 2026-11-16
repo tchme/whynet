@@ -51,7 +51,6 @@ Rules in `rules/live.yaml` (first match wins, nearest link first), texts under `
 | `live_isp` | The ISP's access network (likely) | the first node beyond the router unstable by itself, confirmed by the internet links | table, analysis (also: a node that only ignores pings to itself is not blamed) |
 | `live_isp_network` | Deeper in the ISP's network (likely) | both controls unstable by themselves | table, analysis |
 | `live_route` | The route to the server or the server (likely) | the server (or its stand-in) unstable by itself | table, analysis |
-| `live_not_network` | The lag the person marked was not the network (likely) | nothing unstable, a lag mark on a calm network | table, analysis |
 | `live_stable` | The network held | nothing else matched (always last) | table, analysis; live: the author's PC on cable, 40 s (2026-11-16) |
 
 `all_ok` matters as much as the failures: it sends the person to the browser (cache, extensions, its own proxy or DNS-over-HTTPS setting).

@@ -21,7 +21,7 @@ import (
 
 // liveTones colour the stability verdicts; anything not listed is "bad".
 var liveTones = map[string]string{
-	"live_stable": "ok", "live_not_network": "warn", "live_too_short": "warn", "live_router_silent": "warn",
+	"live_stable": "ok", "live_too_short": "warn", "live_router_silent": "warn",
 	"live_wifi": "warn", "live_lan": "warn", "live_vpn": "warn",
 }
 
@@ -52,9 +52,11 @@ type HopView struct {
 }
 
 type LagView struct {
-	At      float64 `json:"at"` // seconds from the start
-	Time    string  `json:"time"`
-	Network bool    `json:"network"`
+	At    float64 `json:"at"` // seconds from the start
+	Time  string  `json:"time"`
+	Spike bool    `json:"spike"` // the network jumped within 10 s before the mark
+	Text  string  `json:"text"`  // a one-liner: the jump before it, or none
+	Back  float64 `json:"back"`  // seconds the mark looks back (drawn on the chart)
 }
 
 type CompareRow struct {
@@ -240,8 +242,13 @@ func (a *App) liveView(res *live.Result, v rules.Verdict, prev *live.Result) *Li
 		w.Last.SSID = "" // the window shows "hidden", as the report does
 		view.WiFi = &w
 	}
+	names := map[string]string{}
+	for _, l := range res.Links {
+		names[l.ID] = report.LinkName(a.t, l.Link)
+	}
 	for _, m := range res.Lags {
-		view.Lags = append(view.Lags, LagView{At: m.At.Sub(res.Started).Seconds(), Time: m.At.Format("15:04:05"), Network: m.Network})
+		view.Lags = append(view.Lags, LagView{At: m.At.Sub(res.Started).Seconds(), Time: m.At.Format("15:04:05"), Spike: m.Spike,
+			Text: report.LagText(a.t, m, names, true), Back: live.LagBefore.Seconds()})
 	}
 	if prev != nil {
 		view.Compare = a.compare(prev, res)

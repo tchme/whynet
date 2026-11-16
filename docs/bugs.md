@@ -172,3 +172,9 @@ Checked in the running exe on the author's PC (2026-11-16: Start, Ctrl+Alt+L pre
 - **The window did not grow while recording.** The hint under the chart gets longer once the verdict is available, but the window was fitted only on a full render, and the recording screen is patched in place. The "Готово" button ended up under the bottom edge. `updateLiveRec` now calls `fitWindow`.
 - **Spinners and the progress bar jerked every second.** The links list and the bar were rebuilt as HTML each second, which restarts CSS animations. The numbers are now patched in place (`patchLiveChain`), the bar only changes its width.
 - Also: two new ru.yaml values had ": " inside a plain value (see the YAML pitfall above) and broke every text test and the build with `mapping values are not allowed`; quoted.
+
+## "The lag was not the network" could blame the PC for a network spike (removed before release use)
+
+- **Symptom:** none seen live; found in review with the author (2026-11-16, right after 0.2.0). A person presses Ctrl+Alt+L a second or three after the lag. The mark was read at ±2 s, Wi-Fi spikes last 1-2 s, so a late mark usually fell on a calm network; on a session whose one or two spikes stayed under the "unstable" bar, `live_not_network` then said the lag was the computer's.
+- **Fix:** marks are bookmarks. Each looks back 10 s (and 1 s ahead) for the nearest confirmed jump and names it, or says there was none; the window shades those 10 s and the hover shows the mark's line. `live_not_network` and the `live.lag_calm` facts are gone: no verdict is drawn from marks. Measuring the PC (CPU, later frame times) is planned instead.
+- **Verified:** `TestAnalyzeFriendWiFi` (a mark 2 s after a spike finds it at 2 s; a mark with no jump in the 10 s before says so); `TestLiveMatch` (marks alone give `live_stable`); window screenshots of the built frontend with the Go side stubbed.

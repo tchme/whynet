@@ -18,7 +18,7 @@ func liveResult(t0 time.Time) *live.Result {
 		Facts: map[string]string{"live.router": "unstable", "live.router_kind": "wifi", "live.router_median_ms": "2.0",
 			"live.router_p95_ms": "310", "live.router_loss_pct": "3.0", "live.router_periodic_s": "60", "live.seconds": "3600"},
 		WiFi:   &live.WiFiSummary{Last: live.WiFi{Signal: 54, RSSI: -71, Channel: 6, Band: "2.4", SSID: "Ivanov_Home"}, AvgSignal: 54, MinSignal: 41, Readings: 360},
-		Lags:   []live.LagMark{{At: t0.Add(69 * time.Second), Network: true, Blame: live.Router, WorstMs: 412}, {At: t0.Add(170 * time.Second)}},
+		Lags:   []live.LagMark{{At: t0.Add(69 * time.Second), Spike: true, AgoS: 2.5, Link: live.Router, WorstMs: 412}, {At: t0.Add(170 * time.Second)}},
 		Local:  map[string]any{"os": "Windows 10 Home 22H2", "public": map[string]string{"ip": "95.24.13.7", "isp": "FLEX-AS", "asn": "AS21453", "country": "RU"}},
 		Mask:   map[string]string{"95.24.13.7": "95.24.x.x", "Ivanov_Home": "[wifi-name]"},
 		Total:  450,
@@ -59,7 +59,7 @@ func TestLiveMarkdown(t *testing.T) {
 	v := rules.Verdict{ID: "live_wifi", Confidence: "high"}
 	md := LiveMarkdown(res, v, tx, true, liveResult(t0.Add(-time.Hour)))
 	for _, want := range []string{tx.Live["report_title"], tx.Live["report_prompt"], tx.LiveDiagnoses["live_wifi"].Title,
-		"обычно 2.0 мс", "Роутер · Wi-Fi", "раз в 60 секунд", "12:39:11 — сеть скакала (Роутер · Wi-Fi)", "12:40:52 — сеть была спокойной",
+		"обычно 2.0 мс", "Роутер · Wi-Fi", "раз в 60 секунд", "Отметка в 12:39:11 — за 2,5 с до неё скакала сеть (Роутер · Wi-Fi, до 412 мс).", "Отметка в 12:40:52 — за 10 секунд до неё сеть не скакала.",
 		tx.Live["note_rate_limited"], "…и ещё 250.", tx.Live["report_compare"], "[wifi-name]", "95.24.x.x", "````json"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("report lacks %q", want)

@@ -72,13 +72,21 @@ func LiveExtras(t *locales.Texts, res *live.Result) []string {
 		names[l.ID] = LinkName(t, l.Link)
 	}
 	for _, m := range res.Lags {
-		if m.Network {
-			out = append(out, locales.Fill(L["lag_network"], map[string]string{"time": m.At.Format("15:04:05"), "link": names[m.Blame]}))
-		} else {
-			out = append(out, locales.Fill(L["lag_calm"], map[string]string{"time": m.At.Format("15:04:05")}))
-		}
+		out = append(out, LagText(t, m, names, false))
 	}
 	return out
+}
+
+// LagText describes a "лагнуло" mark: the jump nearest before it, or none within 10 s. short is
+// the window's one-liner; names maps link ids to their names. No conclusion is drawn from a mark.
+func LagText(t *locales.Texts, m live.LagMark, names map[string]string, short bool) string {
+	vars := map[string]string{"time": m.At.Format("15:04:05"), "link": names[m.Link], "worst": fmtMs(m.WorstMs),
+		"ago": strings.Replace(strconv.FormatFloat(m.AgoS, 'f', -1, 64), ".", ",", 1)}
+	key := map[bool]string{true: "lag_network", false: "lag_calm"}[m.Spike]
+	if short {
+		key = map[bool]string{true: "lag_short_network", false: "lag_short_calm"}[m.Spike]
+	}
+	return locales.Fill(t.Live[key], vars)
 }
 
 func cmp(a, b string) string {
@@ -166,7 +174,8 @@ func LiveMarkdown(res *live.Result, v rules.Verdict, t *locales.Texts, hide bool
 	if len(res.Lags) > 0 {
 		w("\n## %s\n\n", L["report_lags"])
 		for _, m := range res.Lags {
-			w("- %s: network=%v blame=%s worst=%s ms\n", m.At.Format("15:04:05"), m.Network, cmp(m.Blame, "-"), fmtMs(m.WorstMs))
+			w("- %s: network jumped within 10 s before the mark: %v; seconds before: %v; link: %s; worst: %s ms\n",
+				m.At.Format("15:04:05"), m.Spike, m.AgoS, cmp(m.Link, "-"), fmtMs(m.WorstMs))
 		}
 	}
 	if len(res.Spikes) > 0 {

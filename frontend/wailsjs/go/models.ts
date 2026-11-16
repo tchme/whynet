@@ -341,7 +341,9 @@ export namespace main {
 	export class LagView {
 	    at: number;
 	    time: string;
-	    network: boolean;
+	    spike: boolean;
+	    text: string;
+	    back: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new LagView(source);
@@ -351,7 +353,9 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.at = source["at"];
 	        this.time = source["time"];
-	        this.network = source["network"];
+	        this.spike = source["spike"];
+	        this.text = source["text"];
+	        this.back = source["back"];
 	    }
 	}
 	export class LiveLinkView {

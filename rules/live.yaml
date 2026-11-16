@@ -40,11 +40,6 @@
   confidence: likely
   when: {live.server: unstable}
 
-# The network held, but the person marked lag at a calm moment: the lag was not the network.
-- id: live_not_network
-  confidence: likely
-  when: {live.lag_calm: true}
-
 - id: live_stable
   confidence: high
   when: {}

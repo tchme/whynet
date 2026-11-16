@@ -41,8 +41,7 @@ func TestLiveMatch(t *testing.T) {
 		{with("live.internet", "unstable", "live.path_vpn", "true"), "live_vpn"},
 		{with("live.internet", "unstable", "live.server", "unstable"), "live_isp_network"},
 		{with("live.server", "unstable"), "live_route"},
-		{with("live.server", "none", "live.lag_calm", "true"), "live_not_network"},
-		{with("live.router", "unstable", "live.lag_calm", "true"), "live_wifi"}, // a real cause outranks a calm mark
+		{with("live.server", "none", "live.lag_marks", "2"), "live_stable"}, // marks are bookmarks: no verdict from them
 	}
 	for _, c := range cases {
 		if got := rules.Match(rs, c.facts); got.ID != c.want {
