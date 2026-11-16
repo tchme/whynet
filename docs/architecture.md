@@ -71,6 +71,8 @@ input -> probe.Target -> probe.Run(ctx, Env, onStep) -> Result{Steps[{facts, evi
 | `local.dpi_installed` | true when a bypass service or the WinDivert driver is registered, running or not |
 | `local.windivert` | running, stopped, absent, unknown: the driver stays loaded after zapret exits, until reboot |
 | `local.dpi_listed` | true, false, excluded, unknown: is the site in the bundle's `lists\*.txt` (only when a bypass is found) |
+| `local.dpi_ipset_filter` | any, none, loaded: Flowseal's "IPSet Filter", judged like its `service.bat` (empty `ipset-all.txt` = any, the `203.0.113.113/32` placeholder = none). Only when the bundle has `ipset-all.txt` |
+| `local.dpi_game_filter` | disabled, all, tcp, udp: Flowseal's "Game Filter" from `utils\game_filter.enabled` (ports in the evidence). Only for a Flowseal bundle (`service.bat` in its folder). Its sections use `--ipset=ipset-all.txt`, so with the IPSet Filter at none it reaches no address. Recorded for future game/app checks; no rule uses it yet |
 | `dns.system` | ok, nxdomain, timeout, error, empty, literal (input was an IP) |
 | `dns.doh` | ok, nxdomain, unavailable, empty |
 | `dns.match` | same, differ, fakeip (system answers in 198.18.0.0/15), unknown |

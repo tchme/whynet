@@ -127,6 +127,33 @@ func TestIPListed(t *testing.T) {
 	}
 }
 
+func TestFlowsealSettings(t *testing.T) {
+	for content, want := range map[string]string{"": "any", "\r\n": "any", "203.0.113.113/32\r\n": "none", "104.16.0.0/12\n": "loaded"} {
+		if got := ipsetFilter(map[string]string{"IPSET-ALL.txt": content}); got != want {
+			t.Errorf("ipsetFilter(%q) = %s, want %s", content, got, want)
+		}
+	}
+	if got := ipsetFilter(map[string]string{"list-general.txt": ""}); got != "" {
+		t.Errorf("no ipset-all.txt: %q", got)
+	}
+
+	cases := []struct{ content, mode, tcp, udp string }{
+		{"", "disabled", "", ""}, // no file
+		{"mode=all\r\ntcp=1024-65535\r\nudp=1024-65535\r\n", "all", "1024-65535", "1024-65535"}, // the author's file
+		{"mode=UDP\ntcp=443\nudp=27000-27100, 3478\n", "udp", "", "27000-27100,3478"},
+		{"mode=tcp\ntcp=abc\n", "tcp", "1024-65535", ""}, // a bad range keeps the default
+		{"udp\n", "udp", "", "1024-65535"},               // the old one-word file
+		{"all\n", "all", "1024-65535", "1024-65535"},
+		{"mode=disabled\ntcp=1-2\n", "disabled", "", ""},
+		{"mode=games\n", "disabled", "", ""},
+	}
+	for _, c := range cases {
+		if mode, tcp, udp := gameFilter(c.content); mode != c.mode || tcp != c.tcp || udp != c.udp {
+			t.Errorf("gameFilter(%q) = %s %q %q, want %s %q %q", c.content, mode, tcp, udp, c.mode, c.tcp, c.udp)
+		}
+	}
+}
+
 func TestTraceAndMask(t *testing.T) {
 	kv := parseTrace("fl=1\nip=95.24.13.7\nloc=RU\nwarp=off\n")
 	if kv["ip"] != "95.24.13.7" || kv["loc"] != "RU" {

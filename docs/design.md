@@ -94,7 +94,7 @@ Each step records its duration; v1 shows timings under Details, stage 2 builds s
 
 1. **v2:** VPS helper ("down for everyone, or only for you?") on a separate VPS, not the author's VPN one. It returns only a verdict (no page content, so it is no open proxy), refuses private and reserved addresses after resolving (SSRF), allows ports 80/443 only, rate-limits per client, caches per domain for a minute. The app works without it; its address is configurable so anyone can run their own. Slow-load breakdown (DNS / connect / TLS / server think time / transfer speed, compared with the helper).
 2. **v3:** live mode: ping router, first ISP hop and an internet target at once to tell Wi-Fi from ISP trouble; "check everything" over a list of popular sites.
-3. **v4:** per-application connections (Windows connection tables and TCP stats; admin rights for the stats). Full packet capture (Npcap) is out of scope.
+3. **v4:** per-application connections (Windows connection tables and TCP stats; admin rights for the stats). Full packet capture (Npcap) is out of scope. For games and apps, zapret's Game Filter matters: whynet already records Flowseal's `local.dpi_game_filter` and `local.dpi_ipset_filter` (the game sections only reach addresses in `ipset-all.txt`, so Game Filter on with IPSet Filter `none` does nothing).
 4. "Compare without the bypass": with admin rights, stop zapret/GoodbyeDPI for one check and compare, to tell "the bypass breaks this site" from "the bypass doesn't get through". v1 only detects the tools (process, service, WinDivert driver, whether the site is in zapret's lists) and reports them.
 5. Throughout: signed remote updates of the rules file, community-contributed diagnoses via pull requests, English UI.
 

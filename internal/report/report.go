@@ -64,6 +64,10 @@ func Markdown(res *probe.Result, v rules.Verdict, t *locales.Texts, hide bool) s
 			plain["tcp.dpi_ipset"] = t.Values["unknown"]
 		}
 		w("- %s: %s\n", r["dpi"], locales.Fill(r["dpi_line"], plain))
+		// Raw values: the words Flowseal's own service.bat menu shows, so the person can match them.
+		if facts["local.dpi_game_filter"] != "" && facts["local.dpi_ipset_filter"] != "" {
+			w("- %s: %s\n", r["flowseal"], locales.Fill(r["flowseal_line"], facts))
+		}
 	}
 	privacy := r["privacy_shown"]
 	if hide {

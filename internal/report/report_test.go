@@ -19,7 +19,8 @@ func TestMarkdownHidesPrivateValues(t *testing.T) {
 		Input: "youtube.com", Host: "youtube.com",
 		Started: time.Date(2026, 11, 15, 21, 4, 0, 0, time.UTC),
 		Steps: []probe.Step{{ID: "local", Status: "ok", Facts: map[string]string{"local.net": "ok",
-			"local.dpi_tool": "none", "local.dpi_installed": "true", "local.windivert": "running", "local.dpi_listed": "true"},
+			"local.dpi_tool": "none", "local.dpi_installed": "true", "local.windivert": "running", "local.dpi_listed": "true",
+			"local.dpi_ipset_filter": "none", "local.dpi_game_filter": "all"},
 			Evidence: map[string]any{"public": map[string]string{"ip": "95.24.13.7", "isp": "ROSTELECOM-AS, RU"}, "error": `open C:\Users\ivan\x`}}},
 		Mask: map[string]string{"95.24.13.7": "95.24.x.x", "ivan": "[user-name]"},
 	}
@@ -32,7 +33,8 @@ func TestMarkdownHidesPrivateValues(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"95.24.x.x", "ROSTELECOM-AS", tx.Diagnoses["all_ok"].Title, tx.Report["ai_prompt"], "````json", "`local.net`: ok", "- Провайдер: ROSTELECOM-AS, RU",
-		"- Обход блокировок: запущен: ничего; драйвер WinDivert: работает; сайт в списках запрета: да"} {
+		"- Обход блокировок: запущен: ничего; драйвер WinDivert: работает; сайт в списках запрета: да; адрес в IP-списках: неизвестно",
+		"- Настройки Flowseal: IPSet Filter [none], Game Filter [all]"} {
 		if !strings.Contains(hidden, want) {
 			t.Errorf("report lacks %q", want)
 		}

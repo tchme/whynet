@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -112,6 +113,62 @@ func ipListed(files map[string]string, ip string) (verdict, entry string) {
 		}
 	}
 	return verdict, entry
+}
+
+// ipsetFilter is Flowseal's "IPSet Filter" mode, judged as its service.bat does: an empty
+// ipset-all.txt is "any" (every address), one with the 203.0.113.113/32 placeholder is "none",
+// anything else "loaded"; "" when there is no ipset-all.txt.
+func ipsetFilter(files map[string]string) string {
+	for name, content := range files {
+		if !strings.EqualFold(name, "ipset-all.txt") {
+			continue
+		}
+		switch {
+		case strings.TrimSpace(content) == "":
+			return "any"
+		case strings.Contains(content, "203.0.113.113/32"):
+			return "none"
+		}
+		return "loaded"
+	}
+	return ""
+}
+
+// shortcut: checks the shape of a port list only, not the 65535 bound or start <= end as service.bat does.
+var portList = regexp.MustCompile(`^\d+(-\d+)?(,\d+(-\d+)?)*$`)
+
+// gameFilter is Flowseal's "Game Filter" from utils\game_filter.enabled ("" if missing), parsed as
+// its service.bat does: mode disabled, all, tcp or udp, and the ports it hands to the bypass
+// ("" for a protocol it leaves out). Its sections also use --ipset=ipset-all.txt, so with the
+// IPSet Filter at "none" it reaches no address at all.
+func gameFilter(content string) (mode, tcp, udp string) {
+	mode, tcp, udp = "disabled", "1024-65535", "1024-65535"
+	for _, line := range strings.Split(content, "\n") {
+		k, v, _ := strings.Cut(strings.TrimSpace(line), "=")
+		v = strings.ReplaceAll(v, " ", "")
+		switch k = strings.ToLower(k); {
+		case k == "mode":
+			mode = strings.ToLower(v)
+		case k == "all":
+			mode = "all"
+		case (k == "tcp" || k == "udp") && v == "":
+			mode = k // the old one-word file
+		case k == "tcp" && portList.MatchString(v):
+			tcp = v
+		case k == "udp" && portList.MatchString(v):
+			udp = v
+		}
+	}
+	switch mode {
+	case "all":
+	case "tcp":
+		udp = ""
+	case "udp":
+		tcp = ""
+	default:
+		return "disabled", "", ""
+	}
+	return mode, tcp, udp
 }
 
 // readLists loads the .txt lists from a bundle's "lists" folder; nil if there is none.

@@ -2,6 +2,7 @@ package probe
 
 import (
 	"maps"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -95,6 +96,18 @@ func dpiInfo(host string, m Markers) (facts map[string]string, ev map[string]any
 					ev["listed_in"] = in
 				}
 				lists = files
+				// Flowseal's own settings, as its service.bat menu shows them.
+				if f := ipsetFilter(files); f != "" {
+					facts["local.dpi_ipset_filter"] = f
+				}
+				if _, err := os.Stat(filepath.Join(root, "service.bat")); err == nil {
+					b, _ := os.ReadFile(filepath.Join(root, "utils", "game_filter.enabled"))
+					mode, tcp, udp := gameFilter(string(b))
+					facts["local.dpi_game_filter"] = mode
+					if mode != "disabled" {
+						ev["game_filter"] = map[string]string{"tcp": tcp, "udp": udp}
+					}
+				}
 				break
 			}
 		}

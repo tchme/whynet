@@ -184,6 +184,8 @@ report:
   path: Путь до сайта
   dpi: Обход блокировок
   dpi_line: "запущен: {local.dpi_tool}; драйвер WinDivert: {local.windivert}; сайт в списках запрета: {local.dpi_listed}; адрес в IP-списках: {tcp.dpi_ipset}"
+  flowseal: Настройки Flowseal
+  flowseal_line: "IPSet Filter [{local.dpi_ipset_filter}], Game Filter [{local.dpi_game_filter}]"
   privacy: Приватность
   privacy_hidden: внешний IP скрыт (оставлены провайдер и страна), имя компьютера и пользователя скрыты
   privacy_shown: ничего не скрыто
