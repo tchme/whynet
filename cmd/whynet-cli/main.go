@@ -21,16 +21,24 @@ func main() {
 	save := flag.Bool("save", false, "save the AI report (.md) in the current folder")
 	noHide := flag.Bool("no-hide", false, "keep the public IP and other private values in the report")
 	noBrowser := flag.Bool("no-browser", false, "skip loading the page in a hidden Edge/Chrome")
+	stability := flag.Bool("live", false, "stability check: ping the chain (router, ISP, internet, server) while you play")
+	dur := flag.Duration("for", 2*time.Minute, "with -live: how long to record (Ctrl+C ends it early); at most 1h")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "whynet-cli %s — why doesn't a site open?\n\nusage: whynet-cli [flags] <site>\n\n", report.Version)
+		fmt.Fprintf(os.Stderr, "whynet-cli %s — why doesn't a site open?\n\nusage: whynet-cli [flags] <site>\n       whynet-cli -live [-for 2m] [game server]\n\n", report.Version)
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	if flag.NArg() != 1 {
+	var err error
+	switch {
+	case *stability && flag.NArg() <= 1:
+		err = runLive(flag.Arg(0), min(*dur, time.Hour), *asJSON, *save, !*noHide)
+	case !*stability && flag.NArg() == 1:
+		err = run(flag.Arg(0), *asJSON, *save, !*noHide, !*noBrowser)
+	default:
 		flag.Usage()
 		os.Exit(2)
 	}
-	if err := run(flag.Arg(0), *asJSON, *save, !*noHide, !*noBrowser); err != nil {
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "whynet:", err)
 		os.Exit(1)
 	}
