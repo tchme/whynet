@@ -246,3 +246,10 @@ Checked in the running exe on the author's PC (2026-11-16: Start, Ctrl+Alt+L pre
 - **Cause:** not found. Reproduced on the author's PC in 3 of 4 runs and in 2 of 5 with `--disable-quic` (so not QUIC); DevTools shows the request was sent (`requestWillBeSentExtraInfo` came); curl gets the same files in 0.2 s. Whatever holds them, nothing a person sees is missing: the text font falls back, the other two are an icon and the cast-to-TV script.
 - **Fix:** `late_noise` in `markers.yaml` (addresses matched in the file URL) are not late files. A shortcut by address, marked so in the file.
 - **Verified:** content lab case (the icon stuck on a server whose other 14 files came: `all_ok`; `content_late` with the entry removed); a friend's three YouTube reports replayed: `all_ok` (one kept its dead googlevideo link, which `res.browser_dead` already forgives).
+
+## "The network held" (high) while a VPN client answered every ping itself
+
+- **Symptom:** a friend's stability recording with the Throne VPN client on (2026-11-17): 77.88.8.8 and 1.1.1.1 at 0.0 ms median, the router at 0.5 ms, the trace to 77.88.8.8 one hop long; verdict `live_stable` (high).
+- **Cause:** a TUN adapter of a sing-box client answers ICMP echo on this PC, so the internet links measured nothing; no rule looked at answers faster than the router. The adapter (`throne-tun`, "sing-tun Tunnel") was not in `vpn_adapters` either, so `live.path_vpn` was not set.
+- **Fix:** `live.fake_answers` (both controls under 1 ms) gives `live_fake_answers` after the router rules; `sing-tun` and `throne` added to `vpn_adapters`.
+- **Verified:** `TestAnalyzeFakeAnswers`, table cases; the recording's facts (0.0 / 0.0 / 0.5 ms) meet the rule. Not re-run with Throne.

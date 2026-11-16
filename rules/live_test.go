@@ -38,6 +38,8 @@ func TestLiveMatch(t *testing.T) {
 		{with("live.router", "unstable", "live.router_kind", "cable"), "live_lan"},
 		{with("live.beyond", "unstable", "live.internet", "unstable"), "live_isp"},
 		{with("live.beyond", "unstable", "live.path_vpn", "true"), "live_vpn"},
+		{with("live.fake_answers", "true", "live.beyond", "none"), "live_fake_answers"},                         // a friend's Throne TUN
+		{with("live.fake_answers", "true", "live.router", "unstable", "live.router_kind", "cable"), "live_lan"}, // the router link is still real
 		{with("live.internet", "unstable", "live.path_vpn", "true"), "live_vpn"},
 		{with("live.internet", "unstable", "live.server", "unstable"), "live_isp_network"},
 		{with("live.server", "unstable"), "live_route"},

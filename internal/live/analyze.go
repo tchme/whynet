@@ -221,6 +221,18 @@ func analyze(r recording) Result {
 	default:
 		res.Facts["live.internet"] = "stable"
 	}
+	// The internet answering in under a millisecond is not the internet: a VPN client's TUN adapter on
+	// this PC answers pings itself, so nothing past this PC is measured (Throne/sing-box, live
+	// 2026-11-17: 77.88.8.8 and 1.1.1.1 at 0.0 ms, the router at 0.5 ms, a trace of one hop).
+	ctl := 0
+	for _, s := range res.Links {
+		if (s.ID == CtlRU || s.ID == CtlWorld) && s.State != "silent" && s.Median < 1 {
+			ctl++
+		}
+	}
+	if ctl == 2 {
+		res.Facts["live.fake_answers"] = "true"
+	}
 
 	// Spells of trouble, in time order.
 	var eps []Episode

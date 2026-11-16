@@ -179,6 +179,7 @@ Stability check facts (`internal/live/analyze.go`; ids: router, beyond, ctl_ru, 
 | `live.<id>_addr`, `_median_ms`, `_p95_ms`, `_loss_pct`, `_own_pct` | the link's address and numbers over the session (own: "по его вине") |
 | `live.router_kind` | wifi, cable, other |
 | `live.path_vpn` | true: the default route goes through a VPN adapter on this PC |
+| `live.fake_answers` | true: both internet controls answer in under 1 ms, so a VPN client's TUN on this PC answers pings itself |
 | `live.server_stand_in` | the hop pinged instead of a server that ignores pings |
 | `live.router_periodic_s` | 60: the router's own spikes repeat about every minute (background Wi-Fi scan) |
 | `live.wifi_signal`, `live.wifi_band`, `live.wifi_rssi` | average signal %, 2.4 / 5, last RSSI dBm |

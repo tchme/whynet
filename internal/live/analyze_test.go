@@ -176,6 +176,16 @@ func TestAnalyzeShortAndNoServer(t *testing.T) {
 	}
 }
 
+// A VPN's TUN on this PC answers the internet's pings itself (a friend's Throne, 2026-11-17): the
+// controls come back faster than the router. A real path, even a fast one, does not.
+func TestAnalyzeFakeAnswers(t *testing.T) {
+	fake := map[string]float64{Router: 0.5, Beyond: 4, CtlRU: 0.05, CtlWorld: 0.05}
+	res := analyze(synth(400, 5, chainLinks("cable", false), fake, nil))
+	wantFacts(t, res, map[string]string{"live.fake_answers": "true"})
+	res = analyze(synth(400, 5, chainLinks("cable", false), bases, nil))
+	wantFacts(t, res, map[string]string{"live.fake_answers": ""})
+}
+
 // A long session stays small: about 60 buckets, at most maxPoints chart points.
 func TestAnalyzeLongSession(t *testing.T) {
 	res := analyze(synth(7200, 4, chainLinks("cable", true), bases, nil))

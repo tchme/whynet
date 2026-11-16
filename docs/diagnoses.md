@@ -59,6 +59,7 @@ Rules in `rules/live.yaml` (first match wins, nearest link first), texts under `
 | `live_router_silent` | The router never answers pings | `live.router=silent` or no gateway | table, analysis |
 | `live_wifi` | Ping jumps because of the Wi-Fi link (high) | router unstable by itself, wireless | table, analysis (the friend's case: spikes every 60 s, everything behind repeats them) |
 | `live_lan` | The cable link, the network card or the router (likely) | router unstable by itself, cable | table, analysis |
+| `live_fake_answers` | A VPN client on this PC answers the internet's pings itself (TUN): nothing past the router is measured (likely) | both controls' median under 1 ms (`live.fake_answers`) | table, analysis; a friend's Throne recording (77.88.8.8 and 1.1.1.1 at 0.0 ms, router 0.5 ms; it said `live_stable`, high) |
 | `live_vpn` | The path through a VPN on this PC (likely) | `live.path_vpn` and the node beyond or the internet unstable | table, session (VPN adapter on the default route) |
 | `live_isp` | The ISP's access network (likely) | the first node beyond the router unstable by itself, confirmed by the internet links | table, analysis (also: a node that only ignores pings to itself is not blamed) |
 | `live_isp_network` | Deeper in the ISP's network (likely) | both controls unstable by themselves | table, analysis |

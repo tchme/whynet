@@ -19,6 +19,13 @@
   confidence: likely
   when: {live.router: unstable}
 
+# The internet answers in under a millisecond: a VPN client's TUN on this PC answers pings itself, so
+# the links past the router measure nothing (Throne/sing-box, live 2026-11-17). The router link above
+# is still real.
+- id: live_fake_answers
+  confidence: likely
+  when: {live.fake_answers: true}
+
 # A VPN on this PC: past the router the traffic is the VPN's, not the ISP's.
 - id: live_vpn
   confidence: likely
