@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>whynet — макет проверки программы</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #161d24; --panel: #1c252e; --fg: #e2e8ec; --muted: #93a0ab; --line: #2a353f;
+  --accent: #34c3a1; --accent-fg: #08201a;
+  --ok: #55c788; --bad: #f07468; --warn: #e6ae52;
+  --ok-bg: #173022; --bad-bg: #3b1f1d; --warn-bg: #3a2c15;
+  --font: "Golos Text", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #0e1318; color: var(--fg); font: 15px/1.55 var(--font); padding: 24px 16px 60px; }
+.page { max-width: 980px; margin: 0 auto; display: grid; gap: 14px; }
+.intro { color: var(--muted); font-size: 14px; }
+.intro h1 { color: var(--fg); font: 600 22px var(--font); margin: 0 0 6px; }
+.intro ul { margin: 8px 0 0; padding-left: 20px; }
+.intro b { color: var(--fg); font-weight: 600; }
+.cap { margin: 26px 0 0; font: 600 13px var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.note { margin: 0; font-size: 13.5px; color: var(--muted); }
+.note b { color: var(--fg); font-weight: 600; }
+
+.win { position: relative; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; box-shadow: 0 24px 60px -30px #000; }
+.titlebar { height: 32px; display: flex; align-items: center; padding: 0 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); background: #131a20; }
+.titlebar span { margin-left: auto; letter-spacing: 14px; }
+.ask { display: flex; gap: 8px; padding: 16px 20px; border-bottom: 1px solid var(--line); align-items: center; flex-wrap: wrap; }
+.ask input { flex: 1; min-width: 200px; height: 40px; border: 1px solid var(--accent); border-radius: 8px; padding: 0 12px; background: var(--panel); color: var(--fg); font: 15px var(--font); }
+.ask input::placeholder { color: var(--muted); }
+.seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 3px; }
+.seg button { font: 600 13px var(--font); border: 0; background: transparent; color: var(--muted); padding: 7px 12px; border-radius: 6px; }
+.seg button.on { background: var(--bg); color: var(--fg); box-shadow: 0 0 0 1px var(--line); }
+.seg small { font-weight: 500; color: var(--muted); }
+.btn { font: 600 14px var(--font); border-radius: 8px; padding: 9px 14px; border: 1px solid var(--line); background: transparent; color: var(--fg); }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+.btn[disabled] { opacity: .45; }
+.btn.sm { font-size: 13px; padding: 7px 11px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.split { display: inline-flex; }
+.split .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.split .btn + .btn { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 1px solid rgba(8, 32, 26, .35); padding-inline: 12px; }
+code { font: 12.5px var(--mono); color: var(--fg); }
+.body { padding: 16px 20px 20px; display: grid; gap: 12px; }
+.hint { margin: 0; color: var(--muted); font-size: 14px; }
+.hint b { color: var(--fg); font-weight: 600; }
+
+/* picker */
+.progs { display: grid; gap: 2px; }
+.prog { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 10px; border-radius: 8px; }
+.prog.on { background: var(--panel); box-shadow: inset 0 0 0 1px var(--accent); }
+.ico { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; font: 700 13px var(--font); color: #fff; }
+.prog b { font-weight: 600; }
+.prog .t { display: block; color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prog .c { font: 12px var(--mono); color: var(--muted); white-space: nowrap; }
+.prog.dim b, .prog.dim .ico { opacity: .55; }
+.grp { font: 600 11px var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 10px 10px 2px; }
+
+/* recording */
+.rec { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.rec .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); box-shadow: 0 0 0 4px rgba(240, 116, 104, .2); }
+.rec h2 { margin: 0; font: 600 18px var(--font); }
+.rec .time { font: 600 16px var(--mono); color: var(--fg); }
+.rec .actions { margin-left: auto; }
+.count { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13.5px; color: var(--muted); }
+.count b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* tables */
+.tw { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font: 600 11px var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.m { font: 12px var(--mono); white-space: nowrap; }
+td.n, th.n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+td small { display: block; color: var(--muted); font-size: 11.5px; }
+.bad { color: var(--bad); } .good { color: var(--ok); } .dim { color: var(--muted); } .warnc { color: var(--warn); }
+.tag { font: 500 11px var(--font); border-radius: 4px; padding: 0 5px; margin-left: 6px; white-space: nowrap; background: var(--panel); color: var(--muted); }
+tr.new td { background: rgba(52, 195, 161, .07); }
+.spin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 8px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* result */
+.grid { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 20px; padding: 16px 20px 20px; align-items: start; }
+@media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; align-content: start; }
+.steps li { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: start; padding: 8px 10px; border-radius: 8px; font-size: 14px; }
+.steps li.fail { background: var(--bad-bg); }
+.steps .g { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 700 12px var(--font); background: var(--ok-bg); color: var(--ok); }
+.steps li.fail .g { background: transparent; color: var(--bad); }
+.steps .ms { font: 12px var(--mono); color: var(--muted); white-space: nowrap; }
+.steps .sub { grid-column: 2 / -1; font-size: 12.5px; line-height: 1.4; color: var(--muted); }
+.steps li.fail .sub { color: var(--bad); }
+.verdict { border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.verdict .top { display: flex; gap: 10px; align-items: center; }
+.big { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--bad-bg); color: var(--bad); font-weight: 700; }
+.big.ok { background: var(--ok-bg); color: var(--ok); }
+.big.w { background: var(--warn-bg); color: var(--warn); }
+.pill { font: 500 12px var(--font); padding: 3px 10px; border-radius: 999px; background: var(--panel); color: var(--muted); }
+.verdict h2 { margin: 0; font: 600 20px/1.3 var(--font); text-wrap: balance; }
+.verdict p { margin: 0; }
+.advice { background: var(--panel); border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+.advice b { display: block; font: 600 11px var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+.morebar { display: flex; justify-content: center; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding: 10px 16px; font: 600 13.5px var(--font); color: var(--accent); background: #131a20; }
+.morebar span { color: var(--muted); font-weight: 500; }
+.details { padding: 4px 20px 20px; display: grid; gap: 10px; }
+.dt { font: 600 11px var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-top: 8px; }
+.sum { font-size: 13.5px; color: var(--muted); }
+.sum b { color: var(--fg); font-weight: 600; }
+.others { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 10px; }
+.others .verdict { padding: 14px; gap: 8px; }
+.others .verdict h2 { font-size: 16px; }
+.others .verdict p { font-size: 13.5px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="intro">
+  <h1>Макет: проверка программы</h1>
+  Третья вкладка рядом с «Сайт» и «Стабильность». Человек выбирает запущенную программу, повторяет то, что не работает, а whynet записывает, куда она подключается, и проверяет каждый сервер. Данные — Discord у провайдера без VPN и без обхода (как у Ильи на Билайне).
+  <ul>
+    <li><b>Выбор</b> — список запущенных программ, сверху те, у кого есть окно. Браузеры внизу, с подсказкой про проверку сайта.</li>
+    <li><b>Запись</b> — серверы появляются на ходу; видно, что у программы зависло или оборвалось. «Готово», когда повторил.</li>
+    <li><b>Результат</b> — шаги слева, вердикт справа, как у проверки сайта; в «Подробнее» — таблица серверов.</li>
+  </ul>
+</div>
+
+<!-- ============ 1 ============ -->
+<div class="cap">1 · Выбор программы</div>
+<div class="win">
+  <div class="titlebar">whynet<span>— ▢ ✕</span></div>
+  <div class="ask">
+    <div class="seg"><button>Сайт</button><button>Стабильность <small>· для игр</small></button><button class="on">Программа</button></div>
+    <input placeholder="Найти программу…" value="">
+    <button class="btn primary">Записать</button>
+  </div>
+  <div class="body">
+    <p class="hint">Выбери программу, которая не подключается или работает частично. Потом нажми <b>«Записать»</b> и повтори в ней то, что не работает.</p>
+    <div class="progs">
+      <div class="prog on"><span class="ico" style="background:#5865f2">D</span><span><b>Discord</b><span class="t">Discord.exe</span></span><span class="c">6 соединений</span></div>
+      <div class="prog"><span class="ico" style="background:#1b2838">S</span><span><b>Steam</b><span class="t">steam.exe</span></span><span class="c">4 соединения</span></div>
+      <div class="prog"><span class="ico" style="background:#229ed9">T</span><span><b>Telegram</b><span class="t">Telegram.exe</span></span><span class="c">7 соединений</span></div>
+      <div class="prog"><span class="ico" style="background:#1db954">S</span><span><b>Spotify</b><span class="t">Spotify.exe</span></span><span class="c">3 соединения</span></div>
+      <div class="prog"><span class="ico" style="background:#444f5a">E</span><span><b>Epic Games Launcher</b><span class="t">EpicGamesLauncher.exe</span></span><span class="c">нет соединений</span></div>
+      <div class="grp">Браузеры — для них есть проверка сайта</div>
+      <div class="prog dim"><span class="ico" style="background:#fa1e4e">O</span><span><b>Opera GX</b><span class="t">opera.exe</span></span><span class="c">24 соединения</span></div>
+    </div>
+    <p class="note">Заголовки окон (там бывает название канала или документа) видны только здесь и в отчёт не попадают. Без прав администратора видны только TCP-соединения: голос Discord и сама игра идут по UDP — их покажет следующий этап.</p>
+  </div>
+</div>
+
+<!-- ============ 2 ============ -->
+<div class="cap">2 · Запись: серверы появляются на ходу</div>
+<div class="win">
+  <div class="titlebar">whynet<span>— ▢ ✕</span></div>
+  <div class="ask">
+    <div class="seg"><button>Сайт</button><button>Стабильность <small>· для игр</small></button><button class="on">Программа</button></div>
+    <input value="Discord" disabled>
+    <button class="btn primary" disabled>Записать</button>
+  </div>
+  <div class="body">
+    <div class="rec">
+      <span class="dot"></span><h2>Записываю Discord</h2><span class="time">0:18</span>
+      <div class="actions"><button class="btn">Отмена</button><button class="btn primary">Готово</button></div>
+    </div>
+    <p class="hint">Повтори в Discord то, что не работает: перезапусти его, зайди в канал, открой картинку. Можно до 2 минут; хватит и 15–20 секунд.</p>
+    <div class="count"><span>Серверов: <b>6</b></span><span>Соединений: <b>23</b></span><span class="bad">Оборвано сразу: <b>14</b></span><span class="warnc">Ждут ответа: <b>1</b></span></div>
+    <div class="tw"><table>
+      <tr><th>Сервер</th><th>Порт</th><th class="n">Соединений</th><th>Что видит программа</th></tr>
+      <tr><td>gateway.discord.gg</td><td class="m">443</td><td class="n">7</td><td class="bad">обрываются сразу — 7 из 7</td></tr>
+      <tr><td>discord.com</td><td class="m">443</td><td class="n">5</td><td class="bad">обрываются сразу — 5 из 5</td></tr>
+      <tr><td>cdn.discordapp.com</td><td class="m">443</td><td class="n">2</td><td class="bad">обрываются сразу — 2 из 2</td></tr>
+      <tr class="new"><td>162.159.130.234 <small>имя пока не знаю</small></td><td class="m">2053</td><td class="n">1</td><td class="warnc">ждёт ответа 9 с</td></tr>
+      <tr><td>sentry.io <span class="tag">счётчик</span></td><td class="m">443</td><td class="n">3</td><td class="good">подключено</td></tr>
+      <tr><td>dl.discordapp.net</td><td class="m">443</td><td class="n">5</td><td class="good">подключено</td></tr>
+    </table></div>
+    <p class="note">Имена во время записи — те, что уже удалось узнать; остальные whynet выяснит при проверке. Новая строка подсвечена.</p>
+  </div>
+</div>
+
+<!-- ============ 3 ============ -->
+<div class="cap">3 · Проверка серверов</div>
+<div class="win">
+  <div class="titlebar">whynet<span>— ▢ ✕</span></div>
+  <div class="ask">
+    <div class="seg"><button>Сайт</button><button>Стабильность <small>· для игр</small></button><button class="on">Программа</button></div>
+    <input value="Discord" disabled>
+    <button class="btn primary" disabled>Записать</button>
+  </div>
+  <div class="grid">
+    <ul class="steps">
+      <li><span class="g">✓</span><span>Компьютер и сеть</span><span class="ms">150 мс</span></li>
+      <li><span class="g">✓</span><span>Запись Discord</span><span class="ms">0:24</span><span class="sub">6 серверов, 23 соединения</span></li>
+      <li><span class="g"><span class="spin" style="margin:0"></span></span><span>Имена и владельцы серверов</span><span class="ms"></span></li>
+      <li><span class="g" style="background:transparent;color:var(--muted)">·</span><span class="dim">Проверка серверов</span><span class="ms"></span></li>
+    </ul>
+    <div class="verdict"><p class="hint"><span class="spin"></span>Проверяю 6 серверов Discord… обычно 10–30 секунд.</p></div>
+  </div>
+</div>
+
+<!-- ============ 4 ============ -->
+<div class="cap">4 · Результат</div>
+<div class="win">
+  <div class="titlebar">whynet<span>— ▢ ✕</span></div>
+  <div class="ask">
+    <div class="seg"><button>Сайт</button><button>Стабильность <small>· для игр</small></button><button class="on">Программа</button></div>
+    <input placeholder="Найти программу…" value="Discord">
+    <button class="btn primary">Записать</button>
+  </div>
+  <div class="grid">
+    <ul class="steps">
+      <li><span class="g">✓</span><span>Компьютер и сеть</span><span class="ms">150 мс</span></li>
+      <li><span class="g">✓</span><span>Запись Discord</span><span class="ms">0:24</span><span class="sub">6 серверов, 23 соединения</span></li>
+      <li><span class="g">✓</span><span>Имена и владельцы серверов</span><span class="ms">1,2 с</span><span class="sub">5 из 6 по имени</span></li>
+      <li class="fail"><span class="g">✗</span><span>Проверка серверов</span><span class="ms">14 с</span><span class="sub">3 режут по имени, 1 не отвечает</span></li>
+    </ul>
+    <div class="verdict">
+      <div class="top"><span class="big">✗</span><span class="pill">уверенно</span></div>
+      <h2>Discord блокируют по имени</h2>
+      <p>Его главные серверы — <b>gateway.discord.gg</b>, <b>discord.com</b>, <b>cdn.discordapp.com</b> — отвечают, но как только соединение называет их имя, его обрывают. С другим именем те же серверы отвечают нормально. Так работает блокировка через DPI у провайдера.</p>
+      <div class="advice"><b>Что делать</b>Поможет VPN или программа обхода DPI (zapret). Если обход уже стоит — добавь эти имена в его список.</div>
+      <div class="actions"><span class="split"><button class="btn primary">Сохранить отчёт для ИИ</button><button class="btn primary">Копировать</button></span></div>
+    </div>
+  </div>
+  <div class="morebar">Подробнее <span>· серверы Discord</span> ▾</div>
+  <div class="details">
+    <div class="sum">Записано <b>24 с</b>, <b>23</b> соединения к <b>6</b> серверам. Проверены все 6; счётчики проверяются последними и виноватыми не считаются.</div>
+    <div class="tw"><table>
+      <tr><th>Сервер</th><th>Порт</th><th>Чья сеть</th><th>У программы</th><th>Проверка whynet</th><th class="n">Пинг</th><th>zapret</th></tr>
+      <tr><td>gateway.discord.gg<small>имя из сертификата</small></td><td class="m">443</td><td>Cloudflare</td><td class="bad">оборвано 7 из 7</td><td class="bad">режут по имени</td><td class="n">29 мс</td><td class="dim">не запущен</td></tr>
+      <tr><td>discord.com<small>имя из сертификата</small></td><td class="m">443</td><td>Cloudflare</td><td class="bad">оборвано 5 из 5</td><td class="bad">режут по имени</td><td class="n">31 мс</td><td class="dim">не запущен</td></tr>
+      <tr><td>cdn.discordapp.com<small>имя из сертификата</small></td><td class="m">443</td><td>Cloudflare</td><td class="bad">оборвано 2 из 2</td><td class="bad">режут по имени</td><td class="n">30 мс</td><td class="dim">не запущен</td></tr>
+      <tr><td>162.159.130.234<small>имя неизвестно</small></td><td class="m">2053</td><td>Cloudflare</td><td class="warnc">ждал ответа 12 с</td><td class="bad">не отвечает</td><td class="n">—</td><td class="dim">не запущен</td></tr>
+      <tr><td>dl.discordapp.net<small>имя из сертификата</small></td><td class="m">443</td><td>Cloudflare</td><td class="good">подключено</td><td class="good">работает</td><td class="n">28 мс</td><td class="dim">не запущен</td></tr>
+      <tr><td>sentry.io <span class="tag">счётчик</span><small>имя из сертификата</small></td><td class="m">443</td><td>Google</td><td class="good">подключено</td><td class="good">работает</td><td class="n">44 мс</td><td class="dim">не запущен</td></tr>
+    </table></div>
+    <p class="note">«У программы» — что увидел whynet, пока Discord работал: соединение оборвали в первые 2 секунды или оно ждало ответа дольше 3 секунд. «Проверка whynet» — его собственная проверка того же сервера после записи. Строки с проблемами сверху.</p>
+  </div>
+</div>
+
+<!-- ============ 5 ============ -->
+<div class="cap">5 · Другие вердикты (только карточки)</div>
+<div class="others">
+  <div class="verdict"><div class="top"><span class="big ok">✓</span><span class="pill">уверенно</span></div><h2>До серверов Steam всё доходит</h2><p>Все 4 сервера отвечают, ничего не зависло и не оборвалось. Если лагает в самой игре — это UDP: запусти «Стабильность» во время игры.</p></div>
+  <div class="verdict"><div class="top"><span class="big w">!</span><span class="pill">скорее всего</span></div><h2>Telegram, похоже, блокируют</h2><p>Соединения к 149.154.167.51 обрываются сразу, а имени сервера узнать не вышло — проверить, режут ли по имени, нельзя. Сеть Telegram Messenger Inc.</p></div>
+  <div class="verdict"><div class="top"><span class="big w">?</span><span class="pill">скорее всего</span></div><h2>Epic Games Launcher ничего не отправлял по TCP</h2><p>За 30 секунд записи — ни одного соединения. Повтори запись, пока программа пытается подключиться; если она использует только UDP, это покажет следующий этап.</p></div>
+  <div class="verdict"><div class="top"><span class="big">✗</span><span class="pill">скорее всего</span></div><h2>Discord ломается на пути через роутер</h2><p>Все его соединения идут через прокси роутера (fake-ip) и там обрываются. Проверь, что discord.gg, discord.com, discordapp.com и discord.media есть в списке VPN на роутере.</p></div>
+</div>
+
+<div class="cap">Как это работает</div>
+<p class="note"><b>Запись:</b> каждые 250 мс whynet читает таблицу TCP-соединений Windows (без прав администратора) и собирает их по серверам. <b>Имена:</b> из DNS-кэша Windows, если он доступен; иначе из сертификата сервера; иначе обратный DNS. <b>Проверка:</b> пинг на тот же порт (5 попыток), для TLS — имя против нейтрального имени, покрытие zapret (списки имён, ipset, Game Filter). <b>Вердикт</b> — отдельный файл правил; всё попадает в отчёт для ИИ.</p>
+
+</div>
+</body>
+</html>

@@ -65,14 +65,14 @@ var (
 	enumCB  = windows.NewCallback(func(h windows.HWND, _ uintptr) uintptr {
 		var owner uint32
 		windows.GetWindowThreadProcessId(h, &owner)
-		if owner == enumPID && windows.IsWindowVisible(h) {
+		if (enumPID == 0 || owner == enumPID) && windows.IsWindowVisible(h) { // 0: every process
 			enumOut = append(enumOut, h)
 		}
 		return 1 // keep going
 	})
 )
 
-// browserWindows lists the visible top-level windows of a process.
+// browserWindows lists the visible top-level windows of a process (0: of every process).
 func browserWindows(pid uint32) []windows.HWND {
 	enumMu.Lock()
 	defer enumMu.Unlock()
