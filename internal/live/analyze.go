@@ -195,6 +195,7 @@ func analyze(r recording) Result {
 	for _, s := range res.Links {
 		state[s.ID] = s.State
 		f := "live." + s.ID
+		res.Facts[f+"_addr"] = s.Addr.String()
 		res.Facts[f+"_median_ms"] = fmtMs(s.Median)
 		res.Facts[f+"_p95_ms"] = fmtMs(s.P95)
 		res.Facts[f+"_loss_pct"] = fmtPct(s.LossPct)

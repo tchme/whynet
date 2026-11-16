@@ -1,0 +1,50 @@
+# Stability check verdicts. Ordered: the first rule whose conditions all match wins (as in
+# diagnoses.yaml). The links are judged nearest first, so the verdict names the nearest link that
+# causes trouble by itself. Facts (live.*) are listed in docs/architecture.md; texts are under
+# live_diagnoses in locales/ru.yaml.
+
+- id: live_too_short
+  confidence: high
+  when: {live.too_short: true}
+
+- id: live_router_silent
+  confidence: likely
+  when: {live.router: [silent, none]}
+
+- id: live_wifi
+  confidence: high
+  when: {live.router: unstable, live.router_kind: wifi}
+
+- id: live_lan
+  confidence: likely
+  when: {live.router: unstable}
+
+# A VPN on this PC: past the router the traffic is the VPN's, not the ISP's.
+- id: live_vpn
+  confidence: likely
+  when: {live.path_vpn: true, live.beyond: unstable}
+
+- id: live_vpn
+  confidence: likely
+  when: {live.path_vpn: true, live.internet: unstable}
+
+- id: live_isp
+  confidence: likely
+  when: {live.beyond: unstable}
+
+- id: live_isp_network
+  confidence: likely
+  when: {live.internet: unstable}
+
+- id: live_route
+  confidence: likely
+  when: {live.server: unstable}
+
+# The network held, but the person marked lag at a calm moment: the lag was not the network.
+- id: live_not_network
+  confidence: likely
+  when: {live.lag_calm: true}
+
+- id: live_stable
+  confidence: high
+  when: {}

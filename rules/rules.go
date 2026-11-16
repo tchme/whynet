@@ -16,7 +16,7 @@ import (
 	"whynet/internal/probe"
 )
 
-//go:embed diagnoses.yaml markers.yaml ads.txt.gz
+//go:embed diagnoses.yaml live.yaml markers.yaml ads.txt.gz
 var files embed.FS
 
 type Rule struct {
@@ -44,16 +44,40 @@ func Load() ([]Rule, probe.Markers, error) {
 			return nil, m, fmt.Errorf("%s: %w", name, err)
 		}
 	}
-	for i, r := range rs {
-		if r.ID == "" || r.Confidence != "high" && r.Confidence != "likely" {
-			return nil, m, fmt.Errorf("diagnoses.yaml: rule %d: needs an id and confidence high|likely", i+1)
-		}
+	if err := check("diagnoses.yaml", rs); err != nil {
+		return nil, m, err
 	}
 	m.AdSet, err = adSet()
 	if err != nil {
 		return nil, m, fmt.Errorf("ads.txt.gz: %w", err)
 	}
 	return rs, m, nil
+}
+
+// LoadLive reads the stability check's rules (live.yaml): kept apart so the site rules never
+// fire on a stability check's facts, nor the other way round.
+func LoadLive() ([]Rule, error) {
+	var rs []Rule
+	b, err := files.ReadFile("live.yaml")
+	if err == nil {
+		err = yaml.Unmarshal(b, &rs)
+	}
+	if err == nil {
+		err = check("live.yaml", rs)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("live.yaml: %w", err)
+	}
+	return rs, nil
+}
+
+func check(name string, rs []Rule) error {
+	for i, r := range rs {
+		if r.ID == "" || r.Confidence != "high" && r.Confidence != "likely" {
+			return fmt.Errorf("%s: rule %d: needs an id and confidence high|likely", name, i+1)
+		}
+	}
+	return nil
 }
 
 // adSet reads the built-in ad and tracker domains once (StevenBlack/hosts, see ads-LICENSE.txt).

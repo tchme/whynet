@@ -5,6 +5,8 @@ import (
 	"net/netip"
 	"testing"
 	"time"
+
+	"whynet/rules"
 )
 
 var t0 = time.Date(2026, 11, 16, 12, 38, 2, 0, time.Local)
@@ -180,5 +182,51 @@ func TestPercentile(t *testing.T) {
 	v := []float64{5, 1, 4, 2, 3}
 	if median(v) != 3 || percentile(v, 95) != 5 || percentile(nil, 50) != 0 {
 		t.Error("percentile")
+	}
+}
+
+// From the recording to the verdict: the analysis and rules/live.yaml speak the same facts.
+func TestAnalyzeToVerdict(t *testing.T) {
+	rs, err := rules.LoadLive()
+	if err != nil {
+		t.Fatal(err)
+	}
+	every := func(t int) bool { return t%25 == 7 }
+	cases := []struct {
+		kind    string
+		trouble func(id string, t int) float64
+		want    string
+	}{
+		{"wifi", func(id string, t int) float64 {
+			if every(t) {
+				return 300
+			}
+			return 0
+		}, "live_wifi"},
+		{"cable", func(id string, t int) float64 {
+			if every(t) {
+				return -1
+			}
+			return 0
+		}, "live_lan"},
+		{"cable", func(id string, t int) float64 {
+			if every(t) && id != Router {
+				return 200
+			}
+			return 0
+		}, "live_isp"},
+		{"cable", func(id string, t int) float64 {
+			if every(t) && id == Target {
+				return 300
+			}
+			return 0
+		}, "live_route"},
+		{"wifi", nil, "live_stable"},
+	}
+	for _, c := range cases {
+		res := analyze(synth(240, 5, chainLinks(c.kind, true), bases, c.trouble))
+		if got := rules.Match(rs, res.Facts); got.ID != c.want {
+			t.Errorf("%s: got %s, want %s (facts %v)", c.want, got.ID, c.want, res.Facts)
+		}
 	}
 }

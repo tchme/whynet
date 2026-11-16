@@ -23,18 +23,21 @@ type StepText struct {
 }
 
 type Texts struct {
-	Diagnoses  map[string]Diagnosis `yaml:"diagnoses"`
-	Steps      map[string]StepText  `yaml:"steps"`
-	Status     map[string]string    `yaml:"status"`
-	Confidence map[string]string    `yaml:"confidence"`
-	Report     map[string]string    `yaml:"report"`
-	Values     map[string]string    `yaml:"values"`
-	Notes      []Note               `yaml:"notes"`
-	Kinds      map[string]string    `yaml:"kinds"`
-	Results    map[string]string    `yaml:"results"`
-	Countries  map[string]string    `yaml:"countries"` // ISO code -> name as in "из <name>"
-	Colos      map[string]string    `yaml:"colos"`     // Cloudflare node (airport code) -> city
-	UI         map[string]string    `yaml:"ui"`
+	Diagnoses map[string]Diagnosis `yaml:"diagnoses"`
+	// The stability check's verdicts and words (window, report), apart from the site check's.
+	LiveDiagnoses map[string]Diagnosis `yaml:"live_diagnoses"`
+	Live          map[string]string    `yaml:"live"`
+	Steps         map[string]StepText  `yaml:"steps"`
+	Status        map[string]string    `yaml:"status"`
+	Confidence    map[string]string    `yaml:"confidence"`
+	Report        map[string]string    `yaml:"report"`
+	Values        map[string]string    `yaml:"values"`
+	Notes         []Note               `yaml:"notes"`
+	Kinds         map[string]string    `yaml:"kinds"`
+	Results       map[string]string    `yaml:"results"`
+	Countries     map[string]string    `yaml:"countries"` // ISO code -> name as in "из <name>"
+	Colos         map[string]string    `yaml:"colos"`     // Cloudflare node (airport code) -> city
+	UI            map[string]string    `yaml:"ui"`
 }
 
 // Load reads one language, e.g. "ru".
