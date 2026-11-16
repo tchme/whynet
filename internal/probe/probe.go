@@ -134,6 +134,9 @@ type Env struct {
 	RootCAs       *x509.CertPool // nil: the system store
 	Timeout       time.Duration  // per network operation
 	Markers       Markers
+	// The app check's names and owners; nil skips them (the lab has no internet).
+	PTR func(ctx context.Context, ip string) ([]string, error)
+	ASN func(ctx context.Context, ip string) (asn, name string)
 }
 
 // DefaultEnv is the real network of this computer.
@@ -154,6 +157,8 @@ func DefaultEnv(m Markers) Env {
 		Browser: browserRun,
 		Timeout: 6 * time.Second,
 		Markers: m,
+		PTR:     net.DefaultResolver.LookupAddr,
+		ASN:     ASN,
 	}
 }
 

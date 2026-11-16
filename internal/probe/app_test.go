@@ -1,6 +1,10 @@
 package probe
 
 import (
+	"context"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"testing"
 	"time"
@@ -43,6 +47,78 @@ func TestPrograms(t *testing.T) {
 	}
 	if !got[4].Browser {
 		t.Errorf("opera not marked as a browser")
+	}
+	// Recording finds a program's processes even with no window and no connections right now.
+	found := false
+	for _, g := range groupPrograms(procs, nil, nil) {
+		found = found || g.Exe == "updater.exe"
+	}
+	if !found {
+		t.Errorf("groupPrograms dropped a windowless program without connections")
+	}
+}
+
+func TestNameServers(t *testing.T) {
+	tlsSrv := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})) // certificate: example.com
+	defer tlsSrv.Close()
+	plain, err := net.Listen("tcp", "127.0.0.1:0") // not TLS: answers with its own bytes (Telegram's MTProto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer plain.Close()
+	go func() {
+		for {
+			c, err := plain.Accept()
+			if err != nil {
+				return
+			}
+			c.Write([]byte("hello, this is not TLS"))
+			c.Close()
+		}
+	}()
+	routes := map[string]string{
+		"203.0.113.5:8443": tlsSrv.Listener.Addr().String(),
+		"198.18.0.9:443":   tlsSrv.Listener.Addr().String(),
+		"203.0.113.6:9000": plain.Addr().String(),
+	}
+	env := Env{
+		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, routes[addr])
+		},
+		DoH: func(_ context.Context, host string) (DoHAnswer, error) {
+			return DoHAnswer{IPs: map[string][]string{"example.com": {"203.0.113.5"}}[host]}, nil
+		},
+		PTR: func(_ context.Context, ip string) ([]string, error) {
+			return []string{"host-" + ip + ".isp.example."}, nil
+		},
+		ASN:     func(_ context.Context, ip string) (string, string) { return "AS64500", "Test net " + ip },
+		Timeout: 2 * time.Second,
+	}
+	servers := []*AppServer{
+		{IP: "203.0.113.5", Port: 8443},
+		{IP: "198.18.0.9", Port: 443, FakeIP: true},
+		{IP: "203.0.113.6", Port: 9000},
+		{IP: "203.0.113.7", Port: 443}, // cached name, nothing listens
+	}
+	p := &prober{ctx: context.Background(), env: env}
+	p.nameServers(servers, map[string]string{"203.0.113.7": "cdn.example.net"})
+	want := []struct{ name, from, tls, real, owner string }{
+		{"example.com", "cert", "yes", "", "Test net 203.0.113.5"},
+		{"example.com", "cert", "yes", "203.0.113.5", "Test net 203.0.113.5"}, // the owner of the real address
+		{"host-203.0.113.6.isp.example", "ptr", "no", "", "Test net 203.0.113.6"},
+		{"cdn.example.net", "cache", "no", "", "Test net 203.0.113.7"},
+	}
+	for i, w := range want {
+		s := servers[i]
+		if s.Name != w.name || s.NameFrom != w.from || s.TLS != w.tls || s.RealIP != w.real || s.Owner != w.owner {
+			t.Errorf("server %d: %+v, want %+v", i, *s, w)
+		}
+	}
+	if got := certName([]string{"*.discord.gg", "discord.gg"}); got != "discord.gg" {
+		t.Errorf("certName exact first: %s", got)
+	}
+	if got := certName([]string{"*.spotify.com"}); got != "spotify.com" {
+		t.Errorf("certName wildcard: %s", got)
 	}
 }
 

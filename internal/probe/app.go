@@ -1,10 +1,12 @@
 package probe
 
 import (
+	"crypto/tls"
 	"net/netip"
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -59,10 +61,35 @@ func internet(a netip.Addr) bool {
 	return a.IsValid() && !a.IsUnspecified() && !a.IsLoopback() && !a.IsPrivate() && !a.IsLinkLocalUnicast() && !a.IsMulticast()
 }
 
-// programs groups processes into the picker's list. A helper without a window whose ancestor is a
-// windowed program (Steam's steamwebhelper) belongs to that program; a game started by a launcher has
-// its own window and stays its own program. Windowed programs first, then by connections.
+// programs is the picker's list: programs with a window or with connections now; windowed ones
+// first, then by connections, browsers last.
 func programs(procs []proc, conns map[uint32]int, browsers []string) []Program {
+	var out []Program
+	for _, g := range groupPrograms(procs, conns, browsers) {
+		if g.Window || g.Conns > 0 {
+			out = append(out, g)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Browser != b.Browser {
+			return !a.Browser
+		}
+		if a.Window != b.Window {
+			return a.Window
+		}
+		if a.Conns != b.Conns {
+			return a.Conns > b.Conns
+		}
+		return strings.ToLower(a.Name) < strings.ToLower(b.Name)
+	})
+	return out
+}
+
+// groupPrograms groups processes by program. A helper without a window whose ancestor is a
+// windowed program (Steam's steamwebhelper) belongs to that program; a game started by a launcher
+// has its own window and stays its own program.
+func groupPrograms(procs []proc, conns map[uint32]int, browsers []string) []Program {
 	byPID := map[uint32]*proc{}
 	windowed := map[string]bool{}
 	for i := range procs {
@@ -114,23 +141,10 @@ func programs(procs []proc, conns map[uint32]int, browsers []string) []Program {
 	}
 	var out []Program
 	for _, g := range list {
-		if g.Exe != "" && (g.Window || g.Conns > 0) {
+		if g.Exe != "" {
 			out = append(out, *g)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		a, b := out[i], out[j]
-		if a.Browser != b.Browser {
-			return !a.Browser
-		}
-		if a.Window != b.Window {
-			return a.Window
-		}
-		if a.Conns != b.Conns {
-			return a.Conns > b.Conns
-		}
-		return strings.ToLower(a.Name) < strings.ToLower(b.Name)
-	})
 	return out
 }
 
@@ -145,6 +159,14 @@ type AppServer struct {
 	Open   int    `json:"open"`              // established and fine (still open, or closed by a handshake, or long-lived)
 	// LongestS: the longest connection, in seconds.
 	LongestS float64 `json:"longest_s"`
+
+	// Filled after the recording.
+	Name     string `json:"name,omitempty"`
+	NameFrom string `json:"name_from,omitempty"` // cache (Windows DNS cache), cert (the server's certificate), ptr
+	TLS      string `json:"tls,omitempty"`       // yes: answers TLS (a certificate or an alert); no: something else or silent
+	RealIP   string `json:"real_ip,omitempty"`   // behind a fake-ip router: the name's real address (DoH)
+	ASN      string `json:"asn,omitempty"`
+	Owner    string `json:"owner,omitempty"` // the network's name
 }
 
 // conn is one connection being followed across reads of the table.
@@ -270,4 +292,82 @@ func (r *recorder) snapshot(now time.Time) []AppServer {
 		out = append(out, s)
 	}
 	return out
+}
+
+// nameServers fills each server's name, whether it speaks TLS, and who owns its network. The
+// first source that knows wins: the Windows DNS cache (cache, ip -> name; empty when Windows
+// refuses it without admin rights), the certificate the server shows without a name, its PTR.
+func (p *prober) nameServers(servers []*AppServer, cache map[string]string) {
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, parallel)
+	for _, s := range servers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			defer func() { recover() }() // a name is a bonus: never stops the check
+			if n := cache[s.IP]; n != "" {
+				s.Name, s.NameFrom = n, "cache"
+			}
+			names, speaks := p.certNames(s.IP, s.Port)
+			s.TLS = map[bool]string{true: "yes", false: "no"}[speaks]
+			if s.Name == "" && len(names) > 0 {
+				s.Name, s.NameFrom = certName(names), "cert"
+			}
+			if s.Name == "" && !s.FakeIP && p.env.PTR != nil {
+				ctx, cancel := p.timeout()
+				if ptr, err := p.env.PTR(ctx, s.IP); err == nil && len(ptr) > 0 {
+					s.Name, s.NameFrom = strings.TrimSuffix(ptr[0], "."), "ptr"
+				}
+				cancel()
+			}
+			ip := s.IP
+			if s.FakeIP {
+				ip = ""
+				if s.Name != "" {
+					if a, err := p.env.DoH(p.ctx, s.Name); err == nil && len(a.IPs) > 0 {
+						s.RealIP, ip = a.IPs[0], a.IPs[0]
+					}
+				}
+			}
+			if ip != "" && p.env.ASN != nil {
+				s.ASN, s.Owner = p.env.ASN(p.ctx, ip)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// certNames asks the server for its certificate without naming a site (no SNI): many show the
+// names they serve (Discord: discord.gg, discord.media). speaks: it answered TLS at all, with a
+// certificate or with an alert (Cloudflare wants a name first).
+func (p *prober) certNames(ip string, port uint16) (names []string, speaks bool) {
+	ctx, cancel := p.timeout()
+	defer cancel()
+	raw, err := p.env.Dial(ctx, "tcp", netip.AddrPortFrom(netip.MustParseAddr(ip), port).String())
+	if err != nil {
+		return nil, false
+	}
+	defer raw.Close()
+	c := tls.Client(raw, &tls.Config{InsecureSkipVerify: true}) // no ServerName: no SNI
+	if err := c.HandshakeContext(ctx); err != nil {
+		return nil, tlsClass(err) == "alert"
+	}
+	cert := c.ConnectionState().PeerCertificates[0]
+	names = cert.DNSNames
+	if len(names) == 0 && cert.Subject.CommonName != "" {
+		names = []string{cert.Subject.CommonName}
+	}
+	return names, true
+}
+
+// certName picks the name to test with: the first exact one, else a wildcard's domain.
+func certName(names []string) string {
+	for _, n := range names {
+		if !strings.HasPrefix(n, "*") {
+			return strings.ToLower(n)
+		}
+	}
+	return strings.ToLower(strings.TrimPrefix(names[0], "*."))
 }

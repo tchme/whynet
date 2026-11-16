@@ -158,7 +158,7 @@ func programPIDs(exe string, browsers []string) map[uint32]bool {
 	if err != nil {
 		return nil
 	}
-	for _, p := range programs(procs, nil, browsers) {
+	for _, p := range groupPrograms(procs, nil, browsers) { // not the picker's filter: a program may have no connections right now
 		if strings.EqualFold(p.Exe, exe) {
 			pids := map[uint32]bool{}
 			for _, id := range p.PIDs {
@@ -205,4 +205,59 @@ func RecordApp(ctx context.Context, exe string, browsers []string, done <-chan s
 		case <-tick.C:
 		}
 	}
+}
+
+var (
+	dnsapi                   = windows.NewLazySystemDLL("dnsapi.dll")
+	procDnsGetCacheDataTable = dnsapi.NewProc("DnsGetCacheDataTable")
+	procDnsFree              = dnsapi.NewProc("DnsFree")
+)
+
+const dnsQueryNoWire = 0x10 // DNS_QUERY_NO_WIRE_QUERY: answer from the cache only
+
+type dnsCacheEntry struct {
+	Next       *dnsCacheEntry
+	Name       *uint16
+	Type, Size uint16
+	Flags      uint32
+}
+
+// DNSCacheNames maps addresses to the names the Windows DNS cache holds them for (ip -> name).
+// shortcut: newer Windows 11 refuses the cache without admin rights (the author's 26H2 gives
+// nothing; `ipconfig /displaydns` says "requires elevation"); the certificate names the server
+// then. With a CNAME chain the first name read wins; prefer the asked name if that misleads.
+func DNSCacheNames() map[string]string {
+	out := map[string]string{}
+	var first *dnsCacheEntry
+	if r, _, _ := procDnsGetCacheDataTable.Call(uintptr(unsafe.Pointer(&first))); r == 0 {
+		return out
+	}
+	for e := first; e != nil; {
+		next := e.Next
+		if e.Name != nil && (e.Type == windows.DNS_TYPE_A || e.Type == windows.DNS_TYPE_AAAA) {
+			name := strings.ToLower(windows.UTF16PtrToString(e.Name))
+			var rec *windows.DNSRecord
+			if windows.DnsQuery(name, e.Type, dnsQueryNoWire, nil, &rec, nil) == nil {
+				for r := rec; r != nil; r = r.Next {
+					var ip netip.Addr
+					switch r.Type {
+					case windows.DNS_TYPE_A:
+						ip = netip.AddrFrom4([4]byte(r.Data[:4]))
+					case windows.DNS_TYPE_AAAA:
+						ip = netip.AddrFrom16([16]byte(r.Data[:16]))
+					}
+					if k := ip.String(); ip.IsValid() && out[k] == "" {
+						out[k] = name
+					}
+				}
+				windows.DnsRecordListFree(rec, 1) // DnsFreeRecordList
+			}
+		}
+		if e.Name != nil {
+			procDnsFree.Call(uintptr(unsafe.Pointer(e.Name)), 0) // DnsFreeFlat
+		}
+		procDnsFree.Call(uintptr(unsafe.Pointer(e)), 0)
+		e = next
+	}
+	return out
 }
