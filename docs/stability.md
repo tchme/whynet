@@ -81,6 +81,7 @@ Order (picked): stage 1 first, the chain without picking a program, because the 
 | `live_too_short` | under 30 s | measure longer |
 | `live_wifi` | router unstable by itself, wireless | the Wi-Fi link between this computer and the router; cable, closer, 5 GHz; the background scan when periodic |
 | `live_lan` | router unstable by itself, cable | the cable, the port, the network card or the router itself; can't tell which from here |
+| `live_fake_answers` | both controls answer in under 1 ms (faster than any real path) | a VPN client on this PC (its TUN adapter) answers the pings itself: turn the VPN or its TUN mode off for the recording; the router link is still measured (added 2026-11-17 after a friend's Throne recording said "stable") |
 | `live_isp` | router stable, the first node beyond it unstable by itself | the ISP's access network: call them with the report; reboot the router / ONT first |
 | `live_isp_network` | router and the first node stable, the controls unstable | further inside the ISP or its uplink |
 | `live_route` | everything stable up to the controls, the server (or its stand-in) unstable | the route to this server or the server; the trace hop where it starts; a VPN may route around it (or make it worse) |
