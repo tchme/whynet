@@ -46,47 +46,8 @@ func Markdown(res *probe.Result, v rules.Verdict, t *locales.Texts, hide bool) s
 	w("- %s: %s\n", r["time"], res.Started.Format("2006-01-02 15:04:05 -07:00"))
 	w("- %s: **%s** (%s). %s\n", r["verdict"], d.Title, t.Confidence[v.Confidence], locales.Fill(d.Explain, facts))
 	w("- %s: %s\n", r["advice"], locales.Fill(d.Advice, facts))
-	if len(res.Steps) > 0 && res.Steps[0].ID == "local" {
-		ev := res.Steps[0].Evidence
-		if osv, _ := ev["os"].(string); osv != "" {
-			w("- %s: %s\n", r["computer"], osv)
-		}
-		if pub, _ := ev["public"].(map[string]string); pub["isp"] != "" {
-			w("- %s: %s (%s, %s)\n", r["isp"], pub["isp"], pub["asn"], pub["country"])
-		}
-	}
-	if facts["http.via_vpn"] != "" {
-		w("- %s: %s\n", r["path"], t.Note(facts, false))
-	}
-	if facts["local.dpi_tool"] != "" && (facts["local.dpi_tool"] != "none" || facts["local.dpi_installed"] == "true") {
-		plain := t.Plain(facts)
-		if plain["tcp.dpi_ipset"] == "" {
-			plain["tcp.dpi_ipset"] = t.Values["unknown"]
-		}
-		w("- %s: %s\n", r["dpi"], locales.Fill(r["dpi_line"], plain))
-		// Raw values: the words Flowseal's own service.bat menu shows, so the person can match them.
-		if facts["local.dpi_game_filter"] != "" && facts["local.dpi_ipset_filter"] != "" {
-			w("- %s: %s\n", r["flowseal"], locales.Fill(r["flowseal_line"], facts))
-		}
-	}
-	privacy := r["privacy_shown"]
-	if hide {
-		privacy = r["privacy_hidden"]
-	}
-	w("- %s: %s\n", r["privacy"], privacy)
-
-	w("\n## %s\n", r["steps"])
-	for i, s := range res.Steps {
-		st := t.Steps[s.ID]
-		timing := fmt.Sprintf(" (%d %s)", s.Ms, r["ms"])
-		if s.ID == "own" {
-			timing = "" // a record from the person's browser: no time of its own
-		}
-		w("\n### %d. %s %s%s\n\n%s\n\n", i+1, st.Name, t.Status[s.Status], timing, st.What)
-		for _, k := range slices.Sorted(maps.Keys(s.Facts)) {
-			w("- `%s`: %s\n", k, s.Facts[k])
-		}
-	}
+	writeEnv(w, t, res.Steps, facts, hide)
+	writeSteps(w, t, res.Steps)
 
 	for _, s := range res.Steps {
 		if br, ok := s.Evidence["browser"].(probe.BrowserResult); ok {
@@ -193,4 +154,55 @@ func Markdown(res *probe.Result, v rules.Verdict, t *locales.Texts, hide bool) s
 		}
 	}
 	return out
+}
+
+// writeEnv writes the summary lines about this computer and its network: OS, ISP, the path to
+// the site, a DPI-bypass tool, what the report hides.
+func writeEnv(w func(string, ...any), t *locales.Texts, steps []probe.Step, facts map[string]string, hide bool) {
+	r := t.Report
+	if len(steps) > 0 && steps[0].ID == "local" {
+		ev := steps[0].Evidence
+		if osv, _ := ev["os"].(string); osv != "" {
+			w("- %s: %s\n", r["computer"], osv)
+		}
+		if pub, _ := ev["public"].(map[string]string); pub["isp"] != "" {
+			w("- %s: %s (%s, %s)\n", r["isp"], pub["isp"], pub["asn"], pub["country"])
+		}
+	}
+	if facts["http.via_vpn"] != "" {
+		w("- %s: %s\n", r["path"], t.Note(facts, false))
+	}
+	if facts["local.dpi_tool"] != "" && (facts["local.dpi_tool"] != "none" || facts["local.dpi_installed"] == "true") {
+		plain := t.Plain(facts)
+		if plain["tcp.dpi_ipset"] == "" {
+			plain["tcp.dpi_ipset"] = t.Values["unknown"]
+		}
+		w("- %s: %s\n", r["dpi"], locales.Fill(r["dpi_line"], plain))
+		// Raw values: the words Flowseal's own service.bat menu shows, so the person can match them.
+		if facts["local.dpi_game_filter"] != "" && facts["local.dpi_ipset_filter"] != "" {
+			w("- %s: %s\n", r["flowseal"], locales.Fill(r["flowseal_line"], facts))
+		}
+	}
+	privacy := r["privacy_shown"]
+	if hide {
+		privacy = r["privacy_hidden"]
+	}
+	w("- %s: %s\n", r["privacy"], privacy)
+}
+
+// writeSteps writes each step with what it checks and its facts.
+func writeSteps(w func(string, ...any), t *locales.Texts, steps []probe.Step) {
+	r := t.Report
+	w("\n## %s\n", r["steps"])
+	for i, s := range steps {
+		st := t.Steps[s.ID]
+		timing := fmt.Sprintf(" (%d %s)", s.Ms, r["ms"])
+		if s.ID == "own" {
+			timing = "" // a record from the person's browser: no time of its own
+		}
+		w("\n### %d. %s %s%s\n\n%s\n\n", i+1, st.Name, t.Status[s.Status], timing, st.What)
+		for _, k := range slices.Sorted(maps.Keys(s.Facts)) {
+			w("- `%s`: %s\n", k, s.Facts[k])
+		}
+	}
 }
