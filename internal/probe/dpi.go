@@ -1,6 +1,7 @@
 package probe
 
 import (
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,6 +63,55 @@ func hostListed(files map[string]string, host string) (verdict string, in []stri
 		return "true", in
 	}
 	return "false", nil
+}
+
+// ipListed says how zapret-style address lists (ipset-*.txt) treat ip: "true", "false" or
+// "excluded", plus the matching entry. An empty ipset-all.txt is Flowseal's "any" mode:
+// the bypass applies to every address. Lines are addresses or CIDR ranges.
+//
+// shortcut: like hostListed, checks every ipset file, not only those the running strategy uses.
+func ipListed(files map[string]string, ip string) (verdict, entry string) {
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return "unknown", ""
+	}
+	verdict = "false"
+	for name, content := range files {
+		lname := strings.ToLower(name)
+		if !strings.HasPrefix(lname, "ipset") {
+			continue
+		}
+		exclude := strings.Contains(lname, "exclude")
+		if !exclude && strings.TrimSpace(content) == "" && lname == "ipset-all.txt" {
+			if verdict == "false" {
+				verdict, entry = "true", "any"
+			}
+			continue
+		}
+		for _, line := range strings.Split(content, "\n") {
+			s, _, _ := strings.Cut(line, "#")
+			if s = strings.TrimSpace(s); s == "" {
+				continue
+			}
+			pfx, err := netip.ParsePrefix(s)
+			if err != nil {
+				a, aerr := netip.ParseAddr(s)
+				if aerr != nil {
+					continue
+				}
+				pfx = netip.PrefixFrom(a, a.BitLen())
+			}
+			if !pfx.Contains(addr) {
+				continue
+			}
+			if exclude {
+				return "excluded", s // an exclude list wins, as in winws
+			}
+			verdict, entry = "true", s
+			break
+		}
+	}
+	return verdict, entry
 }
 
 // readLists loads the .txt lists from a bundle's "lists" folder; nil if there is none.

@@ -59,7 +59,11 @@ func Markdown(res *probe.Result, v rules.Verdict, t *locales.Texts, hide bool) s
 		w("- %s: %s\n", r["path"], t.Note(facts, false))
 	}
 	if facts["local.dpi_tool"] != "" && (facts["local.dpi_tool"] != "none" || facts["local.dpi_installed"] == "true") {
-		w("- %s: %s\n", r["dpi"], locales.Fill(r["dpi_line"], t.Plain(facts)))
+		plain := t.Plain(facts)
+		if plain["tcp.dpi_ipset"] == "" {
+			plain["tcp.dpi_ipset"] = t.Values["unknown"]
+		}
+		w("- %s: %s\n", r["dpi"], locales.Fill(r["dpi_line"], plain))
 	}
 	privacy := r["privacy_shown"]
 	if hide {

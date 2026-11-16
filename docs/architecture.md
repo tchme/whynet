@@ -76,6 +76,7 @@ input -> probe.Target -> probe.Run(ctx, Env, onStep) -> Result{Steps[{facts, evi
 | `dns.match` | same, differ, fakeip (system answers in 198.18.0.0/15), unknown |
 | `dns.used` | system, doh (whose addresses the next steps use) |
 | `tcp.status` / `tcp.ip` | ok, timeout, reset, refused, unreachable, eof, error, skip / address used |
+| `tcp.dpi_ipset` | true, false, excluded, unknown: is `tcp.ip` in the bundle's `lists\ipset-*.txt` (CIDR ranges; an empty `ipset-all.txt` is Flowseal's "any" mode, true for every address; the matching entry is in the evidence). Only when the bundle's lists were read |
 | `tls.status` | ok, reset, timeout, eof, alert, cert_expired, cert_name, cert_untrusted, cert_invalid, error, skip |
 | `tls.control` | ok, failed: handshake to the same address with a neutral SNI (`example.org`), only after a cut |
 | `tls.alt` | like `tls.status`: real SNI to the DoH address, only when `dns.match=differ` |
@@ -93,6 +94,7 @@ input -> probe.Target -> probe.Run(ctx, Env, onStep) -> Result{Steps[{facts, evi
 | `br.blocked_page` / `br.page_title` | true: the plain window got such a page / its title |
 | `br.visible` | true: the person used a visible window |
 | `res.checked` / `res.failed` | content servers checked / failed (ads excluded) |
+| `res.browser_dead` | true: every server the browser failed on is a name neither DNS knows (`gone`): dead links in the page |
 | `res.problem`, `res.worst`, `res.failed_hosts` | true / dns, ip, sni, tls, cert, http, stall (worst first) / up to 3 |
 | `res.stall`, `res.stall_hosts` | true / servers that froze before 64 KB (the "16 KB" pattern) |
 | `res.slow`, `res.slow_hosts`, `res.slow_kbps` | true / servers under 64 KB/s on 256 KB+ (own sample or the browser's big files) / the slowest |

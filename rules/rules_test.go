@@ -55,6 +55,17 @@ func TestMatch(t *testing.T) {
 		{with("tls.status", "reset", "tls.control", "ok", "local.dpi_tool", "none", "local.dpi_installed", "false"), "sni_blocked"},
 		{with("tls.status", "reset", "tls.control", "ok", "local.dpi_tool", "zapret", "local.dpi_listed", "excluded"), "dpi_strategy_fails"},
 		{with("local.dpi_tool", "zapret", "local.dpi_listed", "true"), "all_ok"},
+		// not listed by name, but by address (a Cloudflare range in ipset-all.txt): the strategy is at fault
+		{with("tls.status", "reset", "tls.control", "ok", "local.dpi_tool", "zapret", "local.dpi_listed", "false", "tcp.dpi_ipset", "true"), "dpi_strategy_fails"},
+		{with("tls.status", "reset", "tls.control", "ok", "local.dpi_tool", "zapret", "local.dpi_listed", "false", "tcp.dpi_ipset", "false"), "dpi_not_listed"},
+		// the handshake passes, the request is reset (live, Flex Ltd. 2026-11-16)
+		{with("http.status", "reset", "http.class", "fail", "local.dpi_tool", "none"), "cut_midway"},
+		{with("http.status", "reset", "http.class", "fail", "local.dpi_tool", "zapret", "local.dpi_listed", "false", "tcp.dpi_ipset", "true"), "dpi_strategy_fails"},
+		{with("http.status", "reset", "http.class", "fail", "local.dpi_tool", "zapret", "local.dpi_listed", "false", "tcp.dpi_ipset", "false"), "dpi_not_listed"},
+		// whynet's request passed (an anti-bot page), the browser's was reset: never "all fine"
+		{with("http.challenge", "true", "br.status", "nav_failed", "br.error", "net::ERR_CONNECTION_RESET"), "cut_midway"},
+		{with("http.challenge", "true", "br.status", "nav_failed", "br.error", "net::ERR_CONNECTION_RESET", "local.dpi_tool", "zapret", "local.dpi_listed", "false"), "dpi_not_listed"},
+		{with("br.status", "nav_failed", "br.error", "net::ERR_NAME_NOT_RESOLVED"), "unknown"},
 		// the page shows late or never; a blocked content server explains more and wins
 		{with("br.status", "ok", "br.slow_load", "true", "br.dom_s", "12.4"), "page_slow"},
 		{with("br.status", "ok", "br.loaded", "false", "br.dom_s", "20+"), "page_slow"},

@@ -21,9 +21,10 @@ type dpiProc struct {
 
 // dpiInfo finds DPI-bypass tools (zapret/Flowseal, GoodbyeDPI) and the WinDivert driver
 // they run on, and whether host is in zapret's lists. All of it works without admin rights.
-func dpiInfo(host string, m Markers) (map[string]string, map[string]any) {
-	facts := map[string]string{"local.dpi_tool": "none", "local.dpi_installed": "false", "local.windivert": "absent"}
-	ev := map[string]any{}
+// lists are the bundle's list files, for the address check once the address is known.
+func dpiInfo(host string, m Markers) (facts map[string]string, ev map[string]any, lists map[string]string) {
+	facts = map[string]string{"local.dpi_tool": "none", "local.dpi_installed": "false", "local.windivert": "absent"}
+	ev = map[string]any{}
 	running := map[string]bool{}
 	var paths []string // exe, service and driver paths that may lead to the bundle folder
 
@@ -93,11 +94,12 @@ func dpiInfo(host string, m Markers) (map[string]string, map[string]any) {
 				if len(in) > 0 {
 					ev["listed_in"] = in
 				}
+				lists = files
 				break
 			}
 		}
 	}
-	return facts, ev
+	return facts, ev, lists
 }
 
 // serviceState is "running", "stopped", "absent" or "unknown", plus the service's command line.

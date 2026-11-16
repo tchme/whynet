@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"fmt"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -69,18 +70,26 @@ func TestContentLab(t *testing.T) {
 	})
 	dpi := dpiServer(t, cert, "img.example.com")
 
+	var browser func(context.Context, string) probe.BrowserResult // nil: no browser step
 	run := func(html string) (map[string]string, rules.Verdict) {
 		main := serveWith(t, cert, page(html))
 		l := &lab{pool: pool, routes: map[string]string{
 			"10.0.0.1:443": main, "10.0.0.2:443": dpi, "10.0.0.7:443": ok, "10.0.0.8:443": frozen,
 		}}
-		env := l.env(nil, nil, []string{"10.0.0.1"}, nil)
+		env := l.env(nil, nil, nil, nil)
+		env.Browser = browser
 		dns := map[string]string{"example.com": "10.0.0.1", "img.example.com": "10.0.0.2", "cdn.example.com": "10.0.0.7", "slow.example.com": "10.0.0.8"}
 		env.Lookup = func(_ context.Context, host string) ([]string, error) {
 			if ip, ok := dns[host]; ok {
 				return []string{ip}, nil
 			}
-			return nil, fmt.Errorf("no such host %s", host)
+			return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+		}
+		env.DoH = func(_ context.Context, host string) (probe.DoHAnswer, error) {
+			if ip, ok := dns[host]; ok {
+				return probe.DoHAnswer{Server: "lab", IPs: []string{ip}}, nil
+			}
+			return probe.DoHAnswer{Server: "lab"}, probe.ErrNXDomain
 		}
 		res, err := probe.Run(context.Background(), env, "example.com", nil)
 		if err != nil {
@@ -106,5 +115,18 @@ func TestContentLab(t *testing.T) {
 	f, v = run(`<script src="https://cdn.example.com/app.js"></script>`)
 	if v.ID != "all_ok" || f["res.checked"] != "1" || f["res.failed"] != "0" {
 		t.Errorf("all fine: verdict %s, facts %v", v.ID, f)
+	}
+
+	// The browser's only failure is a name no DNS knows: a dead link in the page, not a problem
+	// (youtube.com named a googlevideo node that doesn't exist; it was "content_flaky", live).
+	browser = func(context.Context, string) probe.BrowserResult {
+		return probe.BrowserResult{Status: "ok", DomMs: 500, LoadMs: 600, Requests: 3, Failed: 1, Hosts: []*probe.BrowserHost{
+			{Host: "dead.example.com", Requests: 1, Failed: 1, Errors: map[string]int{"net::ERR_NAME_NOT_RESOLVED": 1}, Types: []string{"fetch"}},
+			{Host: "cdn.example.com", Requests: 2, Types: []string{"script"}},
+		}}
+	}
+	f, v = run(`<script src="https://cdn.example.com/app.js"></script>`)
+	if v.ID != "all_ok" || f["res.browser_dead"] != "true" || f["br.worst"] != "dns" {
+		t.Errorf("dead link: verdict %s, facts %v", v.ID, f)
 	}
 }

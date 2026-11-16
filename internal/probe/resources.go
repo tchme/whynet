@@ -251,6 +251,19 @@ func (p *prober) content(s *Step) {
 			minKBps = kbps
 		}
 	}
+	// Every server the browser failed on is a name no DNS knows: dead links in the page, nothing
+	// to fix on this side (a youtube.com page named a googlevideo node that doesn't exist, live).
+	result := map[string]string{}
+	for _, h := range hosts {
+		result[h.Host] = h.Result
+	}
+	dead := len(p.browserFailed) > 0
+	for _, host := range p.browserFailed {
+		dead = dead && result[host] == "gone"
+	}
+	if dead {
+		s.Facts["res.browser_dead"] = "true"
+	}
 	s.Facts["res.checked"] = strconv.Itoa(len(hosts))
 	s.Facts["res.failed"] = strconv.Itoa(len(failed))
 	if len(failed) > 0 {

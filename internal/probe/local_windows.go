@@ -50,7 +50,8 @@ func localInfo(ctx context.Context, host string, m Markers) Local {
 		}
 	}
 
-	dpiFacts, dpiEv := dpiInfo(host, m)
+	dpiFacts, dpiEv, lists := dpiInfo(host, m)
+	l.DPILists = lists
 	maps.Copy(l.Facts, dpiFacts)
 	if len(dpiEv) > 0 {
 		l.Evidence["dpi_bypass"] = dpiEv

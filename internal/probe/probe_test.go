@@ -97,6 +97,36 @@ func TestHostListed(t *testing.T) {
 	}
 }
 
+func TestIPListed(t *testing.T) {
+	files := map[string]string{
+		"ipset-all.txt":          "172.67.128.0/17\r\n104.16.0.0/12 # cloudflare\n1.2.3.4\nnot an address\n",
+		"ipset-exclude.txt":      "104.21.0.0/16\n",
+		"list-general.txt":       "10.0.0.0/8\n", // a name list: addresses there mean nothing
+		"ipset-exclude-user.txt": "",
+	}
+	cases := []struct{ ip, want, entry string }{
+		{"172.67.182.196", "true", "172.67.128.0/17"}, // rutracker.org behind Cloudflare
+		{"104.18.33.206", "true", "104.16.0.0/12"},
+		{"1.2.3.4", "true", "1.2.3.4"},
+		{"104.21.32.39", "excluded", "104.21.0.0/16"}, // the exclude list wins
+		{"130.211.32.14", "false", ""},
+		{"10.1.1.1", "false", ""},
+		{"", "unknown", ""},
+	}
+	for _, c := range cases {
+		if got, entry := ipListed(files, c.ip); got != c.want || entry != c.entry {
+			t.Errorf("ipListed(%s) = %s %q, want %s %q", c.ip, got, entry, c.want, c.entry)
+		}
+	}
+	// Flowseal's "any" mode: an empty ipset-all.txt applies the bypass to every address
+	if got, entry := ipListed(map[string]string{"ipset-all.txt": "", "ipset-exclude.txt": "192.168.0.0/16\n"}, "130.211.32.14"); got != "true" || entry != "any" {
+		t.Errorf("any mode: %s %q", got, entry)
+	}
+	if got, _ := ipListed(map[string]string{"ipset-all.txt": "\n", "ipset-exclude.txt": "192.168.0.0/16\n"}, "192.168.1.1"); got != "excluded" {
+		t.Errorf("any mode, excluded address: %s", got)
+	}
+}
+
 func TestTraceAndMask(t *testing.T) {
 	kv := parseTrace("fl=1\nip=95.24.13.7\nloc=RU\nwarp=off\n")
 	if kv["ip"] != "95.24.13.7" || kv["loc"] != "RU" {

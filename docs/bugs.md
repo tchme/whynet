@@ -115,3 +115,24 @@ Windows does not always let a script bring a window to the front. Test keystroke
 - **Symptom (avoided):** `pattern all:frontend/dist: no matching files found` on a fresh clone.
 - **Cause:** `main.go` embeds `frontend/dist`, which the Wails scaffold's `.gitignore` excluded entirely.
 - **Fix:** `.gitignore` keeps `frontend/dist/gitkeep`.
+
+## "All fine" while the browser's page load was reset (linkedin.com, zapret)
+
+- **Symptom:** a friend's run (Flex Ltd., zapret running): linkedin.com `all_ok` (high), though the browser step failed with `net::ERR_CONNECTION_RESET` on the page itself.
+- **Cause:** whynet's own request got through (a reCAPTCHA page, HTTP 200), and no rule looked at `br.status=nav_failed`, so the rules fell through to `all_ok`. The same report without zapret had TLS ok and the request reset: `unknown`, as no rule knew a cut after the handshake either.
+- **Fix:** `cut_midway` (TLS ok, then `http.status=reset` or the browser's `ERR_CONNECTION_RESET`), with the `dpi_*` twins when a bypass runs; any other `nav_failed` gives `unknown`, never `all_ok`.
+- **Verified:** table cases built from both reports' facts. Not re-run on that network.
+
+## zapret: "site not in the lists" for sites listed by address
+
+- **Symptom:** rutracker.org with Flowseal zapret: "сайт в списках запрета: нет", though the bypass did act on it (handshake passed).
+- **Cause:** only the name lists were read. Flowseal's `ipset-all.txt` holds whole Cloudflare and Google ranges (172.67.128.0/17, 104.16.0.0/12, 162.159.128.0/19, 142.250.0.0/15), and an empty `ipset-all.txt` is its "any" mode (`service.bat`: zero lines = any): every address gets the bypass.
+- **Fix:** the TCP step checks the address against `ipset-*.txt` (`tcp.dpi_ipset`; an exclude list wins); `dpi_not_listed` needs both name and address unlisted.
+- **Verified:** unit test `TestIPListed`; live on the author's PC (empty `ipset-all.txt`): `tcp.dpi_ipset=true`, entry `any`.
+
+## A dead link counted as "the browser failed, the servers are fine"
+
+- **Symptom:** a youtube.com video with zapret: `content_flaky`, "the browser failed on rr5---sn-t0a7lnee.googlevideo.com, though the separate check passed"; that check had actually said "no such domain".
+- **Cause:** `gone` (neither the system DNS nor DoH knows the name) is not a failure in the content step, so the rule for browser-only failures fired. The player used other video nodes; nothing was broken.
+- **Fix:** `res.browser_dead` when every server the browser failed on is `gone`; it gives `all_ok` before `content_flaky`.
+- **Verified:** `TestContentLab` dead link case (`content_flaky` without the fix).

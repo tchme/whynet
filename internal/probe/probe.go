@@ -98,6 +98,7 @@ type Local struct {
 	Facts    map[string]string
 	Evidence map[string]any
 	Mask     map[string]string
+	DPILists map[string]string // a DPI-bypass bundle's list files by name; nil when none was found
 }
 
 // DoHAnswer is an answer from an independent DNS-over-HTTPS resolver.
@@ -204,6 +205,7 @@ type prober struct {
 	dnsDiffer bool
 	tcpOK     bool
 	tlsOK     bool
+	dpiLists  map[string]string // from the local step
 
 	pageOK        bool             // the page itself loaded: content steps have something to check
 	body          []byte           // the page's HTML
@@ -247,6 +249,7 @@ func (p *prober) local(s *Step) {
 	maps.Copy(s.Facts, l.Facts)
 	maps.Copy(s.Evidence, l.Evidence)
 	maps.Copy(p.res.Mask, l.Mask)
+	p.dpiLists = l.DPILists
 	switch {
 	case s.Facts["local.net"] == "none":
 		s.Status = "fail"
@@ -340,6 +343,14 @@ func (p *prober) tcp(s *Step) {
 	s.Facts["tcp.status"] = status
 	s.Facts["tcp.ip"] = p.ip
 	s.Evidence["tries"] = tries
+	// zapret's address lists: a site can get the bypass by its address alone (Cloudflare, Google ranges).
+	if p.dpiLists != nil {
+		v, entry := ipListed(p.dpiLists, p.ip)
+		s.Facts["tcp.dpi_ipset"] = v
+		if entry != "" {
+			s.Evidence["dpi_ipset_entry"] = entry
+		}
+	}
 	if !p.tcpOK {
 		s.Status = "fail"
 	}
