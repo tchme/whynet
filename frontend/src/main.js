@@ -421,7 +421,7 @@ function liveDetailsHTML(v) {
       ${w.phy ? `<span>${esc(L.wifi_phy)}:</span> ${esc(w.phy)}<br>` : ''}${w.rx_mbps ? `<span>${esc(L.wifi_rate)}:</span> ${w.rx_mbps} ${esc(L.mbps)}<br>` : ''}
       <span>${esc(L.wifi_ssid_hidden)}</span></div>` : '';
   const lags = v.lags?.length ? `<div class="fact-card"><b>${esc(L.lags_title)}</b>${v.lags.map(m => `<span>${esc(m.time)}:</span> ${esc(m.text)}`).join('<br>')}</div>` : '';
-  const cpu = v.cpu ? `<div class="fact-card"><b>${esc(L.link_cpu)}</b>${esc(fill(L.cpu_line, { avg: v.cpu.avg_pct, max: v.cpu.max_pct, busy: num(v.cpu.busy_pct) }))}</div>` : '';
+  const cpu = v.cpu ? `<div class="fact-card"><b>${esc(L.link_cpu)}</b>${esc(fill(L.cpu_line, { avg: v.cpu.avg_pct, max: v.cpu.max_pct, busy: v.cpu.busy_pct.toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) }))}</div>` : '';
   return `<div class="details">
     <div class="charthead"><div class="details-title">${esc(L.chart_title)}</div>
       <div class="seg small" role="tablist"><button type="button" data-act="view-lanes" aria-selected="${view === 'lanes'}">${esc(L.view_lanes)}</button>
@@ -462,7 +462,7 @@ function chartHover(e) {
     + (blame ? `<div class="why">${fill(esc(L.tip_blame), { link: `<b>${esc(linkName(blame))}</b>` })}</div>` : `<div class="why calm">${esc(L.tip_calm).replace(/:\s*(.+)$/, ': <b>$1</b>')}</div>`);
   tip.hidden = false;
   const bx = box.getBoundingClientRect(), px = e.clientX - bx.left, tw = tip.offsetWidth;
-  tip.style.left = `${px + 14 + tw > bx.width ? px - tw - 14 : px + 14}px`;
+  tip.style.left = `${Math.max(0, px + 14 + tw > bx.width ? px - tw - 14 : px + 14)}px`;
   tip.style.top = `${Math.max(0, e.clientY - bx.top - 40)}px`;
 }
 
