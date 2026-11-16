@@ -37,6 +37,23 @@ Every diagnosis whynet can give: how it is detected and how it is tested. Rules 
 | `all_ok` | Everything works; the problem is in the browser | TLS ok and 2xx/3xx | lab, table; live: youtube.com, github.com |
 | `unknown` | whynet can't tell; save the AI report | no other rule matched (always last); also the browser's navigation failed (`br.status=nav_failed`) for another reason while whynet's own request passed | table |
 
+## Stability check verdicts
+
+Rules in `rules/live.yaml` (first match wins, nearest link first), texts under `live_diagnoses` in `locales/ru.yaml`, facts in [architecture.md](architecture.md). "Analysis" = `internal/live/analyze_test.go` (synthetic recordings through the analysis and the rules), "session" = `session_test.go` (a fake network).
+
+| id | Meaning (plain) | Detected by | Tested |
+|---|---|---|---|
+| `live_too_short` | Recorded under 30 s | `live.too_short` | table, analysis |
+| `live_router_silent` | The router never answers pings | `live.router=silent` or no gateway | table, analysis |
+| `live_wifi` | Ping jumps because of the Wi-Fi link (high) | router unstable by itself, wireless | table, analysis (the friend's case: spikes every 60 s, everything behind repeats them) |
+| `live_lan` | The cable link, the network card or the router (likely) | router unstable by itself, cable | table, analysis |
+| `live_vpn` | The path through a VPN on this PC (likely) | `live.path_vpn` and the node beyond or the internet unstable | table, session (VPN adapter on the default route) |
+| `live_isp` | The ISP's access network (likely) | the first node beyond the router unstable by itself, confirmed by the internet links | table, analysis (also: a node that only ignores pings to itself is not blamed) |
+| `live_isp_network` | Deeper in the ISP's network (likely) | both controls unstable by themselves | table, analysis |
+| `live_route` | The route to the server or the server (likely) | the server (or its stand-in) unstable by itself | table, analysis |
+| `live_not_network` | The lag the person marked was not the network (likely) | nothing unstable, a lag mark on a calm network | table, analysis |
+| `live_stable` | The network held | nothing else matched (always last) | table, analysis; live: the author's PC on cable, 40 s (2026-11-16) |
+
 `all_ok` matters as much as the failures: it sends the person to the browser (cache, extensions, its own proxy or DNS-over-HTTPS setting).
 
 Still to verify on real networks (plan step 6): `isp_stub` and `dns_spoofed` against real ISP blocking, `https_intercepted`, `dpi_strategy_fails` and `dpi_conflict`. Done: `sni_blocked`, `cut_midway`, `dpi_not_listed` (a friend's network), `geo_blocked`, `hosts_entry`, `clock_wrong`, `proxy_in_way` (the author's PC). The "router VPN off" runs of the plan are dropped: the author's VPN must never be interrupted, and the friend's network has no VPN.

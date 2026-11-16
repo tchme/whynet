@@ -1,6 +1,6 @@
 # Stability check (design)
 
-Status: approved by the author 2026-11-16. Stage 1 is the next thing to build; stage 2 is designed here so stage 1 doesn't block it.
+Status: approved by the author 2026-11-16. Stage 1 built 2026-11-16 (package `internal/live`, `app_live.go`, the window's "Стабильность" mode, `whynet-cli -live`); stage 2 is designed here and not built yet.
 
 ## Intent
 
@@ -113,6 +113,16 @@ Order (picked): stage 1 first, the chain without picking a program, because the 
 - **Two controls:** they count as unstable only when both are; one jumpy control alone is that control's own path.
 - **IPv4 only** in stage 1 (as the site check's DNS today); a server given as IPv6 is refused with a plain message. Shortcut, to lift when a real game server needs it.
 - **One check at a time:** the site check and the stability check don't run together.
+
+## Decided while building stage 1
+
+- **Trouble is confirmed by the links behind.** A spike or loss on a link counts only when some farther link shows trouble at the same tick; otherwise it is the node answering pings to itself slowly (routers deprioritise that) while forwarding traffic fine. Live on the author's line the ISP's edge (100.64.49.23) answered its own pings at 2 ms usually and up to 22 ms, with nothing behind it moving: "stable", as it should be. The wandering-p95 test is not applied to that intermediate node at all.
+- **The node beyond the router** is the first trace hop in TTL 1-3 that is neither the router nor the target (on the author's line hop 2 never answers; hop 3 is the ISP's CGNAT edge).
+- **Controls by name:** "Интернет · Россия" (77.88.8.8) and "Интернет · мир" (1.1.1.1), two separate links on the screen and in the report.
+- **The live view's "по его вине"** is a running estimate (a two-minute median per link, no confirmation); the verdict's numbers come from the full analysis at "Готово".
+- **"Лагнуло" button** appears in the window only when Ctrl+Alt+L is held by another program.
+- **The window's Wi-Fi card** never shows the network name; the report keeps it masked unless "don't hide" is ticked (names under 3 characters are left alone, so masking cannot eat unrelated text).
+- **Not verified live yet:** Wi-Fi reading (the author's PC is on cable), the hotkey pressed in a game, a real Wi-Fi or ISP problem; the window was checked by screenshots of the built frontend with the Go side stubbed, not in the running app.
 
 ## Left to the builder
 

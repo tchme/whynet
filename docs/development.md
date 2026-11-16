@@ -21,6 +21,7 @@ go run ./cmd/whynet-cli -json youtube.com    # every fact and all raw evidence
 go run ./cmd/whynet-cli -save youtube.com    # also writes the AI report .md here
 go run ./cmd/whynet-cli -save -no-hide ...   # report without masking
 go run ./cmd/whynet-cli -no-browser ...      # skip the hidden Edge/Chrome step (faster)
+go run ./cmd/whynet-cli -live -for 1m [server]  # stability check: ping the chain for 1 minute (Ctrl+C ends early)
 wails dev                                    # app with live reload
 wails build                                  # build/bin/whynet.exe
 ```

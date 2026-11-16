@@ -156,3 +156,10 @@ Windows does not always let a script bring a window to the front. Test keystroke
 - **Cause:** commit 4fa280b (0.1.1) saved two lines of `report.go` through a cp1251 round trip: `×` became `Г—`, `—` became `вЂ”`. Nothing tested those two strings.
 - **Fix:** the characters restored; `TestMarkdownSymbols` checks both tables and looks for mojibake. When editing files from PowerShell 5.1, write UTF-8 explicitly (`Set-Content` defaults to the ANSI code page).
 - **Verified:** `TestMarkdownSymbols`.
+
+## The ISP name was missing for prefixes announced by several networks
+
+- **Symptom:** found while building the trace's "whose network" column: 77.88.8.8 gave an AS of "13238 208398" and no name.
+- **Cause:** Team Cymru's origin record lists every AS that announces a prefix, space-separated, in its first field; the code took the whole field as one number and asked for the name of "AS13238 208398". The site check's "Провайдер" line had the same bug for such ISPs.
+- **Fix:** `originASN` takes the first number; `probe.ASN` is shared by the site check and the trace.
+- **Verified:** `TestOriginASN`; live: 77.88.8.8 → AS13238 YANDEX, 89.179.0.1 → AS8402 CORBINA (Beeline).
