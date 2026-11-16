@@ -6,6 +6,8 @@ stubs:
   - eais.rkn.gov.ru
   - blocklist.rkn.gov.ru
   - warning.rt.ru
+  - blackhole.beeline.ru     # Beeline, seen live 2026-11-16
+  - ресурс заблокирован
   - доступ к информационному ресурсу ограничен
   - доступ к ресурсу ограничен
   - единый реестр

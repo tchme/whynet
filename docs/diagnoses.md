@@ -10,7 +10,8 @@ Every diagnosis whynet can give: how it is detected and how it is tested. Rules 
 | `clock_wrong` | Computer clock is wrong | certificate error plus clock skew > 5 min | table |
 | `dns_spoofed` | ISP substitutes the site's address | system and DoH differ, real address fails, DoH address works (`tls.alt=ok`) | lab |
 | `dns_blocked` | The site is hidden in DNS (likely) | system DNS says NXDOMAIN, DoH knows it and the DoH address works | table; live: rutracker.org through the author's router DNS (2026-11-16) |
-| `isp_stub` | ISP stub page | page or final URL matches `markers.yaml` stubs | lab (stub over HTTP after a TLS cut) |
+| `isp_stub` | ISP stub page | page or final URL matches `markers.yaml` stubs | lab (stub over HTTP after a TLS cut); live: rutracker.org on Beeline, `307 → http://blackhole.beeline.ru/` "Ресурс заблокирован" (shows up on some runs only, others time out) |
+| `sni_blocked_router` | Behind a fake-ip router: the site's name is cut, the path itself works (likely) | `dns.match=fakeip`, TLS cut, control SNI ok | table; live: rutracker.org excluded from Podkop, Beeline DPI |
 | `proxy_path_broken` | Breaks on the way through a VPN/proxy (usually on the router) | `dns.match=fakeip` and TLS not ok | lab |
 | `dpi_conflict` | Two WinDivert bypass tools fight (likely) | `local.dpi_tool=several` and TLS not ok | table |
 | `dpi_not_listed` | zapret runs, but the site is not in its lists (likely) | zapret running, `local.dpi_listed=false`, TLS cut | table; list matching unit test |

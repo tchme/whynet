@@ -42,6 +42,10 @@ func TestMatch(t *testing.T) {
 		{with("dns.system", "timeout", "dns.doh", "unavailable", "tcp.status", "skip", "tls.status", "skip"), "no_internet"},
 		{with("dns.system", "nxdomain"), "dns_blocked"},
 		{with("tls.status", "alert"), "unknown"},
+		// behind a fake-ip router: the name is cut, the path works; a stub page still says more
+		{with("dns.match", "fakeip", "tls.status", "timeout", "tls.control", "ok", "http.status", "timeout", "http.class", "fail"), "sni_blocked_router"},
+		{with("dns.match", "fakeip", "tls.status", "timeout", "tls.control", "ok", "http.stub", "true"), "isp_stub"},
+		{with("dns.match", "fakeip", "tls.status", "timeout", "tls.control", "failed"), "proxy_path_broken"},
 		// DPI-bypass tools: a cut with a tool running is about the tool first
 		{with("tls.status", "reset", "tls.control", "ok", "local.dpi_tool", "several"), "dpi_conflict"},
 		{with("tls.status", "reset", "tls.control", "ok", "local.dpi_tool", "zapret", "local.dpi_listed", "false"), "dpi_not_listed"},

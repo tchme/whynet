@@ -148,7 +148,7 @@ type InfoView struct {
 var tones = map[string]string{
 	"all_ok": "ok", "bot_check": "ok", "browser_ok": "ok",
 	"site_blocks_you": "warn", "hosts_entry": "warn", "no_such_site": "warn", "isp_dns_down": "warn", "clock_wrong": "warn",
-	"proxy_in_way": "warn", "https_intercepted": "warn", "proxy_path_broken": "warn", "unknown": "warn",
+	"proxy_in_way": "warn", "https_intercepted": "warn", "proxy_path_broken": "warn", "sni_blocked_router": "warn", "unknown": "warn",
 	"content_stall": "warn", "content_blocked": "warn", "content_slow": "warn", "content_flaky": "warn", "page_slow": "warn",
 	"dpi_conflict": "warn", "dpi_not_listed": "warn", "dpi_strategy_fails": "warn", "dpi_off": "warn",
 }

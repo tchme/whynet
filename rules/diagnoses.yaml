@@ -40,6 +40,13 @@
   confidence: high
   when: {http.stub: true}
 
+# Behind a fake-ip router: the real name is cut, a neutral name on the same path passes. The router
+# path works; the name is cut by the ISP (when the site goes direct) or on the VPN's way.
+# Live: rutracker.org excluded from Podkop, Beeline DPI (2026-11-16).
+- id: sni_blocked_router
+  confidence: likely
+  when: {dns.match: fakeip, tcp.status: ok, tls.status: [reset, timeout, eof], tls.control: ok}
+
 # Traffic goes through a fake-ip proxy (usually a VPN on the router) and breaks on that path.
 - id: proxy_path_broken
   confidence: likely
