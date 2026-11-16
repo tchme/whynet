@@ -28,6 +28,7 @@ func main() {
 		AssetServer:      &assetserver.Options{Assets: assets},
 		BackgroundColour: &options.RGBA{R: 0x16, G: 0x1d, B: 0x24, A: 255}, // the page's own background: no white flash
 		OnStartup:        app.startup,
+		OnShutdown:       app.shutdown,
 		Bind:             []interface{}{app},
 		Windows:          &windows.Options{Theme: windows.Dark}, // dark title bar too, whatever the Windows theme
 	})

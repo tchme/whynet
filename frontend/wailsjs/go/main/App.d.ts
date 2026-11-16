@@ -3,6 +3,8 @@
 import {main} from '../models';
 import {update} from '../models';
 
+export function CancelLive():Promise<void>;
+
 export function Check(arg1:string):Promise<main.CheckView>;
 
 export function CheckInBrowser(arg1:string):Promise<main.CheckView>;
@@ -13,10 +15,16 @@ export function CopyReport(arg1:boolean):Promise<void>;
 
 export function FinishBrowser():Promise<void>;
 
+export function FinishLive():Promise<main.LiveView>;
+
 export function Info():Promise<main.InfoView>;
+
+export function MarkLag():Promise<void>;
 
 export function Report(arg1:boolean):Promise<string>;
 
 export function SaveReport(arg1:boolean):Promise<string>;
+
+export function StartLive(arg1:string,arg2:boolean):Promise<main.LiveStartView>;
 
 export function Update():Promise<void>;

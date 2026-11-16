@@ -21,3 +21,20 @@ func TestSystemEchoLoopback(t *testing.T) {
 		t.Error("IPv6 should be refused")
 	}
 }
+
+// The hotkey registers and lets go; pressing it is left to a person (no synthetic keys).
+func TestHotkeyRegisters(t *testing.T) {
+	h, err := ListenHotkey(func() {})
+	if err != nil {
+		t.Skipf("Ctrl+Alt+L is held by another program here: %v", err)
+	}
+	h.Close()
+	// Freed: it can be taken again at once.
+	h2, err := ListenHotkey(func() {})
+	if err != nil {
+		t.Fatalf("not freed after Close: %v", err)
+	}
+	h2.Close()
+	var none *Hotkey
+	none.Close()
+}

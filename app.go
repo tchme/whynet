@@ -14,6 +14,7 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"whynet/internal/live"
 	"whynet/internal/probe"
 	"whynet/internal/report"
 	"whynet/internal/update"
@@ -34,6 +35,14 @@ type App struct {
 	pending     *update.Release
 	last        *probe.Result
 	verdict     rules.Verdict
+
+	liveRules   []rules.Rule
+	session     *live.Session // a stability check being recorded
+	hotkey      *live.Hotkey
+	lastLive    *live.Result
+	prevLive    *live.Result // the check "Проверить ещё раз и сравнить" compares with
+	liveVerdict rules.Verdict
+	lastKind    string // site, live: which check the report is about
 }
 
 func NewApp() (*App, error) {
@@ -41,11 +50,15 @@ func NewApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	lrs, err := rules.LoadLive()
+	if err != nil {
+		return nil, err
+	}
 	t, err := locales.Load("ru")
 	if err != nil {
 		return nil, err
 	}
-	return &App{rules: rs, markers: m, t: t}, nil
+	return &App{rules: rs, liveRules: lrs, markers: m, t: t}, nil
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -197,6 +210,7 @@ func hostTone(result string) string {
 type InfoView struct {
 	Steps   []StepView        `json:"steps"`
 	UI      map[string]string `json:"ui"`
+	Live    map[string]string `json:"live"`
 	Version string            `json:"version"`
 }
 
@@ -215,7 +229,7 @@ func (a *App) Info() InfoView {
 	for i, id := range probe.StepIDs {
 		steps[i] = StepView{ID: id, Name: a.t.Steps[id].Name, Status: "wait"}
 	}
-	return InfoView{Steps: steps, UI: a.t.UI, Version: report.Version}
+	return InfoView{Steps: steps, UI: a.t.UI, Live: a.t.Live, Version: report.Version}
 }
 
 // Check runs one check, sending each finished step as a "step" event.
@@ -278,7 +292,7 @@ func (a *App) check(site string, env probe.Env, limit time.Duration) (*CheckView
 	}
 	v := rules.Match(a.rules, res.Facts())
 	a.mu.Lock()
-	a.last, a.verdict = res, v
+	a.last, a.verdict, a.lastKind = res, v, "site"
 	a.mu.Unlock()
 
 	facts := res.Facts()
@@ -307,14 +321,17 @@ func (a *App) stepView(s probe.Step) StepView {
 	return v
 }
 
-// report renders the last check; "" before the first one.
+// report renders the last check of either kind; "" before the first one.
 func (a *App) report(hide bool) (md, name string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.last == nil {
-		return "", ""
+	switch {
+	case a.lastKind == "live" && a.lastLive != nil:
+		return report.LiveMarkdown(a.lastLive, a.liveVerdict, a.t, hide, a.prevLive), report.LiveFileName(a.lastLive)
+	case a.last != nil:
+		return report.Markdown(a.last, a.verdict, a.t, hide), report.FileName(a.last)
 	}
-	return report.Markdown(a.last, a.verdict, a.t, hide), report.FileName(a.last)
+	return "", ""
 }
 
 // Report is the AI report text for the preview.

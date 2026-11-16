@@ -395,6 +395,16 @@ func (s *Session) Mark() {
 // Done is closed when the session ended by itself (after an hour, or when its context ended).
 func (s *Session) Done() <-chan struct{} { return s.done }
 
+// Ended is closed when recording stopped, for any reason.
+func (s *Session) Ended() <-chan struct{} { return s.loopDone }
+
+// Links are the chain's links as found at the start.
+func (s *Session) Links() []Link {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]Link(nil), s.links...)
+}
+
 // Cancel stops recording; nothing is analyzed.
 func (s *Session) Cancel() {
 	s.stopOnce.Do(func() { close(s.stop) })
