@@ -136,3 +136,16 @@ Windows does not always let a script bring a window to the front. Test keystroke
 - **Cause:** `gone` (neither the system DNS nor DoH knows the name) is not a failure in the content step, so the rule for browser-only failures fired. The player used other video nodes; nothing was broken.
 - **Fix:** `res.browser_dead` when every server the browser failed on is `gone`; it gives `all_ok` before `content_flaky`.
 - **Verified:** `TestContentLab` dead link case (`content_flaky` without the fix).
+
+## A wrong clock could never be diagnosed
+
+- **Symptom:** found while preparing the live test: `clock_wrong` had never fired; with the clock far off it would have said "bad certificate".
+- **Cause:** the real time comes from HTTPS answers (`1.1.1.1/cdn-cgi/trace`, then `8.8.8.8`) with normal certificate checks. A clock wrong enough to break certificates breaks those requests too, so `local.clock` stayed `unknown`; a clock off by less breaks no certificate, and the rule needs a certificate error.
+- **Fix:** the `8.8.8.8` fallback checks the certificate chain and name at the middle of the certificate's own validity instead of "now" (`verifyAnyTime`): still authenticated, independent of this PC's clock.
+- **Verified:** live: clock 400 days back (only back: WireGuard clients on the PC reject a clock that jumped forward and back), `local.clock=wrong`, skew -34559810 s, `clock_wrong` (high); the clock restored by the same exact shift. `TestVerifyAnyTime`.
+
+## A dead system proxy gave "unknown" (regression of the `nav_failed` rule)
+
+- **Symptom:** with the Windows proxy on and pointing nowhere, the expected `proxy_in_way` would have been `unknown`: the browser fails with `ERR_PROXY_CONNECTION_FAILED`, and the new "browser couldn't open the page" rule came first.
+- **Fix:** `proxy_in_way` (and `https_intercepted`, which outranked it) now come before the browser rules.
+- **Verified:** live: `ProxyEnable=1` for one run (the PC's stale `127.0.0.1:12334`, nothing listening), `proxy_in_way`; the setting restored. Table case.

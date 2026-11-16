@@ -2,10 +2,14 @@ package probe
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -76,15 +80,43 @@ func publicInfo(ctx context.Context) (info map[string]string, date time.Time, er
 	return info, date, nil
 }
 
-// serverDate is the clock fallback when the trace endpoint is unreachable.
+// serverDate is the clock fallback when the trace endpoint is unreachable. A wrong clock makes
+// every certificate look expired or not yet valid, which is exactly when the trace fails; so the
+// certificate is still checked (chain and name), but at a moment inside its own validity, not now.
 func serverDate(ctx context.Context, u string) (time.Time, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+	pu, err := url.Parse(u)
+	if err != nil {
+		return time.Time{}, err
+	}
+	tr := &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{
+		InsecureSkipVerify: true, // the check is VerifyConnection below
+		VerifyConnection: func(cs tls.ConnectionState) error {
+			return verifyAnyTime(cs.PeerCertificates, pu.Hostname(), nil)
+		},
+	}}
+	defer tr.CloseIdleConnections()
 	req, _ := http.NewRequestWithContext(ctx, "HEAD", u, nil)
-	resp, err := direct.Do(req)
+	resp, err := (&http.Client{Transport: tr}).Do(req)
 	if err != nil {
 		return time.Time{}, err
 	}
 	resp.Body.Close()
 	return http.ParseTime(resp.Header.Get("Date"))
+}
+
+// verifyAnyTime checks a server's certificate chain and name as of the middle of the leaf's
+// validity, ignoring this computer's clock. roots nil: the system store.
+func verifyAnyTime(certs []*x509.Certificate, host string, roots *x509.CertPool) error {
+	if len(certs) == 0 {
+		return errors.New("no certificate")
+	}
+	leaf, inter := certs[0], x509.NewCertPool()
+	for _, c := range certs[1:] {
+		inter.AddCert(c)
+	}
+	_, err := leaf.Verify(x509.VerifyOptions{DNSName: host, Intermediates: inter, Roots: roots,
+		CurrentTime: leaf.NotBefore.Add(leaf.NotAfter.Sub(leaf.NotBefore) / 2)})
+	return err
 }

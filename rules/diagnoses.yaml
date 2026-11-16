@@ -104,6 +104,16 @@
   confidence: high
   when: {http.class: 5xx}
 
+- id: https_intercepted
+  confidence: likely
+  when: {tls.intercepted: true}
+
+# A system proxy is on and the direct way works: the browser goes through the proxy, so its
+# failures (ERR_PROXY_CONNECTION_FAILED, a reset) are the proxy's before anything else.
+- id: proxy_in_way
+  confidence: likely
+  when: {local.proxy: "on", tls.status: ok, http.class: [2xx, 3xx]}
+
 # The handshake passes, then the connection is reset on the request: DPI that lets the name through
 # and cuts later, or not on every connection. Live 2026-11-16, Flex Ltd. (AS21453): linkedin.com
 # without zapret (request reset), with zapret (the browser's reset); rutracker.org with zapret.
@@ -186,14 +196,6 @@
 - id: content_flaky
   confidence: likely
   when: {br.worst: [reset, timeout, dns, refused, eof, cert, tls]}
-
-- id: https_intercepted
-  confidence: likely
-  when: {tls.intercepted: true}
-
-- id: proxy_in_way
-  confidence: likely
-  when: {local.proxy: "on", tls.status: ok, http.class: [2xx, 3xx]}
 
 - id: all_ok
   confidence: high

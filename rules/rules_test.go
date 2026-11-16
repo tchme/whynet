@@ -66,6 +66,9 @@ func TestMatch(t *testing.T) {
 		{with("http.challenge", "true", "br.status", "nav_failed", "br.error", "net::ERR_CONNECTION_RESET"), "cut_midway"},
 		{with("http.challenge", "true", "br.status", "nav_failed", "br.error", "net::ERR_CONNECTION_RESET", "local.dpi_tool", "zapret", "local.dpi_listed", "false"), "dpi_not_listed"},
 		{with("br.status", "nav_failed", "br.error", "net::ERR_NAME_NOT_RESOLVED"), "unknown"},
+		// a dead system proxy: the direct way works, the browser can't get out (was "unknown")
+		{with("local.proxy", "on", "br.status", "nav_failed", "br.error", "net::ERR_PROXY_CONNECTION_FAILED"), "proxy_in_way"},
+		{with("local.proxy", "on", "tls.intercepted", "true"), "https_intercepted"},
 		// the page shows late or never; a blocked content server explains more and wins
 		{with("br.status", "ok", "br.slow_load", "true", "br.dom_s", "12.4"), "page_slow"},
 		{with("br.status", "ok", "br.loaded", "false", "br.dom_s", "20+"), "page_slow"},

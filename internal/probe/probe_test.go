@@ -1,12 +1,19 @@
 package probe
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
+	"math/big"
 	"net"
 	"os"
 	"reflect"
 	"syscall"
 	"testing"
+	"time"
 )
 
 func TestTarget(t *testing.T) {
@@ -124,6 +131,28 @@ func TestIPListed(t *testing.T) {
 	}
 	if got, _ := ipListed(map[string]string{"ipset-all.txt": "\n", "ipset-exclude.txt": "192.168.0.0/16\n"}, "192.168.1.1"); got != "excluded" {
 		t.Errorf("any mode, excluded address: %s", got)
+	}
+}
+
+// The clock fallback must accept a good certificate whatever this computer's clock says.
+func TestVerifyAnyTime(t *testing.T) {
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "example.com"}, DNSNames: []string{"example.com"},
+		NotBefore: time.Now().AddDate(-3, 0, 0), NotAfter: time.Now().AddDate(-2, 0, 0), // long expired
+		KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true, IsCA: true}
+	der, _ := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	cert, _ := x509.ParseCertificate(der)
+	roots := x509.NewCertPool()
+	roots.AddCert(cert)
+	if err := verifyAnyTime([]*x509.Certificate{cert}, "example.com", roots); err != nil {
+		t.Errorf("a good chain outside its validity: %v", err)
+	}
+	if verifyAnyTime([]*x509.Certificate{cert}, "other.com", roots) == nil {
+		t.Error("a wrong name passed")
+	}
+	if verifyAnyTime([]*x509.Certificate{cert}, "example.com", x509.NewCertPool()) == nil {
+		t.Error("an untrusted chain passed")
 	}
 }
 

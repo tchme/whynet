@@ -5,9 +5,9 @@ Every diagnosis whynet can give: how it is detected and how it is tested. Rules 
 | id | Meaning (plain) | Detected by | Tested |
 |---|---|---|---|
 | `no_internet` | No internet at all | `local.net=none`; or system DNS failing and no DoH reachable (likely) | table |
-| `hosts_entry` | The site is rewritten in the `hosts` file | `local.hosts_entry=true` | table; unit test of the parser |
+| `hosts_entry` | The site is rewritten in the `hosts` file | `local.hosts_entry=true` | table; unit test of the parser; live: `10.255.255.1 example.com` added for one run (2026-11-16) |
 | `no_such_site` | Site doesn't exist / typo | NXDOMAIN from system DNS and DoH (likely, if DoH is unreachable) | lab, table; live: `doesnotexist-whynet-test.com` |
-| `clock_wrong` | Computer clock is wrong | certificate error plus clock skew > 5 min | table |
+| `clock_wrong` | Computer clock is wrong | certificate error plus clock skew > 5 min (the fallback clock source checks its certificate at the certificate's own time, so a wrong clock can't hide itself) | table; `TestVerifyAnyTime`; live: clock set 400 days back for one run, skew -34559810 s (2026-11-16) |
 | `dns_spoofed` | ISP substitutes the site's address | system and DoH differ, real address fails, DoH address works (`tls.alt=ok`) | lab |
 | `dns_blocked` | The site is hidden in DNS (likely) | system DNS says NXDOMAIN, DoH knows it and the DoH address works | table; live: rutracker.org through the author's router DNS (2026-11-16) |
 | `isp_stub` | ISP stub page | page or final URL matches `markers.yaml` stubs | lab (stub over HTTP after a TLS cut); live: rutracker.org on Beeline, `307 → http://blackhole.beeline.ru/` "Ресурс заблокирован" (shows up on some runs only, others time out) |
@@ -29,7 +29,7 @@ Every diagnosis whynet can give: how it is detected and how it is tested. Rules 
 | `content_flaky` | The browser failed on servers that pass their own check (likely) | `br.worst` set, no `res` failure, not all of them dead links (`res.browser_dead` gives `all_ok`) | lab (dead link case) |
 | `geo_blocked` | The site itself refuses your country | `http.geo` (451, or a geo text on a 4xx) | table |
 | `https_intercepted` | HTTPS intercepted by antivirus/other software (likely) | interceptor marker in the chain | table |
-| `proxy_in_way` | Works directly, but a system proxy is on (likely) | `local.proxy=on`, site ok | table |
+| `proxy_in_way` | Works directly, but a system proxy is on (likely) | `local.proxy=on`, site ok; placed before the browser rules, since the browser goes through the proxy | table; live: proxy switched on to a dead address, browser `ERR_PROXY_CONNECTION_FAILED` (2026-11-16) |
 | `site_blocks_you` | Even a plain browser window got the site's block page (likely: VPN/proxy) | `br.blocked_page` | table |
 | `bot_check` | The site turns away automated checks; a normal browser will likely open it | `br.antibot`, or TLS ok and `http.challenge` | table; live: ozon.ru (turns away any browser with a debugging port) |
 | `browser_ok` | The person's plain window loaded the page | `br.visible` and `br.status=ok` | table |
@@ -39,7 +39,7 @@ Every diagnosis whynet can give: how it is detected and how it is tested. Rules 
 
 `all_ok` matters as much as the failures: it sends the person to the browser (cache, extensions, its own proxy or DNS-over-HTTPS setting).
 
-Still to verify on real networks (plan step 6): `sni_blocked`, `isp_stub` and `dns_spoofed` against real ISP blocking, `geo_blocked`, `https_intercepted`, `clock_wrong`, `proxy_in_way`, and the DPI-bypass failure diagnoses (`dpi_*`) on a site zapret actually fails on.
+Still to verify on real networks (plan step 6): `isp_stub` and `dns_spoofed` against real ISP blocking, `https_intercepted`, `dpi_strategy_fails` and `dpi_conflict`. Done: `sni_blocked`, `cut_midway`, `dpi_not_listed` (a friend's network), `geo_blocked`, `hosts_entry`, `clock_wrong`, `proxy_in_way` (the author's PC). The "router VPN off" runs of the plan are dropped: the author's VPN must never be interrupted, and the friend's network has no VPN.
 
 Content checks, verified live 2026-11-15 (Edge 157): youtube.com — 164 browser requests to 9 servers incl. real `rr*---sn-*.googlevideo.com` video servers, 6 content servers checked, `all_ok` in ~9 s; a watch page measured the video server at ~1600 KB/s; habr.com — ~300 requests, `all_ok` in ~17 s on three runs in a row, Google ad servers cut by name and listed as ads.
 
