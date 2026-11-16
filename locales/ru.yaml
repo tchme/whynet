@@ -255,6 +255,10 @@ live:
   wifi_line: Сигнал Wi-Fi {signal} %, диапазон {band} ГГц.
   periodic: Скачки повторяются примерно раз в {s} секунд — так выглядит фоновый поиск сетей Windows.
   lags_title: Отметки «лагнуло»
+  lag_short_network: сеть скакала
+  lag_short_calm: сеть спокойна
+  ghz: ГГц
+  mbps: Мбит/с
   lags_line: "Отметки «лагнуло»: {n}."
   lag_network: "{time} — сеть скакала ({link})."
   lag_calm: "{time} — сеть была спокойной: этот лаг не сетевой."

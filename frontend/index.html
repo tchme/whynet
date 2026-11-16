@@ -7,6 +7,10 @@
 </head>
 <body>
 <form class="ask" id="ask" autocomplete="off">
+    <div class="seg" id="mode" role="tablist" hidden>
+        <button type="button" role="tab" data-mode="site" aria-selected="true"></button>
+        <button type="button" role="tab" data-mode="live" aria-selected="false"></button>
+    </div>
     <input id="site" spellcheck="false" aria-label="Адрес сайта">
     <button class="btn primary" id="check" type="submit"></button>
 </form>
