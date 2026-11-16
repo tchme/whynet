@@ -152,22 +152,31 @@ func ListPrograms(browsers []string) ([]Program, error) {
 	return programs(procs, internetConns(rows), browsers), nil
 }
 
+// FindProgram finds a running program by name, exe name or PID, the picker's filter off (see
+// findProgram); nil when nothing matches.
+func FindProgram(target string, browsers []string) (*Program, error) {
+	procs, err := listProcs()
+	if err != nil {
+		return nil, err
+	}
+	return findProgram(procs, target, browsers), nil
+}
+
 // programPIDs finds the processes of the program with this exe right now.
 func programPIDs(exe string, browsers []string) map[uint32]bool {
 	procs, err := listProcs()
 	if err != nil {
 		return nil
 	}
-	for _, p := range groupPrograms(procs, nil, browsers) { // not the picker's filter: a program may have no connections right now
-		if strings.EqualFold(p.Exe, exe) {
-			pids := map[uint32]bool{}
-			for _, id := range p.PIDs {
-				pids[id] = true
-			}
-			return pids
-		}
+	p := findProgram(procs, exe, browsers)
+	if p == nil {
+		return nil
 	}
-	return nil
+	pids := map[uint32]bool{}
+	for _, id := range p.PIDs {
+		pids[id] = true
+	}
+	return pids
 }
 
 // RecordApp follows the program's TCP connections until done closes or ctx ends, reading the

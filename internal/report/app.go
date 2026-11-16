@@ -64,8 +64,11 @@ func AppMarkdown(res *probe.AppResult, v rules.Verdict, t *locales.Texts, hide b
 				}
 			}
 			ping := "—"
-			if s.PingMs > 0 {
+			if s.Tries > 0 {
 				ping = strconv.FormatInt(s.PingMs, 10)
+				if s.PingMs == 0 {
+					ping = "<1" // answered on this PC's side: a router that proxies everything answers the connect itself
+				}
 				if s.PingTLS {
 					ping += "; " + r["ping_tls"]
 				}

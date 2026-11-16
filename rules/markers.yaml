@@ -108,6 +108,22 @@ vpn_block:
   - turn off vpn
   - disable vpn
 
+# Browsers by exe name (lowercase): the app check's picker sends them to the site check.
+browsers:
+  - msedge.exe
+  - chrome.exe
+  - firefox.exe
+  - opera.exe
+  - browser.exe        # Yandex Browser
+  - brave.exe
+  - vivaldi.exe
+  - iexplore.exe
+  - arc.exe
+  - librewolf.exe
+  - waterfox.exe
+  - thorium.exe
+  - chromium.exe
+
 # The browser's own services that show up in a page's traffic (Edge's shopping helper,
 # SmartScreen, updates): not the site's content. Matched on the domain and its subdomains.
 browser_own:

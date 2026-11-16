@@ -22,17 +22,26 @@ func main() {
 	noHide := flag.Bool("no-hide", false, "keep the public IP and other private values in the report")
 	noBrowser := flag.Bool("no-browser", false, "skip loading the page in a hidden Edge/Chrome")
 	stability := flag.Bool("live", false, "stability check: ping the chain (router, ISP, internet, server) while you play")
-	dur := flag.Duration("for", 2*time.Minute, "with -live: how long to record (Ctrl+C ends it early); at most 1h")
+	app := flag.Bool("app", false, "app check: record a running program's TCP connections and check its servers (no name: list programs)")
+	dur := flag.Duration("for", 2*time.Minute, "with -live: how long to record (Ctrl+C ends it early); at most 1h. With -app: 30s by default, at most 2m")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "whynet-cli %s — why doesn't a site open?\n\nusage: whynet-cli [flags] <site>\n       whynet-cli -live [-for 2m] [game server]\n\n", report.Version)
+		fmt.Fprintf(os.Stderr, "whynet-cli %s — why doesn't a site open?\n\nusage: whynet-cli [flags] <site>\n       whynet-cli -live [-for 2m] [game server]\n       whynet-cli -app [-for 30s] [program or PID]\n\n", report.Version)
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+	durSet := false
+	flag.Visit(func(f *flag.Flag) { durSet = durSet || f.Name == "for" })
 	var err error
 	switch {
+	case *app && flag.NArg() <= 1:
+		d := 30 * time.Second
+		if durSet {
+			d = min(max(*dur, 5*time.Second), 2*time.Minute)
+		}
+		err = runApp(flag.Arg(0), d, *asJSON, *save, !*noHide)
 	case *stability && flag.NArg() <= 1:
 		err = runLive(flag.Arg(0), min(*dur, time.Hour), *asJSON, *save, !*noHide)
-	case !*stability && flag.NArg() == 1:
+	case !*stability && !*app && flag.NArg() == 1:
 		err = run(flag.Arg(0), *asJSON, *save, !*noHide, !*noBrowser)
 	default:
 		flag.Usage()

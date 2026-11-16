@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -84,6 +85,48 @@ func programs(procs []proc, conns map[uint32]int, browsers []string) []Program {
 		return strings.ToLower(a.Name) < strings.ToLower(b.Name)
 	})
 	return out
+}
+
+// findProgram finds a program by name, exe name or PID among every running one, with no window
+// and no connections too. A named exe that counts under another program (a console tool started
+// from a terminal inside VS Code) becomes a program of its own: the person asked for it by name.
+func findProgram(procs []proc, target string, browsers []string) *Program {
+	pid, _ := strconv.ParseUint(target, 10, 32)
+	groups := groupPrograms(procs, nil, browsers)
+	for i, g := range groups {
+		if strings.EqualFold(g.Name, target) || strings.EqualFold(g.Exe, target) {
+			return &groups[i]
+		}
+		for _, id := range g.PIDs {
+			if pid != 0 && uint64(id) == pid && strings.EqualFold(exeOf(procs, id), g.Exe) {
+				return &groups[i] // the program's own process, not one of its helpers
+			}
+		}
+	}
+	var g *Program
+	for _, p := range procs {
+		if p.System || !(strings.EqualFold(p.Exe, target) || strings.EqualFold(p.Exe, target+".exe") || pid != 0 && uint64(p.PID) == pid) {
+			continue
+		}
+		if g == nil {
+			g = &Program{Exe: p.Exe, Name: strings.TrimSuffix(strings.TrimSuffix(p.Exe, ".exe"), ".EXE"),
+				Browser: slices.Contains(browsers, strings.ToLower(p.Exe))}
+		}
+		if strings.EqualFold(p.Exe, g.Exe) {
+			g.PIDs = append(g.PIDs, p.PID)
+			g.Window = g.Window || p.Window
+		}
+	}
+	return g
+}
+
+func exeOf(procs []proc, pid uint32) string {
+	for _, p := range procs {
+		if p.PID == pid {
+			return p.Exe
+		}
+	}
+	return ""
 }
 
 // groupPrograms groups processes by program. A helper without a window whose ancestor is a
@@ -185,8 +228,13 @@ type AppServer struct {
 	Ms       int64  `json:"ms,omitempty"`
 }
 
-// Troubled: the program itself saw this server's connects go unanswered or get reset.
-func (s *AppServer) Troubled() bool { return s.Stuck > 0 || s.Cut > 0 }
+// Troubled: the program's connects to this server went unanswered or were reset at least as often
+// as they worked. One reset among working connections is a program dropping a spare parallel try
+// (Telegram races its data centres), not a block: live 2026-11-16, 1 of 6 to 149.154.167.41.
+func (s *AppServer) Troubled() bool {
+	bad := s.Stuck + s.Cut
+	return bad > 0 && bad >= s.Open
+}
 
 // Blocked: whynet's check found it cut, or the program had trouble with a server whose name
 // can't be tested.

@@ -174,3 +174,50 @@ func TestRecorder(t *testing.T) {
 		t.Errorf("fake-ip server %+v", fake)
 	}
 }
+
+func TestTroubled(t *testing.T) {
+	for _, c := range []struct {
+		s    AppServer
+		want bool
+	}{
+		{AppServer{Conns: 6, Cut: 1, Open: 5}, false}, // a spare parallel try dropped by the program
+		{AppServer{Conns: 4, Cut: 4}, true},           // every connect reset: blocked
+		{AppServer{Conns: 2, Stuck: 2}, true},         // never answered
+		{AppServer{Conns: 5, Cut: 3, Open: 2}, true},  // a DPI that cuts most connects
+		{AppServer{Conns: 3, Open: 3}, false},
+	} {
+		if got := c.s.Troubled(); got != c.want {
+			t.Errorf("%+v: troubled %v, want %v", c.s, got, c.want)
+		}
+	}
+}
+
+func TestFindProgram(t *testing.T) {
+	procs := []proc{
+		{PID: 10, Exe: "Code.exe", Window: true},
+		{PID: 11, PPID: 10, Exe: "powershell.exe", System: true},
+		{PID: 12, PPID: 11, Exe: "blackhole-test.exe"}, // counts under Code in the picker
+		{PID: 20, Exe: "steam.exe", Window: true},
+		{PID: 21, PPID: 20, Exe: "steamwebhelper.exe"},
+		{PID: 30, Exe: "svchost.exe", System: true},
+	}
+	for _, c := range []struct {
+		target, exe string
+		pids        int
+	}{
+		{"code", "Code.exe", 2},
+		{"blackhole-test", "blackhole-test.exe", 1}, // named: its own program
+		{"20", "steam.exe", 2},
+		{"21", "steamwebhelper.exe", 1}, // a helper's PID: the helper itself
+		{"svchost", "", 0},
+		{"nothing", "", 0},
+	} {
+		p := findProgram(procs, c.target, nil)
+		switch {
+		case c.exe == "" && p != nil:
+			t.Errorf("%s: found %+v", c.target, *p)
+		case c.exe != "" && (p == nil || p.Exe != c.exe || len(p.PIDs) != c.pids):
+			t.Errorf("%s: got %+v, want %s with %d processes", c.target, p, c.exe, c.pids)
+		}
+	}
+}
