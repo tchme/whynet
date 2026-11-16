@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -104,6 +105,27 @@ func TestLab(t *testing.T) {
 		fmt.Fprint(w, "Доступ ограничен, см. eais.rkn.gov.ru")
 	}))
 	t.Cleanup(stub.Close)
+	plain := func(h http.HandlerFunc) string {
+		srv := httptest.NewServer(h)
+		t.Cleanup(srv.Close)
+		return srv.Listener.Addr().String()
+	}
+	// An unlisted stub, built like ER-Telecom's: the law's text after ~70 KB of inline styles, with
+	// both kinds of non-breaking space inside the phrase.
+	lawStub := plain(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "<html><head><title>Стоп</title><style>"+strings.Repeat("a{}", 24000)+"</style></head><body>"+
+			"Доступ&nbsp;к сайту ограничен на основании закона «Об информации, информационных технологиях и&nbsp;о"+string(rune(0xa0))+"защите информации»</body></html>")
+	})
+	toOther := plain(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://stop.isp.test/", http.StatusFound)
+	})
+	toOwn := plain(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://www.example.com/", http.StatusFound)
+	})
+	other := plain(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "<title>Стоп</title>") })
+	own := plain(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "<title>Аккаунт заблокирован</title>")
+	})
 	pool := x509.NewCertPool()
 	pool.AddCert(good.Certificate())
 	limited := serve(t, 429, "Too Many Requests")
@@ -113,14 +135,22 @@ func TestLab(t *testing.T) {
 	balancer := dpiServer(t, good.TLS.Certificates[0], "example.com", true)
 
 	l := &lab{pool: pool, routes: map[string]string{
-		"10.0.0.1:443": good.Listener.Addr().String(),
-		"10.0.0.2:443": dpi,
-		"10.0.0.3:443": dpi,
-		"10.0.0.3:80":  stub.Listener.Addr().String(),
-		"10.0.0.4:443": "refused",
-		"10.0.0.5:443": broken.Listener.Addr().String(),
-		"10.0.0.6:443": balancer,
-		"10.0.0.7:443": limited.Listener.Addr().String(),
+		"10.0.0.1:443":       good.Listener.Addr().String(),
+		"10.0.0.2:443":       dpi,
+		"10.0.0.3:443":       dpi,
+		"10.0.0.3:80":        stub.Listener.Addr().String(),
+		"10.0.0.4:443":       "refused",
+		"10.0.0.5:443":       broken.Listener.Addr().String(),
+		"10.0.0.6:443":       balancer,
+		"10.0.0.7:443":       limited.Listener.Addr().String(),
+		"10.0.0.8:443":       dpi,
+		"10.0.0.8:80":        lawStub,
+		"10.0.0.10:443":      dpi,
+		"10.0.0.10:80":       toOther,
+		"stop.isp.test:80":   other,
+		"10.0.0.11:443":      dpi,
+		"10.0.0.11:80":       toOwn,
+		"www.example.com:80": own,
 	}}
 	ip := func(s ...string) []string { return s }
 	notFound := &net.DNSError{Err: "no such host", Name: "example.com", IsNotFound: true}
@@ -136,6 +166,9 @@ func TestLab(t *testing.T) {
 		{"spoofed DNS", "example.com", l.env(ip("10.0.0.9"), nil, ip("10.0.0.1"), nil), "dns_spoofed"},
 		{"DPI cuts the name, the server closes the neutral one", "example.com", l.env(ip("10.0.0.6"), nil, ip("10.0.0.6"), nil), "sni_suspected"},
 		{"HTTP 429", "example.com", l.env(ip("10.0.0.7"), nil, ip("10.0.0.7"), nil), "rate_limited"},
+		{"unlisted stub, known by the law's text", "example.com", l.env(ip("10.0.0.8"), nil, ip("10.0.0.8"), nil), "isp_stub"},
+		{"unlisted stub on another site", "example.com", l.env(ip("10.0.0.10"), nil, ip("10.0.0.10"), nil), "isp_stub_maybe"},
+		{"plain HTTP to the site's own page, no law", "example.com", l.env(ip("10.0.0.11"), nil, ip("10.0.0.11"), nil), "sni_blocked"},
 		{"black hole", "example.com", l.env(ip("10.0.0.9"), nil, ip("10.0.0.9"), nil), "ip_unreachable"},
 		{"refused", "example.com", l.env(ip("10.0.0.4"), nil, ip("10.0.0.4"), nil), "server_broken"},
 		{"HTTP 502", "example.com", l.env(ip("10.0.0.5"), nil, ip("10.0.0.5"), nil), "server_broken"},

@@ -13,6 +13,20 @@ stubs:
   - доступ к ресурсу ограничен
   - единый реестр
 
+# Any ISP's stub, listed or not: one word of each list on the same page, looked for only on the
+# plain-HTTP fallback after the real name was cut. Russian stubs must cite the law (149-ФЗ).
+# Seen 2026-11-16: Beeline cites the law by title, ER-Telecom by number and title.
+stub_law:
+  - о защите информации     # the law's title: «Об информации, информационных технологиях и о защите информации»
+  - 149-фз
+  - роскомнадзор
+  - реестр запрещ
+  - eais.rkn.gov.ru
+stub_action:
+  - ограничен
+  - заблокирован
+  - блокировк
+
 # The site itself refusing a country: checked only on 4xx answers.
 geo:
   - not available in your country

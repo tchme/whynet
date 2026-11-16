@@ -207,3 +207,21 @@ func TestTraceAndMask(t *testing.T) {
 		t.Error("fakeIP misjudges the 198.18.0.0/15 range")
 	}
 }
+
+func TestSameSite(t *testing.T) {
+	for _, c := range []struct {
+		a, b string
+		want bool
+	}{
+		{"www.instagram.com", "instagram.com", true},
+		{"m.vk.com", "vk.com", true},
+		{"lawfilter.ertelecom.ru", "linkedin.com", false},
+		{"blackhole.beeline.ru", "rutracker.org", false},
+		{"a.co.uk", "b.co.uk", false},
+		{"194.67.1.14", "rutracker.org", false},
+	} {
+		if got := sameSite(c.a, c.b); got != c.want {
+			t.Errorf("sameSite(%s, %s) = %v", c.a, c.b, got)
+		}
+	}
+}
