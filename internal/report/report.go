@@ -95,7 +95,7 @@ func Markdown(res *probe.Result, v rules.Verdict, t *locales.Texts, hide bool) s
 			for _, h := range br.Hosts[:min(25, len(br.Hosts))] {
 				var errs []string
 				for _, e := range slices.Sorted(maps.Keys(h.Errors)) {
-					errs = append(errs, fmt.Sprintf("%s Г—%d", e, h.Errors[e]))
+					errs = append(errs, fmt.Sprintf("%s ×%d", e, h.Errors[e]))
 				}
 				w("| %s | %d | %d | %s |\n", cell(h.Host), h.Requests, h.Failed, cell(strings.Join(errs, ", ")))
 			}
@@ -114,7 +114,7 @@ func Markdown(res *probe.Result, v rules.Verdict, t *locales.Texts, hide bool) s
 				if h.KBps > 0 {
 					detail += fmt.Sprintf(", %d KB/s", h.KBps)
 				}
-				ping := "вЂ”"
+				ping := "—"
 				if h.PingMs > 0 {
 					ping = fmt.Sprint(h.PingMs)
 				}

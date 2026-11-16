@@ -149,3 +149,10 @@ Windows does not always let a script bring a window to the front. Test keystroke
 - **Symptom:** with the Windows proxy on and pointing nowhere, the expected `proxy_in_way` would have been `unknown`: the browser fails with `ERR_PROXY_CONNECTION_FAILED`, and the new "browser couldn't open the page" rule came first.
 - **Fix:** `proxy_in_way` (and `https_intercepted`, which outranked it) now come before the browser rules.
 - **Verified:** live: `ProxyEnable=1` for one run (the PC's stale `127.0.0.1:12334`, nothing listening), `proxy_in_way`; the setting restored. Table case.
+
+## The AI report showed "Г—1" and "вЂ”" (mojibake in the source)
+
+- **Symptom:** in the friend's reports the browser table had `net::ERR_CONNECTION_RESET Г—1` and the content table `вЂ”` for "no ping".
+- **Cause:** commit 4fa280b (0.1.1) saved two lines of `report.go` through a cp1251 round trip: `×` became `Г—`, `—` became `вЂ”`. Nothing tested those two strings.
+- **Fix:** the characters restored; `TestMarkdownSymbols` checks both tables and looks for mojibake. When editing files from PowerShell 5.1, write UTF-8 explicitly (`Set-Content` defaults to the ANSI code page).
+- **Verified:** `TestMarkdownSymbols`.

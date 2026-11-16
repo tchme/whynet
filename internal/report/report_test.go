@@ -46,3 +46,25 @@ func TestMarkdownHidesPrivateValues(t *testing.T) {
 		t.Errorf("FileName = %s", got)
 	}
 }
+
+// The tables carry "×" and "—" as they are: a cp1251 round trip once turned them into "Г—" and "вЂ”".
+func TestMarkdownSymbols(t *testing.T) {
+	tx, err := locales.Load("ru")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := &probe.Result{Input: "x.com", Host: "x.com", Steps: []probe.Step{
+		{ID: "browser", Status: "warn", Evidence: map[string]any{"browser": probe.BrowserResult{Status: "ok",
+			Hosts: []*probe.BrowserHost{{Host: "cdn.x.com", Requests: 1, Failed: 1, Errors: map[string]int{"net::ERR_CONNECTION_RESET": 1}}}}}},
+		{ID: "res", Status: "ok", Evidence: map[string]any{"hosts": []*probe.HostCheck{{Host: "gone.x.com", Result: "gone"}}}},
+	}}
+	md := Markdown(res, rules.Verdict{ID: "unknown", Confidence: "likely"}, tx, true)
+	for _, want := range []string{"net::ERR_CONNECTION_RESET ×1", "| gone.x.com |  | — |"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("report lacks %q", want)
+		}
+	}
+	if strings.ContainsAny(md, "Ѓ") || strings.Contains(md, "Г—") || strings.Contains(md, "вЂ") {
+		t.Error("report has mojibake")
+	}
+}
