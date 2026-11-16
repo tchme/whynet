@@ -31,6 +31,20 @@ type BrowserResult struct {
 	Requests int            `json:"requests"`
 	Failed   int            `json:"failed"`
 	Hosts    []*BrowserHost `json:"hosts,omitempty"`
+	Slow     []*SlowFile    `json:"slow,omitempty"` // failed first, then the slowest
+}
+
+// SlowFile is one file of the page that came late, never came or failed: the thing to name, not just its server.
+type SlowFile struct {
+	URL        string           `json:"url"` // without the query: signed links carry tokens
+	Host       string           `json:"host"`
+	IP         string           `json:"ip,omitempty"`
+	Kind       string           `json:"kind"` // image, script, style, font, media
+	Ms         int64            `json:"ms"`
+	Unfinished bool             `json:"unfinished,omitempty"` // still going when whynet stopped watching: Ms is "at least"
+	Phase      string           `json:"phase,omitempty"`      // where most of the time went (PhaseOrder), "none": no answer at all
+	Phases     map[string]int64 `json:"phases,omitempty"`     // ms per phase, as DevTools splits them
+	Error      string           `json:"error,omitempty"`
 }
 
 // BrowserHost sums up the requests to one server.
@@ -52,6 +66,9 @@ const (
 	afterDOM      = 8 * time.Second  // the limit after the page is parsed, when the load event never comes
 	slowDOM       = 8 * time.Second  // a page shown later than this is "very slow"
 	maxVisible    = 10 * time.Minute // a visible window the person forgot
+	lateAfter     = 3.0              // s: a file the page waits this long for shows as an empty block
+	netSlowMs     = 1000             // a DNS, connect or TLS phase this long is a resent packet, not distance
+	maxSlow       = 10               // slow files reported
 )
 
 // BrowserOpts tunes a browser run. The zero value is the hidden, automatic one (DevTools protocol).
@@ -104,9 +121,35 @@ func (p *prober) browser(s *Step) {
 		}
 		return false
 	})
+	r.Slow = slices.DeleteFunc(slices.Clone(r.Slow), func(f *SlowFile) bool {
+		return isUnder(f.Host, p.env.Markers.BrowserOwn) || p.env.Markers.IsAd(f.Host)
+	})
+	r.Slow = r.Slow[:min(len(r.Slow), maxSlow)]
 	s.Evidence["browser"] = r
 	p.browserHosts = r.Hosts
 	s.Facts["br.requests"] = strconv.Itoa(r.Requests)
+	// Files that came late or never, while the rest of their server's files came (one image stuck
+	// in a feed): the worst one is named. Other errors are the failures below.
+	var late []string
+	for _, f := range r.Slow {
+		if f.Error != "" && f.Error != hungError || slices.Contains(late, f.Host) {
+			continue
+		}
+		if len(late) == 0 {
+			s.Facts["br.late_file"] = shortURL(f.URL)
+			s.Facts["br.late_s"] = strconv.FormatFloat(float64(f.Ms)/1000, 'f', 1, 64) + map[bool]string{true: "+"}[f.Unfinished]
+			if f.Phase != "" {
+				s.Facts["br.late_phase"] = f.Phase
+			}
+		}
+		late = append(late, f.Host)
+	}
+	if len(late) > 0 {
+		p.browserLate = late
+		s.Facts["br.late"] = "true"
+		s.Facts["br.late_hosts"] = shortList(late)
+		s.Status = "warn"
+	}
 	switch {
 	case r.Visible:
 		s.Facts["br.visible"] = "true" // a plain window has no page timings: the person saw them
@@ -200,11 +243,97 @@ type cdpAgg struct {
 }
 
 type cdpReq struct {
-	url, host, kind string
-	start, end      float64 // CDP timestamps, seconds
-	bytes           int64
-	failed          string
-	done, responded bool
+	url, host, kind, ip string
+	start, end          float64 // CDP timestamps, seconds
+	headers             float64 // when the answer's headers came; 0: not yet
+	timing              *cdpTiming
+	bytes               int64
+	failed              string
+	done, responded     bool
+	aborted             bool // cancelled by the page (or the person closing the window): its wait proves nothing
+}
+
+// cdpTiming is DevTools' ResourceTiming: RequestTime in seconds on the event clock,
+// the rest in ms after it, -1 when a phase didn't happen (a reused connection has no connect).
+type cdpTiming struct {
+	RequestTime                                float64
+	ProxyStart, DNSStart, DNSEnd               float64
+	ConnectStart, ConnectEnd, SSLStart, SSLEnd float64
+	SendStart, SendEnd, ReceiveHeadersEnd      float64
+}
+
+// PhaseOrder: the phases of a request, in order. "answer" stands for everything up to the
+// answer where only the visible window's network log is there (no DevTools timings).
+var PhaseOrder = []string{"queue", "dns", "connect", "tls", "wait", "answer", "download"}
+
+// phases splits a request ending at end (seconds) the way DevTools does, in ms.
+func (r *cdpReq) phases(end float64) map[string]int64 {
+	ph := map[string]int64{}
+	set := func(k string, ms float64) {
+		if ms >= 1 {
+			ph[k] = int64(ms)
+		}
+	}
+	t := r.timing
+	switch {
+	case t != nil:
+		first := 0.0 // where the network work began: the rest before it is waiting in the browser
+		for _, v := range []float64{t.ProxyStart, t.DNSStart, t.ConnectStart, t.SendStart} {
+			if v >= 0 {
+				first = v
+				break
+			}
+		}
+		set("queue", (t.RequestTime-r.start)*1000+first)
+		if t.DNSStart >= 0 {
+			set("dns", t.DNSEnd-t.DNSStart)
+		}
+		if t.ConnectStart >= 0 {
+			connected := t.ConnectEnd // Chromium's connect includes TLS
+			if t.SSLStart >= 0 {
+				connected = t.SSLStart
+				set("tls", t.SSLEnd-t.SSLStart)
+			}
+			set("connect", connected-t.ConnectStart)
+		}
+		if t.SendEnd >= 0 {
+			set("wait", t.ReceiveHeadersEnd-t.SendEnd)
+		}
+		set("download", (end-t.RequestTime)*1000-t.ReceiveHeadersEnd)
+	case r.headers > 0:
+		set("answer", (r.headers-r.start)*1000)
+		set("download", (end-r.headers)*1000)
+	}
+	return ph
+}
+
+// mainPhase is the phase that took the most time; "" when none is known.
+func mainPhase(ph map[string]int64) string {
+	best := ""
+	for _, k := range PhaseOrder {
+		if ph[k] > 0 && (best == "" || ph[k] > ph[best]) {
+			best = k
+		}
+	}
+	return best
+}
+
+// shortURL is a file's address for one line of text: no scheme, a long path cut in the middle.
+func shortURL(u string) string {
+	u = strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://")
+	if r := []rune(u); len(r) > 70 {
+		return string(r[:42]) + "…" + string(r[len(r)-25:])
+	}
+	return u
+}
+
+// noQuery drops the query and fragment: signed CDN links carry tokens.
+func noQuery(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host + u.EscapedPath()
 }
 
 // hungAfter: a request with no response at all for this long counts as timed out.
@@ -230,6 +359,10 @@ func (a *cdpAgg) event(method string, params json.RawMessage) {
 		Request   struct {
 			URL string `json:"url"`
 		} `json:"request"`
+		Response struct {
+			RemoteIPAddress string     `json:"remoteIPAddress"`
+			Timing          *cdpTiming `json:"timing"`
+		} `json:"response"`
 		EncodedDataLength float64 `json:"encodedDataLength"`
 		ErrorText         string  `json:"errorText"`
 		Canceled          bool    `json:"canceled"`
@@ -242,7 +375,8 @@ func (a *cdpAgg) event(method string, params json.RawMessage) {
 	switch method {
 	case "Network.responseReceived":
 		if r != nil {
-			r.responded = true
+			r.responded, r.headers = true, e.Timestamp
+			r.ip, r.timing = e.Response.RemoteIPAddress, e.Response.Timing
 		}
 	case "Network.requestWillBeSent":
 		u, err := url.Parse(e.Request.URL)
@@ -264,7 +398,7 @@ func (a *cdpAgg) event(method string, params json.RawMessage) {
 		if r != nil && !e.Canceled && e.ErrorText != "net::ERR_ABORTED" && e.ErrorText != "net::ERR_BLOCKED_BY_CLIENT" {
 			r.end, r.failed, r.done = e.Timestamp, e.ErrorText, true
 		} else if r != nil {
-			r.end, r.done = e.Timestamp, true
+			r.end, r.done, r.aborted = e.Timestamp, true, true
 		}
 	}
 }
@@ -327,9 +461,7 @@ func (a *cdpAgg) result() BrowserResult {
 			}
 			h.Errors[r.failed]++
 			if h.Sample == "" {
-				if u, err := url.Parse(r.url); err == nil {
-					h.Sample = u.Scheme + "://" + u.Host + u.EscapedPath()
-				}
+				h.Sample = noQuery(r.url)
 			}
 		}
 	}
@@ -339,7 +471,65 @@ func (a *cdpAgg) result() BrowserResult {
 		}
 	}
 	slices.SortStableFunc(res.Hosts, func(x, y *BrowserHost) int { return y.Failed - x.Failed })
+	res.Slow = a.slow()
 	return res
+}
+
+// lateKinds are the files a person sees missing: an empty block, a page without its styles or fonts.
+var lateKinds = []string{"image", "script", "style", "font", "media"}
+
+// slow lists the files that failed, never answered or took lateAfter or longer, failed first.
+// Call it after result() has marked the hung requests.
+func (a *cdpAgg) slow() []*SlowFile {
+	// HTTP/2 sends every file of a server over one connection: the files queued behind
+	// a connect that took seconds show the wait as "queue". Blame the server's slowest connect.
+	type phase struct {
+		name string
+		ms   int64
+	}
+	slowNet := map[string]phase{}
+	for _, r := range a.reqs {
+		ph := r.phases(r.end)
+		for _, k := range []string{"dns", "connect", "tls"} {
+			if ph[k] > slowNet[r.host].ms {
+				slowNet[r.host] = phase{k, ph[k]}
+			}
+		}
+	}
+	var out []*SlowFile
+	for _, id := range a.order {
+		r := a.reqs[id]
+		kind := browserKinds([]string{r.kind})[0]
+		end := r.end
+		if !r.done {
+			end = a.lastTs
+		}
+		secs := end - r.start
+		// Video streams for as long as it plays: its speed is judged elsewhere, only a failure counts.
+		if !slices.Contains(lateKinds, kind) || r.aborted || r.failed == "" && (kind == "media" || secs < lateAfter) {
+			continue
+		}
+		f := &SlowFile{URL: noQuery(r.url), Host: r.host, IP: r.ip, Kind: kind, Ms: int64(secs * 1000),
+			Unfinished: !r.done, Error: r.failed, Phases: r.phases(end)}
+		f.Phase = mainPhase(f.Phases)
+		switch {
+		case !r.responded && (r.failed == "" || r.failed == hungError):
+			f.Phase = "none"
+		case f.Phase == "queue" && slowNet[r.host].ms >= netSlowMs:
+			f.Phase = slowNet[r.host].name
+		}
+		if len(f.Phases) == 0 {
+			f.Phases = nil
+		}
+		out = append(out, f)
+	}
+	slices.SortStableFunc(out, func(x, y *SlowFile) int {
+		if (x.Error != "") != (y.Error != "") {
+			return map[bool]int{true: -1, false: 1}[x.Error != ""]
+		}
+		return int(y.Ms - x.Ms)
+	})
+	return out[:min(len(out), 3*maxSlow)] // room for the ads the step drops
 }
 
 type cdpMsg struct {
@@ -569,6 +759,8 @@ loop:
 	session = ""
 	send("Browser.close", nil)
 
+	// The event clock stops when the network goes quiet; whynet kept waiting for what was still open.
+	agg.lastTs += time.Since(lastEvent).Seconds()
 	res = agg.result()
 	res.Browser = filepath.Base(exe)
 	res.Title, res.text = title, text

@@ -26,6 +26,10 @@ Every diagnosis whynet can give: how it is detected and how it is tested. Rules 
 | `content_stall` | The page opens, its content freezes after the first KB (likely) | `res.stall` | lab (server that sends 16 KB and goes silent) |
 | `content_blocked` | The page opens, some content servers fail (likely) | `res.worst` set | lab (server reset on its name); live: an ad server on habr.com before ads were excluded |
 | `content_slow` | Content is throttled (likely) | `res.slow` | not yet |
+| `content_late_loss` | Some files come late: packets get lost on the way to their server (likely) | `br.late` and the worst file's time went to connect/TLS, or one of the late servers loses ping tries (`res.late_lossy`) | table |
+| `content_late_server` | Some files come late: their server takes long to answer (likely) | `br.late`, phase `wait` | table |
+| `content_late` | Some files come late or never (likely) | `br.late`, any other phase (queue, DNS, download, no answer) | table; lab (one stuck image of a feed, a late counter ignored); real Edge against a local server delaying one image 3.5 s (phase `wait`) and never answering another (`none`, 8 s+) |
+| `content_lossy` | Everything loaded, but a content server loses connects (likely) | `res.lossy` (2+ of 5 tries resent) | table; live: dzen.ru, privacy-cs.mail.ru 4 of 5 connects at ~1000 ms, the rest 7 ms (2026-11-16) |
 | `content_flaky` | The browser failed on servers that pass their own check (likely) | `br.worst` set, no `res` failure, not all of them dead links (`res.browser_dead` gives `all_ok`) | lab (dead link case) |
 | `geo_blocked` | The site itself refuses your country | `http.geo` (451, or a geo text on a 4xx) | table |
 | `https_intercepted` | HTTPS intercepted by antivirus/other software (likely) | interceptor marker in the chain | table |

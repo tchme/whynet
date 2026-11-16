@@ -138,6 +138,19 @@ type CheckView struct {
 	Verdict VerdictView `json:"verdict"`
 	Steps   []StepView  `json:"steps"`
 	Hosts   []HostView  `json:"hosts"`
+	Slow    []SlowView  `json:"slow"`
+}
+
+// SlowView is one file that came late or never, for the "Details" table.
+type SlowView struct {
+	File       string `json:"file"` // full address without the query
+	Kind       string `json:"kind"`
+	Ms         int64  `json:"ms"`
+	Unfinished bool   `json:"unfinished"`
+	Where      string `json:"where"` // where the time went, or the browser's error
+	PingMs     int64  `json:"ping_ms"`
+	Lost       int    `json:"lost"`
+	Tries      int    `json:"tries"`
 }
 
 // HostView is one server the page loads from, for the "Details" table.
@@ -145,6 +158,8 @@ type HostView struct {
 	Host     string `json:"host"`
 	Kinds    string `json:"kinds"`
 	PingMs   int64  `json:"ping_ms"` // 0: not measured
+	Lost     int    `json:"lost"`    // tries that lost a packet, out of Tries
+	Tries    int    `json:"tries"`
 	KBps     int64  `json:"kbps"`
 	Requests int    `json:"requests"` // made by the browser
 	Failed   int    `json:"failed"`
@@ -175,7 +190,7 @@ func (a *App) hostViews(res *probe.Result) []HostView {
 		for i, k := range c.Kinds {
 			kinds[i] = a.t.Kinds[k]
 		}
-		v := HostView{Host: c.Host, Kinds: strings.Join(kinds, ", "), PingMs: c.PingMs, KBps: c.KBps,
+		v := HostView{Host: c.Host, Kinds: strings.Join(kinds, ", "), PingMs: c.PingMs, Lost: c.Lost, Tries: c.Tries, KBps: c.KBps,
 			Result: a.t.Results[c.Result], Tone: hostTone(c.Result)}
 		if c.BrowserOK {
 			v.Result, v.Tone = a.t.Results[c.Result]+" · "+a.t.UI["browser_ok"], "warn"
@@ -193,6 +208,34 @@ func (a *App) hostViews(res *probe.Result) []HostView {
 		if !seen[b.Host] {
 			out = append(out, HostView{Host: b.Host, Requests: b.Requests, Failed: b.Failed, KBps: b.KBps})
 		}
+	}
+	return out
+}
+
+// slowViews lists the files that came late or never, with their server's ping.
+func (a *App) slowViews(res *probe.Result) []SlowView {
+	var files []*probe.SlowFile
+	checks := map[string]*probe.HostCheck{}
+	for _, s := range res.Steps {
+		if b, ok := s.Evidence["browser"].(probe.BrowserResult); ok {
+			files = b.Slow
+		}
+		if hs, ok := s.Evidence["hosts"].([]*probe.HostCheck); ok {
+			for _, h := range hs {
+				checks[h.Host] = h
+			}
+		}
+	}
+	var out []SlowView
+	for _, f := range files {
+		v := SlowView{File: f.URL, Kind: a.t.Kinds[f.Kind], Ms: f.Ms, Unfinished: f.Unfinished, Where: a.t.Phases[f.Phase]}
+		if f.Error != "" && f.Phase != "none" {
+			v.Where = f.Error
+		}
+		if c := checks[f.Host]; c != nil {
+			v.PingMs, v.Lost, v.Tries = c.PingMs, c.Lost, c.Tries
+		}
+		out = append(out, v)
 	}
 	return out
 }
@@ -220,6 +263,7 @@ var tones = map[string]string{
 	"site_blocks_you": "warn", "hosts_entry": "warn", "no_such_site": "warn", "isp_dns_down": "warn", "clock_wrong": "warn",
 	"proxy_in_way": "warn", "https_intercepted": "warn", "proxy_path_broken": "warn", "sni_blocked_router": "warn", "unknown": "warn",
 	"content_stall": "warn", "content_blocked": "warn", "content_slow": "warn", "content_flaky": "warn", "page_slow": "warn",
+	"content_late_loss": "warn", "content_late_server": "warn", "content_late": "warn", "content_lossy": "warn",
 	"dpi_conflict": "warn", "dpi_not_listed": "warn", "dpi_strategy_fails": "warn", "dpi_off": "warn",
 }
 
@@ -309,6 +353,7 @@ func (a *App) check(site string, env probe.Env, limit time.Duration) (*CheckView
 		view.Steps = append(view.Steps, a.stepView(s))
 	}
 	view.Hosts = a.hostViews(res)
+	view.Slow = a.slowViews(res)
 	return view, nil
 }
 

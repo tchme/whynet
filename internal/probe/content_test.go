@@ -173,3 +173,93 @@ func TestBrowserAggregation(t *testing.T) {
 		}
 	}
 }
+
+// Which files came late, and where their time went (DevTools timings, ms after requestTime).
+func TestSlowFiles(t *testing.T) {
+	a := newAgg()
+	ev := func(method string, p map[string]any) {
+		b, _ := json.Marshal(p)
+		a.event(method, b)
+	}
+	req := func(id, typ, u string, ts float64) {
+		ev("Network.requestWillBeSent", map[string]any{"requestId": id, "timestamp": ts, "type": typ, "request": map[string]any{"url": u}})
+	}
+	answer := func(id string, ts float64, timing map[string]float64) {
+		tm := map[string]float64{"proxyStart": -1, "dnsStart": -1, "dnsEnd": -1, "connectStart": -1, "connectEnd": -1, "sslStart": -1, "sslEnd": -1}
+		maps.Copy(tm, timing)
+		ev("Network.responseReceived", map[string]any{"requestId": id, "timestamp": ts, "response": map[string]any{"remoteIPAddress": "10.0.0.7", "timing": tm}})
+	}
+	done := func(id string, ts float64) {
+		ev("Network.loadingFinished", map[string]any{"requestId": id, "timestamp": ts, "encodedDataLength": 1000})
+	}
+	// A: the connect took 1.5 s (a resent packet), 3.0 s in all.
+	req("A", "Image", "https://cdn.example/a.jpg?sig=secret", 1)
+	answer("A", 2.7, map[string]float64{"requestTime": 1, "connectStart": 0, "sslStart": 1500, "sslEnd": 1550, "connectEnd": 1550, "sendStart": 1551, "sendEnd": 1552, "receiveHeadersEnd": 1700})
+	done("A", 4)
+	// B: same server, waited for A's connection (HTTP/2): its own timing shows only the wait.
+	req("B", "Image", "https://cdn.example/b.jpg", 1)
+	answer("B", 2.7, map[string]float64{"requestTime": 1, "sendStart": 1555, "sendEnd": 1556, "receiveHeadersEnd": 1700})
+	done("B", 4.2)
+	// C: the server thought for 3 s.
+	req("C", "Script", "https://api.example/app.js", 2)
+	answer("C", 5, map[string]float64{"requestTime": 2, "dnsStart": 0, "dnsEnd": 5, "connectStart": 5, "sslStart": 10, "sslEnd": 20, "connectEnd": 20, "sendStart": 20, "sendEnd": 21, "receiveHeadersEnd": 3021})
+	done("C", 5.1)
+	req("D", "Image", "https://h.example/stuck.jpg", 2) // never answered
+	req("E", "Image", "https://cdn.example/fast.jpg", 1)
+	done("E", 1.2)
+	req("F", "Media", "https://v.example/video", 1) // a stream: long by design
+	answer("F", 1.1, map[string]float64{"requestTime": 1, "sendStart": 0, "sendEnd": 1, "receiveHeadersEnd": 50})
+	done("F", 11)
+	req("G", "XHR", "https://api.example/poll", 1) // a slow API call is not a missing block
+	done("G", 12)
+	req("H", "Image", "https://r.example/x.png", 1)
+	ev("Network.loadingFailed", map[string]any{"requestId": "H", "timestamp": 1.5, "errorText": "net::ERR_CONNECTION_RESET"})
+	req("I", "Image", "https://cdn.example/carousel.jpg", 1) // the page swapped it out after 5 s
+	ev("Network.loadingFailed", map[string]any{"requestId": "I", "timestamp": 6, "errorText": "net::ERR_ABORTED", "canceled": true})
+
+	got := map[string]*SlowFile{}
+	var order []string
+	for _, f := range a.result().Slow {
+		got[f.URL] = f
+		order = append(order, f.URL)
+	}
+	want := []string{"https://h.example/stuck.jpg", "https://r.example/x.png", // failed first
+		"https://cdn.example/b.jpg", "https://api.example/app.js", "https://cdn.example/a.jpg"}
+	if !slices.Equal(order, want) {
+		t.Fatalf("slow files %v, want %v", order, want)
+	}
+	for u, w := range map[string]string{"https://cdn.example/a.jpg": "connect", "https://cdn.example/b.jpg": "connect",
+		"https://api.example/app.js": "wait", "https://h.example/stuck.jpg": "none", "https://r.example/x.png": ""} {
+		if got[u].Phase != w {
+			t.Errorf("%s: phase %q, want %q (phases %v)", u, got[u].Phase, w, got[u].Phases)
+		}
+	}
+	if f := got["https://cdn.example/a.jpg"]; f.Ms != 3000 || f.IP != "10.0.0.7" || f.Kind != "image" ||
+		!maps.Equal(f.Phases, map[string]int64{"connect": 1500, "tls": 50, "wait": 148, "download": 1300}) {
+		t.Errorf("a.jpg: %+v", f)
+	}
+	if f := got["https://h.example/stuck.jpg"]; !f.Unfinished || f.Error != hungError || f.Ms != 10000 {
+		t.Errorf("stuck.jpg: %+v", f)
+	}
+	if got := shortURL("https://i.example.com/236x/0a/1b/2c/0a1b2c3d4e5f60718293a4b5c6d7e8f9-very-long-name.jpg"); got != "i.example.com/236x/0a/1b/2c/0a1b2c3d4e5f60…d7e8f9-very-long-name.jpg" {
+		t.Errorf("shortURL = %s", got)
+	}
+}
+
+// A try a second slower than the best one had a packet resent.
+func TestPingStats(t *testing.T) {
+	for _, c := range []struct {
+		times []int64
+		ping  int64
+		lost  int
+	}{
+		{[]int64{7, 1017, 1009, 6, 1006}, 7, 3}, // privacy-cs.mail.ru, live
+		{[]int64{7, 7, 6, 7, 6}, 7, 0},
+		{[]int64{90, 130, 950, 85, 100}, 100, 1}, // TLS through a fake-ip router
+		{[]int64{3000, 3010, 2990}, 3000, 0},     // far, but steady
+	} {
+		if ping, lost := pingStats(c.times); ping != c.ping || lost != c.lost {
+			t.Errorf("pingStats(%v) = %d, %d; want %d, %d", c.times, ping, lost, c.ping, c.lost)
+		}
+	}
+}

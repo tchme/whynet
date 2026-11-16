@@ -178,3 +178,17 @@ Checked in the running exe on the author's PC (2026-11-16: Start, Ctrl+Alt+L pre
 - **Symptom:** none seen live; found in review with the author (2026-11-16, right after 0.2.0). A person presses Ctrl+Alt+L a second or three after the lag. The mark was read at ±2 s, Wi-Fi spikes last 1-2 s, so a late mark usually fell on a calm network; on a session whose one or two spikes stayed under the "unstable" bar, `live_not_network` then said the lag was the computer's.
 - **Fix:** marks are bookmarks. Each looks back 10 s (and 1 s ahead) for the nearest confirmed jump and names it, or says there was none; the window shades those 10 s and the hover shows the mark's line. `live_not_network` and the `live.lag_calm` facts are gone: no verdict is drawn from marks. Measuring the PC (CPU, later frame times) is planned instead.
 - **Verified:** `TestAnalyzeFriendWiFi` (a mark 2 s after a spike finds it at 2 s; a mark with no jump in the 10 s before says so); `TestLiveMatch` (marks alone give `live_stable`); window screenshots of the built frontend with the Go side stubbed.
+
+## "All fine" while page blocks loaded late (dzen.ru, ru.pinterest.com)
+
+- **Symptom:** the author's report for dzen.ru (2026-11-16): grey placeholder blocks in their browser, whynet `all_ok`; the only trace was privacy-cs.mail.ru with a 1020 ms ping (others 3-23 ms) that nothing reacted to. On ru.pinterest.com whynet showed an 11 s ping to images and 4 failed requests of 240, still `all_ok`, without saying which files.
+- **Cause:** three gaps. The ping was one TCP connect, so a lost packet (Windows resends a connect after 1 s) looked like a number, not a problem: privacy-cs.mail.ru lost 4 of 6 connects in a row while top-fwz1.mail.ru on the same network lost none. The browser kept per server only its slowest time, no file and no phase. A lone request that never answered, from a server whose other requests came, was skipped on purpose (the habr.com false alarm), which is exactly one stuck image in a feed. Also, behind the fake-ip router the router answers a connect in 0 ms, so pinterest's image servers had no ping at all.
+- **Fix:** slow files with their phases (`br.late*`), ping as 5 tries with lost tries counted (`res.lossy*`), a TLS handshake as the ping behind fake-ip, verdicts `content_late_loss`, `content_late_server`, `content_late`, `content_lossy` (see diagnoses.md). Cancelled requests are not slow files.
+- **Verified:** `TestSlowFiles`, `TestPingStats`, table cases, the lab's stuck-image case; real Edge against a local server (one image delayed 3.5 s: `wait 3500`; one never answered: `none`, 8 s+); live 2026-11-16: dzen.ru `content_lossy` (privacy-cs.mail.ru 4 of 5), habr.com, youtube.com, ru.pinterest.com `all_ok` with no slow files, pinterest's image servers now 82-86 ms through the router. A live run with a really slow file was not caught: none came late that day.
+
+## Requests hung while the network was quiet were not counted as hung
+
+- **Symptom:** found while testing slow files: an image that never answered, watched for 8 s, was reported as 3.5 s and not as hung.
+- **Cause:** "now" for open requests was the timestamp of the latest DevTools event; when the network went quiet, that clock stopped, so a request stuck after the last event never reached the 5 s "no answer" mark.
+- **Fix:** at the end of the hidden run the event clock is moved on by the time since the last event.
+- **Verified:** the same real-Edge run: the stuck image 8.1 s, `net::ERR_TIMED_OUT (no answer while whynet watched)`.

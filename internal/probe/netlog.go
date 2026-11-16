@@ -115,7 +115,7 @@ func (n *netlogParser) line(b []byte) {
 	}
 	switch {
 	case p.NetError == -3: // ERR_ABORTED: the page cancelled it
-		r.done, r.end = true, ts
+		r.done, r.end, r.aborted = true, ts, true
 	case p.NetError < 0:
 		r.failed, r.done, r.end = n.errNames[p.NetError], true, ts
 		if r.failed == "" {
@@ -128,7 +128,7 @@ func (n *netlogParser) line(b []byte) {
 			r.done, r.end = true, ts
 		}
 	case n.headers:
-		r.responded = true
+		r.responded, r.headers = true, ts
 	case n.rd:
 		r.bytes += p.ByteCount
 	}

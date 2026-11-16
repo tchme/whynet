@@ -190,12 +190,36 @@
 # The browser's only failures are names no DNS knows: dead links in the page (youtube.com, live).
 - id: all_ok
   confidence: high
-  when: {res.browser_dead: true, tls.status: ok, http.class: [2xx, 3xx]}
+  when: {res.browser_dead: true, tls.status: ok, http.class: [2xx, 3xx], br.late: "!true", res.lossy: "!true"}
 
 # The browser failed somewhere, but those servers passed their own check.
 - id: content_flaky
   confidence: likely
   when: {br.worst: [reset, timeout, dns, refused, eof, cert, tls]}
+
+# Files of the page came late or never while the rest loaded (an image block stuck in a feed).
+# Where their time went decides the advice; ads and counters never count.
+- id: content_late_loss
+  confidence: likely
+  when: {br.late: true, br.late_phase: [connect, tls]}
+
+- id: content_late_loss
+  confidence: likely
+  when: {br.late: true, res.late_lossy: true}
+
+- id: content_late_server
+  confidence: likely
+  when: {br.late: true, br.late_phase: wait}
+
+- id: content_late
+  confidence: likely
+  when: {br.late: true}
+
+# Nothing came late this time, but connects to a server of the page keep losing packets
+# (privacy-cs.mail.ru on dzen.ru: 4 of 6 connects took 1 s, live 2026-11-16).
+- id: content_lossy
+  confidence: likely
+  when: {res.lossy: true}
 
 - id: all_ok
   confidence: high

@@ -55,11 +55,15 @@ func TestMarkdownSymbols(t *testing.T) {
 	}
 	res := &probe.Result{Input: "x.com", Host: "x.com", Steps: []probe.Step{
 		{ID: "browser", Status: "warn", Evidence: map[string]any{"browser": probe.BrowserResult{Status: "ok",
-			Hosts: []*probe.BrowserHost{{Host: "cdn.x.com", Requests: 1, Failed: 1, Errors: map[string]int{"net::ERR_CONNECTION_RESET": 1}}}}}},
-		{ID: "res", Status: "ok", Evidence: map[string]any{"hosts": []*probe.HostCheck{{Host: "gone.x.com", Result: "gone"}}}},
+			Hosts: []*probe.BrowserHost{{Host: "cdn.x.com", Requests: 1, Failed: 1, Errors: map[string]int{"net::ERR_CONNECTION_RESET": 1}}},
+			Slow: []*probe.SlowFile{{URL: "https://img.x.com/a.jpg", Host: "img.x.com", Kind: "image", Ms: 3200, Phase: "connect",
+				Phases: map[string]int64{"download": 100, "connect": 3000, "wait": 100}}}}}},
+		{ID: "res", Status: "ok", Evidence: map[string]any{"hosts": []*probe.HostCheck{{Host: "gone.x.com", Result: "gone"},
+			{Host: "img.x.com", Result: "ok", PingMs: 7, Lost: 3, Tries: 5}}}},
 	}}
 	md := Markdown(res, rules.Verdict{ID: "unknown", Confidence: "likely"}, tx, true)
-	for _, want := range []string{"net::ERR_CONNECTION_RESET ×1", "| gone.x.com |  | — |"} {
+	for _, want := range []string{"net::ERR_CONNECTION_RESET ×1", "| gone.x.com |  | — |", "| img.x.com |  | 7 (потери 3 из 5) |",
+		"| https://img.x.com/a.jpg | картинки | 3200 | подключение к серверу | connect 3000 · wait 100 · download 100 |  |"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("report lacks %q", want)
 		}

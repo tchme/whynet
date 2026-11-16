@@ -28,7 +28,10 @@ whynet/
     browser.go             "browser" step: BrowserSession drives Edge/Chrome over the DevTools protocol
                            (x/net/websocket), fresh temp profile, no sign-in/sync; hidden and automatic, or
                            visible (BrowserOpts: Done, Progress) for the person; Network events -> per-server
-                           totals, errors, speed; DOMContentLoaded/load timing; page title+text for markers
+                           totals, errors, speed; DOMContentLoaded/load timing; page title+text for markers;
+                           per request DevTools' ResourceTiming split into phases (queue, dns, connect, tls,
+                           wait, download) -> SlowFile list: failed, never answered, or 3 s+ (images, scripts,
+                           styles, fonts; media only on failure), with the phase that took the time
     netlog.go              visible window: a plain browser (no debugging port: anti-bot checks spot it) with
                            --log-net-log; the log is tailed live and parsed into the same per-server totals;
                            the page's own requests are those whose network_isolation_key top site is the page's
@@ -36,7 +39,8 @@ whynet/
                            window title and WM_CLOSE for the plain window (one shared EnumWindows callback)
     resources.go           "res" step: content servers from the HTML (x/net/html), from markers' `related`
                            and from the browser's failures; DNS/TCP/TLS/control + one sample file per server,
-                           6 at a time, up to 20; stall watchdog and speed
+                           6 at a time, up to 20; stall watchdog and speed; ping = 5 TCP connects (TLS
+                           handshakes behind a fake-ip router), median + tries that lost a packet
     dpi.go                 bundle folder from a path, zapret hostlist matching (plain = with subdomains, ^ = exact)
     dpi_windows.go         DPI-bypass tools: processes (+exe, command line), services, WinDivert driver; no admin needed
   internal/live/            the stability check (design: stability.md); Env holds everything external
@@ -120,10 +124,15 @@ stability: target -> live.Start(ctx, Env, target, onUpdate) -> Session (ticks, t
 | `br.antibot` | true: the automated browser got the site's block page (anti-bot check, "turn off VPN") |
 | `br.blocked_page` / `br.page_title` | true: the plain window got such a page / its title |
 | `br.visible` | true: the person used a visible window |
+| `br.late`, `br.late_hosts` | true / servers with a file that took 3 s+ or never answered while their other files came (ads excluded) |
+| `br.late_file`, `br.late_s`, `br.late_phase` | the worst such file (no scheme, no query, long path cut) / its seconds, "+" when still open at the end / queue, dns, connect, tls, wait, answer (visible window: everything before the answer), download, none (no answer) |
 | `res.checked` / `res.failed` | content servers checked / failed (ads excluded) |
 | `res.browser_dead` | true: every server the browser failed on is a name neither DNS knows (`gone`): dead links in the page |
 | `res.problem`, `res.worst`, `res.failed_hosts` | true / dns, ip, sni, tls, cert, http, stall (worst first) / up to 3 |
 | `res.stall`, `res.stall_hosts` | true / servers that froze before 64 KB (the "16 KB" pattern) |
+| `res.lossy`, `res.lossy_hosts` | true / servers where 2+ of 5 ping tries lost a packet (a try 800 ms+ slower than the best: Windows resends a lost connect after 1 s) |
+| `res.lossy_lost`, `res.lossy_tries` | the worst such server's lost tries / tries |
+| `res.late_lossy` | true: a server from `br.late_hosts` is lossy |
 | `res.slow`, `res.slow_hosts`, `res.slow_kbps` | true / servers under 64 KB/s on 256 KB+ (own sample or the browser's big files) / the slowest |
 
 Stability check facts (`internal/live/analyze.go`; ids: router, beyond, ctl_ru, ctl_world, server):

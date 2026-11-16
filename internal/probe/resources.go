@@ -26,6 +26,9 @@ const (
 	speedMinRead = 256 << 10 // enough data to judge speed
 	slowKBps     = 64        // below this a server counts as throttled
 	stallMax     = 64 << 10  // stopping before this much is the "freezes after ~16 KB" pattern
+	pingTries    = 5
+	resentMs     = 800 // a try this much slower than the best one had a packet resent (Windows waits 1 s)
+	minLost      = 2   // lost tries out of pingTries that make a path lossy rather than unlucky
 )
 
 // HostCheck is one server the page loads content from, checked on its own.
@@ -39,6 +42,10 @@ type HostCheck struct {
 	Bytes  int64    `json:"bytes,omitempty"`
 	KBps   int64    `json:"kbps,omitempty"`
 	PingMs int64    `json:"ping_ms,omitempty"` // TCP connect time: the delay a browser feels (ICMP is often filtered)
+	// PingTLS: behind a fake-ip router, which answers a connect itself, the ping is a TLS handshake.
+	PingTLS bool `json:"ping_tls,omitempty"`
+	Lost    int  `json:"lost,omitempty"` // tries out of Tries that lost a packet (resent) or failed
+	Tries   int  `json:"tries,omitempty"`
 	// BrowserOK: whynet's own check failed, but the browser loaded from this server, so it doesn't count.
 	BrowserOK bool   `json:"browser_ok,omitempty"`
 	Ms        int64  `json:"ms"`
@@ -170,10 +177,10 @@ func (p *prober) content(s *Step) {
 			hosts = append(hosts, h)
 		}
 	}
-	// Servers the browser stumbled on come first: they are the ones to explain.
+	// Servers the browser stumbled on or waited for come first: they are the ones to explain.
 	// Then what the HTML names, known servers of the site, and the rest the browser used.
 	for _, b := range p.browserHosts {
-		if slices.Contains(p.browserFailed, b.Host) {
+		if slices.Contains(p.browserFailed, b.Host) || slices.Contains(p.browserLate, b.Host) {
 			add(&HostCheck{Host: b.Host, Kinds: browserKinds(b.Types)})
 		}
 	}
@@ -212,12 +219,22 @@ func (p *prober) content(s *Step) {
 	for _, b := range p.browserHosts {
 		browserOK[b.Host] = b.Requests > b.Failed
 	}
-	var failed, stalled, slow []string
-	worst, minKBps := "", int64(-1)
+	var failed, stalled, slow, lossy []string
+	worst, minKBps, mostLost := "", int64(-1), 0
 	for _, h := range hosts {
 		if p.env.Markers.IsAd(h.Host) {
 			h.Kinds = append(h.Kinds, "ads")
 			continue
+		}
+		if h.Lost >= minLost {
+			lossy = append(lossy, h.Host)
+			if h.Lost > mostLost {
+				mostLost = h.Lost
+				s.Facts["res.lossy_lost"], s.Facts["res.lossy_tries"] = strconv.Itoa(h.Lost), strconv.Itoa(h.Tries)
+			}
+			if slices.Contains(p.browserLate, h.Host) {
+				s.Facts["res.late_lossy"] = "true"
+			}
 		}
 		if browserOK[h.Host] && slices.Contains(failedResults, h.Result) {
 			h.BrowserOK = true
@@ -276,6 +293,11 @@ func (p *prober) content(s *Step) {
 		s.Facts["res.stall"] = "true"
 		s.Facts["res.stall_hosts"] = shortList(stalled)
 	}
+	if len(lossy) > 0 {
+		s.Facts["res.lossy"] = "true"
+		s.Facts["res.lossy_hosts"] = shortList(lossy)
+		s.Status = "warn"
+	}
 	if len(slow) > 0 {
 		s.Facts["res.slow"] = "true"
 		s.Facts["res.slow_hosts"] = shortList(slow)
@@ -317,16 +339,19 @@ func (p *prober) checkHost(h *HostCheck) {
 	}
 	h.IP = ips[0]
 
-	ctx, cancel = p.timeout()
-	dialStart := time.Now()
-	c, err := p.env.Dial(ctx, "tcp", net.JoinHostPort(h.IP, "443"))
-	cancel()
-	if err != nil {
+	connect := func() error {
+		ctx, cancel := p.timeout()
+		defer cancel()
+		c, err := p.env.Dial(ctx, "tcp", net.JoinHostPort(h.IP, "443"))
+		if err == nil {
+			c.Close()
+		}
+		return err
+	}
+	if err := ping(h, connect); err != nil {
 		h.Result, h.Detail = "ip", "connect: "+netClass(err)
 		return
 	}
-	h.PingMs = time.Since(dialStart).Milliseconds()
-	c.Close()
 
 	if _, err := p.handshake(h.IP, h.Host, false); err != nil {
 		switch cls := tlsClass(err); cls {
@@ -344,6 +369,14 @@ func (p *prober) checkHost(h *HostCheck) {
 		}
 		return
 	}
+	// A fake-ip router answers the connect itself in no time: the way to the server shows in the handshake.
+	if fakeIP([]string{h.IP}) {
+		h.PingTLS = true
+		ping(h, func() error {
+			_, err := p.handshake(h.IP, h.Host, false)
+			return err
+		})
+	}
 
 	target := h.sample
 	if target == "" || strings.HasPrefix(target, "http://") {
@@ -351,6 +384,47 @@ func (p *prober) checkHost(h *HostCheck) {
 	}
 	// Speed counts only for a real file: a server's root or an embedded page is generated, not sent.
 	p.fetchSample(h, target, target == h.sample && !(len(h.Kinds) == 1 && h.Kinds[0] == "frame"))
+}
+
+// ping times pingTries tries of try into h: the typical time and how many tries lost a packet.
+// The first try's error is returned (the server doesn't answer); a later one counts as lost and ends the tries.
+func ping(h *HostCheck, try func() error) error {
+	var times []int64
+	failed := 0
+	for i := range pingTries {
+		if i > 0 {
+			time.Sleep(100 * time.Millisecond) // a burst of connects can trip a server's rate limit
+		}
+		start := time.Now()
+		if err := try(); err != nil {
+			if i == 0 {
+				return err
+			}
+			failed = 1
+			break
+		}
+		times = append(times, time.Since(start).Milliseconds())
+	}
+	h.PingMs, h.Lost = pingStats(times)
+	h.Lost += failed
+	h.Tries = len(times) + failed
+	return nil
+}
+
+// pingStats: a try resentMs slower than the best one had its first packet lost and resent;
+// the ping is the median of the others.
+func pingStats(times []int64) (ping int64, lost int) {
+	best := slices.Min(times)
+	var ok []int64
+	for _, t := range times {
+		if t >= best+resentMs {
+			lost++
+		} else {
+			ok = append(ok, t)
+		}
+	}
+	slices.Sort(ok)
+	return ok[len(ok)/2], lost
 }
 
 // fetchSample downloads up to sampleLimit of one file, watching for a stall and measuring speed.

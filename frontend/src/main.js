@@ -23,7 +23,7 @@ const freshLive = () => ({
 });
 
 const state = {
-  ui: {}, L: {}, version: '', blank: [], steps: [], hosts: [],
+  ui: {}, L: {}, version: '', blank: [], steps: [], hosts: [], slow: [],
   mode: 'site', // site | live
   phase: 'idle', // idle | running | done
   host: '', verdict: null, error: '',
@@ -84,7 +84,7 @@ function hostsHTML() {
   const rows = state.hosts.map(h => `<tr>
       <td class="host"><span class="dot ${esc(h.tone || 'none')}"></span>${esc(h.host)}</td>
       <td>${esc(h.kinds)}</td>
-      <td class="num">${h.ping_ms ? `${h.ping_ms} мс` : '—'}</td>
+      <td class="num">${pingCell(h)}</td>
       <td class="num">${h.kbps ? `${h.kbps} ${esc(ui.kbps)}` : '—'}</td>
       <td class="num">${h.requests ? (h.failed ? `${h.requests} <span class="bad">(${h.failed} ✗)</span>` : h.requests) : '—'}</td>
       <td>${esc(h.result || ui.not_checked)}</td>
@@ -96,8 +96,31 @@ function hostsHTML() {
       <tbody>${rows}</tbody></table></div>`;
 }
 
+// A server's ping, with the tries that lost a packet.
+const pingCell = h => h.ping_ms
+  ? `${h.ping_ms} мс${h.lost ? ` · <span class="bad">${esc(fill(state.ui.lost, h))}</span>` : ''}` : '—';
+// A file's address for one cell: no scheme, a long path cut in the middle (the full one on hover).
+const shortFile = f => { f = f.replace(/^https?:\/\//, ''); return f.length > 70 ? `${f.slice(0, 42)}…${f.slice(-25)}` : f; };
+
+function slowHTML() {
+  const ui = state.ui;
+  if (!state.slow.length) return '';
+  const rows = state.slow.map(f => `<tr>
+      <td class="host" title="${esc(f.file)}">${esc(shortFile(f.file))}</td>
+      <td>${esc(f.kind)}</td>
+      <td class="num">${num(f.ms / 1000)}${f.unfinished ? '+' : ''} ${esc(ui.sec)}</td>
+      <td>${esc(f.where)}</td>
+      <td class="num">${pingCell(f)}</td>
+    </tr>`).join('');
+  return `<div class="details-title">${esc(ui.slow_title)}</div>
+    <div class="table-wrap"><table class="hosts">
+      <thead><tr><th>${esc(ui.col_file)}</th><th>${esc(ui.col_kind)}</th><th class="num">${esc(ui.col_time)}</th>
+        <th>${esc(ui.col_where)}</th><th class="num">${esc(ui.col_server_ping)}</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+}
+
 function detailsHTML() {
-  return `<div class="details">${hostsHTML()}
+  return `<div class="details">${slowHTML()}${hostsHTML()}
     <div class="details-title">${esc(state.ui.facts_title)}</div><div class="details-grid">${state.steps.map(s =>
     `<div class="fact-card"><b>${GLYPH[s.status] ?? ''} ${esc(s.name)}</b>${(s.facts || []).map(([k, v]) => `<span>${esc(k)}:</span> ${esc(v)}`).join('<br>')}</div>`).join('')}</div></div>`;
 }
@@ -483,12 +506,12 @@ EventsOn('browser-progress', p => {
 
 async function startCheck(site, visible) {
   if (!site || state.phase === 'running') return;
-  Object.assign(state, { phase: 'running', host: site, error: '', details: false, modal: false, reveal: false, hosts: [],
+  Object.assign(state, { phase: 'running', host: site, error: '', details: false, modal: false, reveal: false, hosts: [], slow: [],
     visible, progress: null, steps: state.blank.map((s, i) => ({ ...s, status: i === 0 ? 'run' : 'wait' })) });
   render();
   try {
     const view = await (visible ? CheckInBrowser(site) : Check(site));
-    Object.assign(state, { phase: 'done', host: view.host, verdict: view.verdict, steps: view.steps, hosts: view.hosts || [] });
+    Object.assign(state, { phase: 'done', host: view.host, verdict: view.verdict, steps: view.steps, hosts: view.hosts || [], slow: view.slow || [] });
     if (visible && view.steps.find(s => s.id === 'browser')?.facts?.some(([k, v]) => k === 'br.status' && v === 'unavailable')) {
       toast(state.ui.browser_missing);
     }

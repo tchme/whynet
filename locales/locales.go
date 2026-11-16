@@ -35,6 +35,7 @@ type Texts struct {
 	Notes         []Note               `yaml:"notes"`
 	Kinds         map[string]string    `yaml:"kinds"`
 	Results       map[string]string    `yaml:"results"`
+	Phases        map[string]string    `yaml:"phases"`    // where a slow file's time went
 	Countries     map[string]string    `yaml:"countries"` // ISO code -> name as in "из <name>"
 	Colos         map[string]string    `yaml:"colos"`     // Cloudflare node (airport code) -> city
 	UI            map[string]string    `yaml:"ui"`

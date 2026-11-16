@@ -217,6 +217,7 @@ type prober struct {
 	finalURL      *url.URL         // after redirects
 	browserHosts  []*BrowserHost   // every server the browser used, failed first
 	browserFailed []string         // servers the browser could not load from
+	browserLate   []string         // servers whose files came late or never, worst first
 	browserSlow   map[string]int64 // servers the browser loaded big files from slowly -> KB/s
 }
 

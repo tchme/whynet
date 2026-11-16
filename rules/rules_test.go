@@ -78,6 +78,18 @@ func TestMatch(t *testing.T) {
 		{with("br.blocked_page", "true", "br.page_title", "Похоже, нет соединения", "br.visible", "true"), "site_blocks_you"},
 		// a plain window loaded the page: whynet's own request meeting an anti-bot check doesn't matter
 		{with("http.class", "4xx", "http.status", "403", "http.challenge", "true", "br.visible", "true", "br.status", "ok", "br.requests", "903", "br.failed", "3"), "browser_ok"},
+		// files that came late: where the time went decides the advice; failures outrank lateness
+		{with("br.late", "true", "br.late_phase", "connect"), "content_late_loss"},
+		{with("br.late", "true", "br.late_phase", "tls"), "content_late_loss"},
+		{with("br.late", "true", "br.late_phase", "none", "res.lossy", "true", "res.late_lossy", "true"), "content_late_loss"},
+		{with("br.late", "true", "br.late_phase", "wait"), "content_late_server"},
+		{with("br.late", "true", "br.late_phase", "download"), "content_late"},
+		{with("br.late", "true", "br.late_phase", "none", "res.lossy", "true"), "content_late"}, // the lossy server is another one
+		{with("br.late", "true", "br.late_phase", "connect", "res.worst", "sni"), "content_blocked"},
+		{with("br.late", "true", "br.late_phase", "wait", "res.browser_dead", "true"), "content_late_server"},
+		{with("res.browser_dead", "true", "br.worst", "dns"), "all_ok"},
+		// dzen.ru, live 2026-11-16: everything loaded, privacy-cs.mail.ru lost 3 of 5 connects
+		{with("br.status", "ok", "res.lossy", "true", "res.lossy_hosts", "privacy-cs.mail.ru", "res.lossy_lost", "3", "res.lossy_tries", "5"), "content_lossy"},
 	}
 	for _, c := range cases {
 		if got := rules.Match(rs, c.facts); got.ID != c.want {

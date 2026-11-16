@@ -129,4 +129,22 @@ func TestContentLab(t *testing.T) {
 	if v.ID != "all_ok" || f["res.browser_dead"] != "true" || f["br.worst"] != "dns" {
 		t.Errorf("dead link: verdict %s, facts %v", v.ID, f)
 	}
+
+	// One image of a feed never came while the rest of its server's files did: no longer ignored.
+	// A counter that came late doesn't count.
+	hung := "net::ERR_TIMED_OUT (no answer while whynet watched)"
+	browser = func(context.Context, string) probe.BrowserResult {
+		return probe.BrowserResult{Status: "ok", DomMs: 500, LoadMs: 600, Requests: 6, Failed: 1, Hosts: []*probe.BrowserHost{
+			{Host: "cdn.example.com", Requests: 5, Failed: 1, Errors: map[string]int{hung: 1}, Types: []string{"image"}},
+			{Host: "mc.yandex.ru", Requests: 1, Types: []string{"script"}},
+		}, Slow: []*probe.SlowFile{
+			{URL: "https://mc.yandex.ru/metrika/tag.js", Host: "mc.yandex.ru", Kind: "script", Ms: 9000, Phase: "wait"},
+			{URL: "https://cdn.example.com/feed/1.jpg", Host: "cdn.example.com", Kind: "image", Ms: 8000, Unfinished: true, Phase: "none", Error: hung},
+		}}
+	}
+	f, v = run(`<script src="https://cdn.example.com/app.js"></script>`)
+	if v.ID != "content_late" || f["br.late_hosts"] != "cdn.example.com" || f["br.late_file"] != "cdn.example.com/feed/1.jpg" ||
+		f["br.late_s"] != "8.0+" || f["br.late_phase"] != "none" || f["br.problem"] != "" || f["res.lossy"] != "" {
+		t.Errorf("one stuck image: verdict %s, facts %v", v.ID, f)
+	}
 }

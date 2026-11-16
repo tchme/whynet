@@ -99,6 +99,22 @@ func Markdown(res *probe.Result, v rules.Verdict, t *locales.Texts, hide bool) s
 				}
 				w("| %s | %d | %d | %s |\n", cell(h.Host), h.Requests, h.Failed, cell(strings.Join(errs, ", ")))
 			}
+			if len(br.Slow) > 0 {
+				w("\n## %s\n\n%s\n|---|---|---|---|---|---|\n", r["slow"], r["slow_cols"])
+				for _, f := range br.Slow {
+					var phases []string
+					for _, k := range probe.PhaseOrder {
+						if ms, ok := f.Phases[k]; ok {
+							phases = append(phases, fmt.Sprintf("%s %d", k, ms))
+						}
+					}
+					more := ""
+					if f.Unfinished {
+						more = "+"
+					}
+					w("| %s | %s | %d%s | %s | %s | %s |\n", cell(f.URL), t.Kinds[f.Kind], f.Ms, more, t.Phases[f.Phase], strings.Join(phases, " · "), cell(f.Error))
+				}
+			}
 		}
 		if hosts, ok := s.Evidence["hosts"].([]*probe.HostCheck); ok {
 			w("\n## %s\n\n%s\n|---|---|---|---|---|\n", r["content"], r["content_cols"])
@@ -114,9 +130,15 @@ func Markdown(res *probe.Result, v rules.Verdict, t *locales.Texts, hide bool) s
 				if h.KBps > 0 {
 					detail += fmt.Sprintf(", %d KB/s", h.KBps)
 				}
+				if h.PingTLS {
+					detail += "; " + r["ping_tls"]
+				}
 				ping := "—"
 				if h.PingMs > 0 {
 					ping = fmt.Sprint(h.PingMs)
+				}
+				if h.Lost > 0 {
+					ping += " (" + locales.Fill(r["lost"], map[string]string{"lost": fmt.Sprint(h.Lost), "tries": fmt.Sprint(h.Tries)}) + ")"
 				}
 				w("| %s | %s | %s | %s | %s |\n", cell(h.Host), cell(strings.Join(kinds, ", ")), ping, cell(t.Results[h.Result]), cell(detail))
 			}
