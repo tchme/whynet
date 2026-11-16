@@ -499,7 +499,7 @@ func (a *cdpAgg) slow() []*SlowFile {
 	var out []*SlowFile
 	for _, id := range a.order {
 		r := a.reqs[id]
-		kind := browserKinds([]string{r.kind})[0]
+		kind := BrowserKinds([]string{r.kind})[0]
 		end := r.end
 		if !r.done {
 			end = a.lastTs

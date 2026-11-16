@@ -38,7 +38,7 @@ whynet/
     browser_windows.go     find Edge, else Chrome (App Paths, Program Files, LocalAppData); hide its window;
                            window title and WM_CLOSE for the plain window (one shared EnumWindows callback)
     resources.go           "res" step: content servers from the HTML (x/net/html), from markers' `related`
-                           and from the browser's failures; DNS/TCP/TLS/control + one sample file per server,
+                           and from the browser's failures and late files, then the rest it used (ads last); DNS/TCP/TLS/control + one sample file per server,
                            6 at a time, up to 20; stall watchdog and speed; ping = 5 TCP connects (TLS
                            handshakes behind a fake-ip router), median + tries that lost a packet
     dpi.go                 bundle folder from a path, zapret hostlist matching (plain = with subdomains, ^ = exact)

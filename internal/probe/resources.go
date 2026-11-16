@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	maxHosts     = 20        // servers checked per page
+	MaxHosts     = 20        // servers checked per page
 	parallel     = 6         // checked at once
 	sampleLimit  = 512 << 10 // bytes read from one sample file
 	speedMinRead = 256 << 10 // enough data to judge speed
@@ -137,8 +137,8 @@ func addSrcset(srcset, kind string, add func(raw, kind string)) {
 	}
 }
 
-// browserKinds maps Chromium resource types to the kinds the report names.
-func browserKinds(types []string) []string {
+// BrowserKinds maps Chromium resource types to the kinds the report names.
+func BrowserKinds(types []string) []string {
 	var out []string
 	for _, t := range types {
 		k, ok := map[string]string{"image": "image", "script": "script", "stylesheet": "style", "font": "font",
@@ -172,7 +172,7 @@ func (p *prober) content(s *Step) {
 	var hosts []*HostCheck
 	seen := map[string]bool{p.host: true}
 	add := func(h *HostCheck) {
-		if !seen[h.Host] && len(hosts) < maxHosts {
+		if !seen[h.Host] && len(hosts) < MaxHosts {
 			seen[h.Host] = true
 			hosts = append(hosts, h)
 		}
@@ -181,7 +181,7 @@ func (p *prober) content(s *Step) {
 	// Then what the HTML names, known servers of the site, and the rest the browser used.
 	for _, b := range p.browserHosts {
 		if slices.Contains(p.browserFailed, b.Host) || slices.Contains(p.browserLate, b.Host) {
-			add(&HostCheck{Host: b.Host, Kinds: browserKinds(b.Types)})
+			add(&HostCheck{Host: b.Host, Kinds: BrowserKinds(b.Types)})
 		}
 	}
 	if p.body != nil && p.finalURL != nil {
@@ -192,8 +192,13 @@ func (p *prober) content(s *Step) {
 	for _, h := range relatedHosts(p.host, p.env.Markers.Related) {
 		add(&HostCheck{Host: h, Kinds: []string{"known"}})
 	}
-	for _, b := range p.browserHosts {
-		add(&HostCheck{Host: b.Host, Kinds: browserKinds(b.Types)})
+	// Ads last: their failures never count, so they shouldn't take the places of the page's own servers.
+	for _, ads := range []bool{false, true} {
+		for _, b := range p.browserHosts {
+			if p.env.Markers.IsAd(b.Host) == ads {
+				add(&HostCheck{Host: b.Host, Kinds: BrowserKinds(b.Types)})
+			}
+		}
 	}
 
 	var wg sync.WaitGroup

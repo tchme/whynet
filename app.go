@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -185,12 +186,15 @@ func (a *App) hostViews(res *probe.Result) []HostView {
 	}
 	var out []HostView
 	seen := map[string]bool{}
-	for _, c := range checks {
-		kinds := make([]string, len(c.Kinds))
-		for i, k := range c.Kinds {
-			kinds[i] = a.t.Kinds[k]
+	words := func(kinds []string) string {
+		out := make([]string, len(kinds))
+		for i, k := range kinds {
+			out[i] = a.t.Kinds[k]
 		}
-		v := HostView{Host: c.Host, Kinds: strings.Join(kinds, ", "), PingMs: c.PingMs, Lost: c.Lost, Tries: c.Tries, KBps: c.KBps,
+		return strings.Join(out, ", ")
+	}
+	for _, c := range checks {
+		v := HostView{Host: c.Host, Kinds: words(c.Kinds), PingMs: c.PingMs, Lost: c.Lost, Tries: c.Tries, KBps: c.KBps,
 			Result: a.t.Results[c.Result], Tone: hostTone(c.Result)}
 		if c.BrowserOK {
 			v.Result, v.Tone = a.t.Results[c.Result]+" · "+a.t.UI["browser_ok"], "warn"
@@ -204,12 +208,37 @@ func (a *App) hostViews(res *probe.Result) []HostView {
 		seen[c.Host] = true
 		out = append(out, v)
 	}
-	for _, b := range browser { // the servers beyond the check limit, with what the browser saw
-		if !seen[b.Host] {
-			out = append(out, HostView{Host: b.Host, Requests: b.Requests, Failed: b.Failed, KBps: b.KBps})
+	for _, b := range browser { // the site itself and the servers beyond the check limit, with what the browser saw
+		if seen[b.Host] {
+			continue
 		}
+		kinds := probe.BrowserKinds(b.Types)
+		if a.markers.IsAd(b.Host) {
+			kinds = append(kinds, "ads")
+		}
+		v := HostView{Host: b.Host, Kinds: words(kinds), Requests: b.Requests, Failed: b.Failed, KBps: b.KBps}
+		switch {
+		case b.Host == res.Host:
+			v.Result, v.PingMs = a.t.UI["site_itself"], sitePing(res)
+		case len(checks) >= probe.MaxHosts:
+			v.Result = locales.Fill(a.t.UI["over_limit"], map[string]string{"n": strconv.Itoa(probe.MaxHosts)})
+		}
+		out = append(out, v)
 	}
 	return out
+}
+
+// sitePing is the site's own connect time, from the TCP step (the content step skips the site).
+func sitePing(res *probe.Result) int64 {
+	for _, s := range res.Steps {
+		tries, _ := s.Evidence["tries"].([]map[string]any)
+		for _, t := range tries {
+			if ms, ok := t["ms"].(int64); ok && t["result"] == "ok" {
+				return ms
+			}
+		}
+	}
+	return 0
 }
 
 // slowViews lists the files that came late or never, with their server's ping.
