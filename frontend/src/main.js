@@ -212,7 +212,7 @@ const LINK_COLOR = { router: '#f07468', beyond: '#e6ae52', ctl_ru: '#8fa3b3', ct
 const ENOUGH = 180, MIN_SECONDS = 30, LIVE_POINTS = 240; // 3 minutes; 2 minutes of 0.5 s ticks on the live chart
 const CPU_BUSY = 90; // live.CPUBusy
 const STALLS_BAR = 3; // live.stallsBar: this many stalls make a verdict
-const FPS_COLOR = '#3f8f7a', STALL_COLOR = '#ff6b5e', AWAY_COLOR = '#2a353f';
+const FPS_COLOR = '#3f8f7a', STALL_COLOR = '#ff6b5e', AWAY_COLOR = '#3a4652'; // away: lighter than the lane's #1f2a35 or it vanishes
 const num = v => v < 10 ? v.toLocaleString('ru-RU', { maximumFractionDigits: 1 }) : String(Math.round(v));
 const ms = v => (v == null || v < 0) ? '—' : `${num(v)} ${state.L.ms}`;
 const clock = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;

@@ -108,6 +108,7 @@ type runFrames struct {
 	last      time.Duration // the previous frame
 	avgMs     float64       //
 	stalls    int           //
+	pending   bool          // a stall waiting for the next tick to confirm its window was still in front
 	stallUpTo time.Duration // the end of the last stall counted
 }
 
@@ -365,9 +366,16 @@ func (s *Session) readForeground() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.fg = append(s.fg, exe)
-	if exe != s.fgNow { // the gap across a switch is no stall (Valorant, 2026-11-17: one counted live, none in the analysis)
-		for _, rf := range s.runFrames {
-			rf.last = 0
+	// A stall counts once its window is still in front a tick later, as in the analysis: a game slows
+	// down the moment the person switches away, before this tick sees the switch (Valorant and
+	// Frostpunk, 2026-11-17: one stall counted live, none in the analysis).
+	for e, rf := range s.runFrames {
+		if rf.pending && e == exe && e == s.fgNow {
+			rf.stalls++
+		}
+		rf.pending = false
+		if exe != s.fgNow {
+			rf.last = 0 // the gap across a switch is no stall
 		}
 	}
 	s.fgNow = exe
@@ -407,7 +415,7 @@ func (s *Session) onFrame(pid uint32, at time.Time) {
 		if ms := float64(d-rf.last) / float64(time.Millisecond); rf.last > 0 && ms > 0 && ms <= pauseMs {
 			if rf.avgMs > 0 && isStall(ms, rf.avgMs) {
 				if rf.last-rf.stallUpTo > stallMerge {
-					rf.stalls++
+					rf.pending = true // confirmed by the next tick (readForeground)
 				}
 				rf.stallUpTo = d
 			}

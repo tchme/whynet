@@ -167,6 +167,7 @@ func TestSessionFramesByExe(t *testing.T) {
 		s.onFrame(300, t0.Add(time.Second+time.Duration(i)*16*time.Millisecond))
 	}
 	s.onFrame(200, t0.Add(time.Second+99*16*time.Millisecond+400*time.Millisecond)) // a 400 ms hitch
+	s.readForeground()                                                              // still in front: it counts
 	if len(s.frames["msedge.exe"]) != 101 || s.frames["discord.exe"] != nil {
 		t.Errorf("kept: msedge %d, discord %d", len(s.frames["msedge.exe"]), len(s.frames["discord.exe"]))
 	}
@@ -181,10 +182,15 @@ func TestSessionFramesByExe(t *testing.T) {
 	if rf := s.runFrames["msedge.exe"]; rf.stalls != 1 || math.Abs(rf.avgMs-59) > 3 {
 		t.Errorf("after the drop: %+v", rf)
 	}
-	// Away for a moment (another window in front), back 500 ms later: no stall from the gap.
+	// A slow frame right as the person switches away: the next tick sees another window, no stall.
+	s.onFrame(200, t0.Add(last+200*59*time.Millisecond+300*time.Millisecond))
 	fg := "explorer.exe"
 	s.env.Foreground = func() string { return fg }
 	s.readForeground()
+	if rf := s.runFrames["msedge.exe"]; rf.stalls != 1 {
+		t.Errorf("a slow frame at the switch counted: %+v", rf)
+	}
+	// Back 500 ms later: no stall from the gap.
 	fg = "msedge.exe"
 	s.readForeground()
 	s.onFrame(200, t0.Add(last+200*59*time.Millisecond+500*time.Millisecond))
