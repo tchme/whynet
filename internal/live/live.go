@@ -5,11 +5,15 @@
 package live
 
 import (
+	"errors"
 	"net/netip"
 	"time"
 
 	"whynet/internal/probe"
 )
+
+// ErrDeclined means the person said no to the administrator prompt for the game's frames.
+var ErrDeclined = errors.New("the administrator prompt was declined")
 
 // Link ids, nearest first.
 const (
@@ -79,7 +83,8 @@ type Result struct {
 	Trace   []Hop             `json:"trace"`
 	WiFi    *WiFiSummary      `json:"wifi,omitempty"`
 	CPU     *CPUSummary       `json:"cpu,omitempty"`
-	Lags  []LagMark         `json:"lag_marks,omitempty"`
+	Frames  *FramesSummary    `json:"frames,omitempty"` // the game's frames (admin rights; nil when not recorded or no game)
+	Lags    []LagMark         `json:"lag_marks,omitempty"`
 	Spikes  []Episode         `json:"spikes,omitempty"`   // every spell of trouble a link caused, up to maxEpisodes
 	Total   int               `json:"spikes_total"`       // all of them
 	Buckets []Bucket          `json:"buckets,omitempty"`  // the session in slices of time
@@ -131,7 +136,7 @@ type WiFiSummary struct {
 }
 
 // CPUSummary is the whole computer's CPU load over the session, read every tick without admin
-// rights. It is evidence only: no verdict blames the computer until frame times are measured.
+// rights. On its own it is evidence only; with the game's frames it names the processor as the cause.
 type CPUSummary struct {
 	Avg      int     `json:"avg_pct"`
 	Max      int     `json:"max_pct"`
@@ -141,12 +146,15 @@ type CPUSummary struct {
 
 // LagMark is a moment the person marked "лагнуло": a bookmark, with the network jump nearest to it.
 type LagMark struct {
-	At      time.Time `json:"at"`
-	Spike   bool      `json:"spike"`              // the network jumped within 10 s before the mark (or 1 s after)
-	AgoS    float64   `json:"ago_s,omitempty"`    // how long before the mark it jumped (negative: after)
-	Link    string    `json:"link,omitempty"`     // the link that caused that jump
-	WorstMs float64   `json:"worst_ms,omitempty"` // the worst answer at that moment, any link
-	CPU     int       `json:"cpu_max_pct"`        // the highest CPU load over the same 10 s before (1 s after); -1 not measured
+	At        time.Time `json:"at"`
+	Spike     bool      `json:"spike"`                 // the network jumped within 10 s before the mark (or 1 s after)
+	AgoS      float64   `json:"ago_s,omitempty"`       // how long before the mark it jumped (negative: after)
+	Link      string    `json:"link,omitempty"`        // the link that caused that jump
+	WorstMs   float64   `json:"worst_ms,omitempty"`    // the worst answer at that moment, any link
+	CPU       int       `json:"cpu_max_pct"`           // the highest CPU load over the same 10 s before (1 s after); -1 not measured
+	Stall     bool      `json:"stall,omitempty"`       // the game's frames stalled in the same window
+	StallAgoS float64   `json:"stall_ago_s,omitempty"` // how long before the mark (negative: after)
+	StallMs   float64   `json:"stall_ms,omitempty"`    // the longest frame of that stall
 }
 
 // Episode is a spell of trouble one link caused: consecutive ticks with its own spikes or losses.
@@ -160,9 +168,11 @@ type Episode struct {
 
 // Bucket is a slice of the session: per link, the best, median and worst answer and the losses.
 type Bucket struct {
-	At    time.Time              `json:"at"`
-	Links map[string]BucketStats `json:"links"`
-	CPU   int                    `json:"cpu_max_pct"` // the highest CPU load in the slice; -1 not measured
+	At     time.Time              `json:"at"`
+	Links  map[string]BucketStats `json:"links"`
+	CPU    int                    `json:"cpu_max_pct"`       // the highest CPU load in the slice; -1 not measured
+	FPSMin float64                `json:"fps_min,omitempty"` // the game's lowest fps in the slice; -1 not in front; 0 frames not recorded
+	Stalls int                    `json:"stalls,omitempty"`  // the game's stalls that began in the slice
 }
 
 type BucketStats struct {
@@ -178,7 +188,9 @@ type Chart struct {
 	Start  time.Time              `json:"start"`
 	Step   float64                `json:"step_s"` // seconds per point
 	Series map[string]ChartSeries `json:"series"`
-	CPU    []int                  `json:"cpu,omitempty"` // the highest CPU load per point, -1 unknown; empty when not measured
+	CPU    []int                  `json:"cpu,omitempty"`   // the highest CPU load per point, -1 unknown; empty when not measured
+	FPS    []float64              `json:"fps,omitempty"`   // the game's lowest fps per point, -1 not in front; empty without frames
+	Stall  []int                  `json:"stall,omitempty"` // the game's stalls per point
 }
 
 type ChartSeries struct {

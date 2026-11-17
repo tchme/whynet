@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -133,6 +134,15 @@ func procPath(pid uint32) string {
 		return ""
 	}
 	return windows.UTF16ToString(buf[:n])
+}
+
+// ExeName is a process's exe file name in lower case, "" when Windows hides it.
+func ExeName(pid uint32) string {
+	p := procPath(pid)
+	if p == "" {
+		return ""
+	}
+	return strings.ToLower(filepath.Base(p))
 }
 
 // internetConns counts each process's live connections to the internet.

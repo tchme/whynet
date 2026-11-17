@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"net/netip"
 	"runtime/debug"
 	"sync"
@@ -18,12 +19,18 @@ type Env struct {
 	Echo     EchoFunc
 	WiFi     func(guid string) (WiFi, bool, error)
 	CPUTimes func() (idle, total uint64, err error) // the computer's CPU time since boot; nil: not measured
-	Adapters func() ([]probe.Adapter, error)
-	RouteIf  func(ip netip.Addr) (uint32, error) // the interface the route to ip leaves through
-	Resolve  func(ctx context.Context, input string) (probe.Server, error)
-	ASN      func(ctx context.Context, ip string) (asn, name string)
-	Local    func(ctx context.Context) probe.Local // the computer: OS, public address, adapters
-	Markers  probe.Markers
+	// The game's frames (stage 3): Frames starts the stream (a UAC prompt; ErrDeclined when refused),
+	// nil leaves frames off. Foreground is the exe whose window is in front, ExeName a process's exe
+	// (both lower case, "" unknown).
+	Frames     func(onFrame func(pid uint32, at time.Time)) (stop func(), err error)
+	Foreground func() string
+	ExeName    func(pid uint32) string
+	Adapters   func() ([]probe.Adapter, error)
+	RouteIf    func(ip netip.Addr) (uint32, error) // the interface the route to ip leaves through
+	Resolve    func(ctx context.Context, input string) (probe.Server, error)
+	ASN        func(ctx context.Context, ip string) (asn, name string)
+	Local      func(ctx context.Context) probe.Local // the computer: OS, public address, adapters
+	Markers    probe.Markers
 
 	Tick         time.Duration // between pings of every link: 500 ms
 	Timeout      time.Duration // per echo: 1 s
@@ -47,6 +54,14 @@ type Progress struct {
 	Links   []LinkNow            `json:"links"`
 	New     map[string][]float64 `json:"new"` // answers since the previous progress, -1 lost
 	Lags    int                  `json:"lags"`
+	Game    *GameNow             `json:"game,omitempty"` // frames recorded and a program in front presents them
+}
+
+// GameNow is the game as the window shows it while recording: a running estimate.
+type GameNow struct {
+	Exe    string  `json:"exe"`
+	FPS    float64 `json:"fps"`
+	Stalls int     `json:"stalls"`
 }
 
 // Session records one stability check.
@@ -72,11 +87,29 @@ type Session struct {
 	errs    map[string]string
 	running running
 
+	framesState string                     // off, recorded, declined, failed
+	stopFrames  func()                     //
+	framesOnce  sync.Once                  //
+	fg          []string                   // per tick: the exe in front
+	fgNow       string                     //
+	frames      map[string][]time.Duration // per exe in front at least once: its frames since the start
+	runFrames   map[string]*runFrames      // per exe: the running estimate for the window
+	pidExe      map[uint32]string          // owned by the frames callback (one goroutine at a time)
+
 	stop     chan struct{}
 	stopOnce sync.Once
 	loopDone chan struct{}
 	done     chan struct{} // closed when the session ended by itself (MaxTicks or ctx)
 	inflight sync.WaitGroup
+}
+
+// runFrames is one program's frames as they come: a smoothed frame time and stalls so far.
+type runFrames struct {
+	front     int           // frames while its window was in front
+	last      time.Duration // the previous frame
+	avgMs     float64       //
+	stalls    int           //
+	stallUpTo time.Duration // the end of the last stall counted
 }
 
 type running struct {
@@ -103,6 +136,19 @@ func Start(ctx context.Context, env Env, input string, onUpdate func(Progress)) 
 	router, kind, err := s.findRouter()
 	if err != nil {
 		return nil, err
+	}
+	s.framesState = "off"
+	if env.Frames != nil { // before anything else: the UAC prompt waits for the person
+		s.frames, s.runFrames, s.pidExe = map[string][]time.Duration{}, map[string]*runFrames{}, map[uint32]string{}
+		stop, err := env.Frames(s.onFrame)
+		switch {
+		case errors.Is(err, ErrDeclined):
+			s.framesState = "declined"
+		case err != nil:
+			s.framesState, s.errs["frames"] = "failed", err.Error()
+		default:
+			s.framesState, s.stopFrames = "recorded", stop
+		}
 	}
 	go func() {
 		defer func() {
@@ -136,7 +182,9 @@ func Start(ctx context.Context, env Env, input string, onUpdate func(Progress)) 
 		s.pingTo = append(s.pingTo, l.Addr)
 	}
 	s.samples = make([][]int32, len(s.links))
+	s.mu.Lock()
 	s.started = time.Now()
+	s.mu.Unlock()
 	go s.loop(ctx)
 	return s, nil
 }
@@ -211,6 +259,7 @@ func (s *Session) loop(ctx context.Context) {
 	for t := 0; ; t++ {
 		s.ping(t)
 		s.readCPU(&cpuPrev)
+		s.readForeground()
 		if s.env.TraceEvery > 0 && t > 0 && t%s.env.TraceEvery == 0 {
 			traceMu.Lock()
 			if !tracing {
@@ -308,6 +357,72 @@ func (s *Session) readCPU(prev *[2]uint64) {
 	s.cpu = append(s.cpu, pct)
 }
 
+// readForeground records the exe in front this tick, while frames are recorded.
+func (s *Session) readForeground() {
+	if s.stopFrames == nil || s.env.Foreground == nil {
+		return
+	}
+	exe := s.env.Foreground()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.fg = append(s.fg, exe)
+	s.fgNow = exe
+	if _, ok := s.frames[exe]; !ok && exe != "" {
+		s.frames[exe] = nil // from now on its frames are kept
+	}
+}
+
+// onFrame keeps one frame of a program that has been in front, and updates the running estimate.
+func (s *Session) onFrame(pid uint32, at time.Time) {
+	defer s.guard("frames")
+	exe, ok := s.pidExe[pid]
+	if !ok && s.env.ExeName != nil {
+		// shortcut: a PID reused by another program within the hour keeps the first name; key by
+		// PID + start time if a report ever shows a wrong game.
+		exe = s.env.ExeName(pid)
+		s.pidExe[pid] = exe
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	fr, kept := s.frames[exe]
+	if s.started.IsZero() || !kept {
+		return
+	}
+	d := at.Sub(s.started)
+	if d < 0 {
+		return
+	}
+	s.frames[exe] = append(fr, d)
+	rf := s.runFrames[exe]
+	if rf == nil {
+		rf = &runFrames{}
+		s.runFrames[exe] = rf
+	}
+	if exe == s.fgNow {
+		rf.front++
+		if ms := float64(d-rf.last) / float64(time.Millisecond); rf.last > 0 && ms > 0 && ms <= pauseMs {
+			slow := rf.avgMs > 0 && ms > math.Max(stallFactor*rf.avgMs, rf.avgMs+stallExtraMs)
+			if slow && rf.last-rf.stallUpTo > stallMerge {
+				rf.stalls++
+			}
+			if slow {
+				rf.stallUpTo = d
+			} else {
+				rf.avgMs = smooth(rf.avgMs, ms)
+			}
+		}
+	}
+	rf.last = d
+}
+
+// smooth averages frame times: the first one as is, then 5 % per frame.
+func smooth(avg, ms float64) float64 {
+	if avg == 0 {
+		return ms
+	}
+	return avg*0.95 + ms*0.05
+}
+
 // standIn puts the last answering node of the route in place of a server that ignores pings.
 func (s *Session) standIn(t int) {
 	si := len(s.links) - 1
@@ -341,6 +456,18 @@ func (s *Session) update(t int) {
 	settled := t + 1 - int(s.env.Timeout/s.env.Tick) // ticks whose answers had their full timeout
 	s.mu.Lock()
 	p := Progress{Seconds: int(time.Duration(t+1) * s.env.Tick / time.Second), Lags: len(s.lags), New: map[string][]float64{}}
+	var game *runFrames
+	for exe, rf := range s.runFrames { // the game so far: the most frames in front
+		if exe != dwmExe && rf.front > 0 && (game == nil || rf.front > game.front) {
+			game, p.Game = rf, &GameNow{Exe: exe}
+		}
+	}
+	if game != nil {
+		p.Game.Stalls = game.stalls
+		if s.fgNow == p.Game.Exe && game.avgMs > 0 {
+			p.Game.FPS = fps(game.avgMs)
+		}
+	}
 	from := s.running.emitted
 	if settled > from {
 		trouble := make([]bool, len(s.links))
@@ -438,7 +565,15 @@ func (s *Session) Cancel() {
 	s.stopOnce.Do(func() { close(s.stop) })
 	<-s.loopDone
 	s.inflight.Wait()
+	s.framesOnce.Do(func() {
+		if s.stopFrames != nil {
+			s.stopFrames() // the helper exits: no frame arrives after this
+		}
+	})
 }
+
+// FramesState is off, recorded, declined or failed, known once Start returns.
+func (s *Session) FramesState() string { return s.framesState }
 
 // Finish stops recording and reads it.
 func (s *Session) Finish(ctx context.Context) Result {
@@ -446,7 +581,8 @@ func (s *Session) Finish(ctx context.Context) Result {
 	hops := s.tracer.result(ctx, s.env.ASN)
 	s.mu.Lock()
 	rec := recording{links: s.links, samples: s.samples, start: s.started, tick: s.env.Tick,
-		hops: hops, wifi: s.wifi, cpu: s.cpu, lags: s.lags, pathVPN: s.pathVPN}
+		hops: hops, wifi: s.wifi, cpu: s.cpu, lags: s.lags, pathVPN: s.pathVPN,
+		framesState: s.framesState, fg: s.fg, frames: s.frames}
 	errs := maps.Clone(s.errs)
 	if s.wifiErr != nil {
 		errs["wifi"] = s.wifiErr.Error()

@@ -31,6 +31,10 @@ type recording struct {
 	cpu     []int8 // per tick: CPU load %, -1 unknown; empty when not measured
 	lags    []time.Time
 	pathVPN bool
+
+	framesState string                     // off, recorded, declined, failed
+	fg          []string                   // per tick: the exe whose window was in front, "" unknown
+	frames      map[string][]time.Duration // per exe: its frames, since the start (only exes that were in front)
 }
 
 // nearer lists, for each link, the links between it and this computer.
@@ -256,6 +260,14 @@ func analyze(r recording) Result {
 	}
 	sort.SliceStable(eps, func(i, j int) bool { return eps[i].At.Before(eps[j].At) })
 	res.Total = len(eps)
+	netTrouble := make([]bool, n)
+	for li := range r.links {
+		for t := range n {
+			netTrouble[t] = netTrouble[t] || own[li][t]
+		}
+	}
+	var ft *frameTicks
+	res.Frames, ft = analyzeFrames(r, n, netTrouble, res.Facts)
 	res.Spikes = eps[:min(len(eps), maxEpisodes)]
 	if p := periodic(eps, Router); p > 0 {
 		res.Facts["live.router_periodic_s"] = strconv.Itoa(p)
@@ -277,6 +289,18 @@ func analyze(r recording) Result {
 			}
 		}
 		m.CPU = cpuMax(r.cpu, mark-int(LagBefore/r.tick), mark+int(lagAfter/r.tick)+1)
+		if ft != nil { // the game's nearest stall in the same window
+			from, to := at.Add(-LagBefore), at.Add(lagAfter)
+			for _, sa := range ft.stalls {
+				st := r.start.Add(sa.from)
+				if st.Before(from) || st.After(to) {
+					continue
+				}
+				if ago := at.Sub(st).Seconds(); !m.Stall || math.Abs(ago) < math.Abs(m.StallAgoS) {
+					m.Stall, m.StallAgoS, m.StallMs = true, math.Round(ago*10)/10, math.Round(sa.ms)
+				}
+			}
+		}
 		if best >= 0 {
 			m.Spike = true
 			m.AgoS = math.Round(float64(mark-best)*r.tick.Seconds()*10) / 10
@@ -317,8 +341,8 @@ func analyze(r recording) Result {
 			res.Facts["live.route_jump_hop"] = strconv.Itoa(h.TTL)
 		}
 	}
-	res.Buckets = buckets(r, n)
-	res.Chart = chart(r, n, own, event)
+	res.Buckets = buckets(r, n, ft)
+	res.Chart = chart(r, n, own, event, ft)
 	return res
 }
 
@@ -395,7 +419,7 @@ func cpuMax(cpu []int8, from, to int) int {
 }
 
 // buckets slices the session: 5 s up to 5 minutes, then about 60 rows whatever the length.
-func buckets(r recording, n int) []Bucket {
+func buckets(r recording, n int, ft *frameTicks) []Bucket {
 	if n == 0 || r.tick <= 0 {
 		return nil
 	}
@@ -408,6 +432,9 @@ func buckets(r recording, n int) []Bucket {
 	var out []Bucket
 	for from := 0; from < n; from += per {
 		b := Bucket{At: r.start.Add(time.Duration(from) * r.tick), Links: map[string]BucketStats{}, CPU: cpuMax(r.cpu, from, from+per)}
+		if ft != nil {
+			b.FPSMin, b.Stalls = fpsMin(ft, from, from+per)
+		}
 		for li, l := range r.links {
 			var ms []float64
 			lost := 0
@@ -433,8 +460,23 @@ func buckets(r recording, n int) []Bucket {
 	return out
 }
 
+// fpsMin is the game's lowest fps over ticks [from, to) (-1: never in front) and the stalls that
+// began in them.
+func fpsMin(ft *frameTicks, from, to int) (fps float64, stalls int) {
+	fps = -1
+	for t := max(from, 0); t < min(to, len(ft.fps)); t++ {
+		if v := ft.fps[t]; v >= 0 && (fps < 0 || v < fps) {
+			fps = v
+		}
+		if ft.stall[t] {
+			stalls++
+		}
+	}
+	return fps, stalls
+}
+
 // chart thins the session to at most maxPoints per link, keeping the worst of each slice.
-func chart(r recording, n int, own, event [][]bool) Chart {
+func chart(r recording, n int, own, event [][]bool, ft *frameTicks) Chart {
 	per := max(1, (n+maxPoints-1)/maxPoints)
 	c := Chart{Start: r.start, Step: (time.Duration(per) * r.tick).Seconds(), Series: map[string]ChartSeries{}}
 	for li, l := range r.links {
@@ -466,6 +508,13 @@ func chart(r recording, n int, own, event [][]bool) Chart {
 	if len(r.cpu) > 0 {
 		for from := 0; from < n; from += per {
 			c.CPU = append(c.CPU, cpuMax(r.cpu, from, from+per))
+		}
+	}
+	if ft != nil {
+		for from := 0; from < n; from += per {
+			f, st := fpsMin(ft, from, from+per)
+			c.FPS = append(c.FPS, f)
+			c.Stall = append(c.Stall, st)
 		}
 	}
 	return c
