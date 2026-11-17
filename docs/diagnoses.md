@@ -85,7 +85,7 @@ Rules in `rules/app.yaml` (first match wins), texts under `app_diagnoses` in `lo
 | `app_lossy` | Servers answer but lose connects | `app.lossy` | table |
 | `app_flaky` | The program had failed connects, whynet's own check passed | `app.program_trouble` | table, lab |
 | `app_udp_no_reply` | The busiest UDP server never answered (blocked UDP: Discord voice in Russia) | `app.udp_main_noreply` | table; unit test on a synthetic stream. Not seen live |
-| `app_udp_freezes` | A steady UDP stream froze 2+ times while the program kept sending: lag | `app.udp_freezes` | table; synthetic stream. Not seen live |
+| `app_udp_freezes` | A steady UDP stream froze 2+ times while the program kept sending: lag | `app.udp_freezes` | table; synthetic stream; live, simulated (2026-11-17): Discord voice with the voice server's address routed to a dead gateway on the author's PC (outbound lost, the person rejoined the channel): the server fell back to about one packet a second, 5 freezes up to 1001 ms |
 | `app_udp_stopped` | A UDP server answered, then went quiet for good | `app.udp=recorded`, `app.udp_stopped!=0` | table; synthetic stream |
 | `app_udp_ok` | TCP fine and the UDP stream steady both ways | `app.udp=recorded`, UDP servers, nothing above | table; live: Discord voice (104.29.136.195:19300, Cloudflare) on the author's PC, CLI and window (2026-11-17) |
 | `app_ok` | Every server answers | servers checked, nothing above | table, lab; live: Discord (through the router), Telegram, Spotify, Yandex Messenger on the author's PC (2026-11-16) |
