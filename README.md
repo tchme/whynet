@@ -31,6 +31,7 @@
 | **Окно браузера** | Обычное окно, которым пользуешься ты сам (пройти проверку на робота, войти, включить видео), пока whynet записывает, что грузит страница. |
 | **Стабильность для игр** | Пингует роутер, провайдера, интернет и игровой сервер одновременно и показывает, какое звено даёт скачки пинга. Кнопка Ctrl+Alt+L (работает и внутри игры) отмечает момент, когда лагнуло. Рядом записывается загрузка процессора, а с галочкой «И кадры игры» (Windows спросит права администратора) и время каждого кадра: whynet сам находит игру, считает замирания картинки и говорит «лагает компьютер, а не сеть»; отметка «лагнуло» называет замирание, которое ей предшествовало. Если на пинги отвечает VPN-клиент на этом компьютере, whynet это замечает и не выдаёт «всё стабильно». |
 | **Проверка программы** | Выбираешь запущенную программу (Discord, лаунчер, игру), повторяешь в ней то, что не работает, а whynet записывает, к каким серверам она подключается по TCP, и проверяет каждый: отвечает ли, режут ли по имени, покрывает ли его zapret. TCP без прав администратора; с галочкой «И UDP» (Windows спросит права) whynet видит и UDP — голос Discord и саму игру: отвечает ли сервер, не замирает ли его поток. |
+| **Сеть Windows** | Одна кнопка проверяет сами настройки сети компьютера: адаптер и кабель (скорость линка, ошибки, сигнал Wi-Fi), адрес от роутера, DNS-серверы, прокси (в том числе забытый закрытым VPN-клиентом), файл hosts (каждый прибитый адрес проверяется: отвечает ли он ещё как этот сайт), настройки TCP и каталог Winsock, IPv6, MTU, часы, программы, которые режут трафик. Показывает все находки списком, а «Починить всё найденное» исправляет только найденное (права администратора спрашиваются один раз), очищает кэш DNS и проверяет снова. Старые значения сохраняются — «Вернуть как было» отменяет починку. VPN, маршруты и DNS роутера whynet не трогает. |
 | **Отчёт для ИИ** | Одна кнопка сохраняет всё, что узнал whynet, в один Markdown-файл с инструкцией для нейросети наверху. Перетащи его в ChatGPT или Claude и ничего не пиши. |
 
 Больше 70 диагнозов, у каждого понятное объяснение и совет. Если уверенности нет, whynet так и говорит: «скорее всего» и почему.
@@ -52,6 +53,7 @@ go test ./...                              # тесты, включая лабо
 go run ./cmd/whynet-cli -save youtube.com  # консольная версия, сохраняет отчёт для ИИ
 go run ./cmd/whynet-cli -app [-udp] -for 20s discord  # проверка программы из консоли (-udp: и UDP, права администратора)
 go run ./cmd/whynet-cli -live [-frames] -for 3m        # стабильность из консоли (-frames: и кадры игры, права администратора)
+go run ./cmd/whynet-cli -health                         # сеть Windows из консоли (только проверка, чинить — в окне)
 wails build                                # build/bin/whynet.exe
 ```
 
@@ -92,6 +94,7 @@ Take `whynet.exe` from the [Releases](../../releases/latest) page and run it. Wi
 | **Browser window** | A plain window you use yourself (pass a bot check, log in, play a video) while whynet records what the page loads. |
 | **Stability for games** | Pings the router, the ISP, the internet and a game server at once and shows which link makes the ping jump. Ctrl+Alt+L (works inside a game too) marks the moment it lagged. The CPU load is recorded alongside, and with the "И кадры игры" (game frames) checkbox (Windows asks for admin rights) so is every frame's time: whynet finds the game by itself, counts the picture's freezes and can say "the computer lags, not the network"; a lag mark names the freeze just before it. If a VPN client on this PC answers the pings itself, whynet notices and doesn't claim "all stable". |
 | **App check** | Pick a running program (Discord, a launcher, a game), repeat in it what fails, and whynet records which servers it connects to over TCP and checks each one: does it answer, is it cut by name, does zapret cover it. TCP needs no admin rights; with the "И UDP" checkbox (Windows asks for them) whynet sees UDP too: Discord voice and the game itself, whether the server answers and whether its stream freezes. |
+| **Windows network** | One button checks the PC's own network setup: the adapter and cable (link speed, errors, Wi-Fi signal), the address from the router, DNS servers, the proxy (including one a closed VPN client left behind), the hosts file (every pinned address is checked: does it still answer as that site), TCP settings and the Winsock catalog, IPv6, MTU, the clock, programs that throttle traffic. It lists every finding, and "Починить всё найденное" (fix what was found) fixes only that (admin rights asked once), flushes the DNS cache and checks again. Old values are saved: "Вернуть как было" (undo) takes the fix back. whynet never touches a VPN, routes or the router's DNS. |
 | **AI report** | One button saves everything whynet learned into a single Markdown file with an instruction for the AI at the top. Drop it into ChatGPT or Claude and ask nothing. |
 
 More than 70 diagnoses, each with a plain explanation and what to do. When whynet can't tell, it says "probably" and why.
@@ -113,6 +116,7 @@ go test ./...                              # tests, including a lab of simulated
 go run ./cmd/whynet-cli -save youtube.com  # console version, saves the AI report
 go run ./cmd/whynet-cli -app [-udp] -for 20s discord  # app check from the console (-udp: UDP too, admin rights)
 go run ./cmd/whynet-cli -live [-frames] -for 3m        # stability from the console (-frames: game frames too, admin rights)
+go run ./cmd/whynet-cli -health                         # Windows network from the console (checks only; fixing is in the window)
 wails build                                # build/bin/whynet.exe
 ```
 
