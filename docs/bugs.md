@@ -275,6 +275,13 @@ Checked in the running exe on the author's PC (2026-11-16: Start, Ctrl+Alt+L pre
 - **Fix:** every frame below a pause goes into the average; a stall waits for the next tick and counts only if the game is still in front; a window switch restarts the count (`readForeground`).
 - **Verified:** `TestSessionFramesByExe` (the drop, a slow frame at the switch, a switch back); live: not yet re-run after the fix.
 
+## "Лагнуло" (Ctrl+Alt+L) did nothing inside a game
+
+- **Symptom:** Frostpunk, 2026-11-17: the author pressed Ctrl+Alt+L in the game a few times; the game opened its own panels, whynet put no mark (the hotkey had never been tried in a game before).
+- **Cause:** the hotkey was `RegisterHotKey`. A game that reads the keyboard through raw input with `RIDEV_NOHOTKEYS` switches registered hotkeys off while it has the focus; the keys still reach the game.
+- **Fix:** `ListenHotkey` polls `GetAsyncKeyState` for Ctrl, Alt and L every 30 ms and fires once per press. Nothing is swallowed: the game sees the keys too, as it did before.
+- **Verified:** live 2026-11-17: Frostpunk frozen for 300 ms every 15 s (a test tool suspending the process), the author pressed Ctrl+Alt+L in the game after each: 6 marks, each named its stall 0.9-2.8 s before ("у игры замер кадр — на 320 мс").
+
 ## UDP: the "usual interval" of a Discord call was 0.1 ms
 
 - **Symptom:** live Discord voice: ~300 packets/s in, median pause between incoming packets 0.1 ms.

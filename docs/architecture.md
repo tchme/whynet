@@ -78,7 +78,7 @@ whynet/
     trace.go               parallel TTL rounds, per-hop totals, reading the route (real loss, where it jumps)
     icmp_windows.go        ICMP echo with a TTL (iphlpapi IcmpSendEcho), no admin
     wlan_windows.go        Wi-Fi of the router's adapter (wlanapi): signal, RSSI, channel, PHY, rate, SSID
-    hotkey_windows.go      Ctrl+Alt+L (RegisterHotKey on a locked thread with its own message loop)
+    hotkey_windows.go      Ctrl+Alt+L (the key state polled every 30 ms: games switch RegisterHotKey off)
     env_windows.go         DefaultEnv: the real network
   internal/report/         the AI report (Markdown) and its file name; Version (a var, settable with -ldflags);
                            live.go: the stability report, link names and hop notes shared with the window;

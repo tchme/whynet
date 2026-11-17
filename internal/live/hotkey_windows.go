@@ -1,88 +1,68 @@
 package live
 
 import (
-	"runtime"
-	"unsafe"
+	"time"
 
 	"golang.org/x/sys/windows"
 )
 
 var (
-	user32                 = windows.NewLazySystemDLL("user32.dll")
-	procRegisterHotKey     = user32.NewProc("RegisterHotKey")
-	procUnregisterHotKey   = user32.NewProc("UnregisterHotKey")
-	procGetMessageW        = user32.NewProc("GetMessageW")
-	procPostThreadMessageW = user32.NewProc("PostThreadMessageW")
+	user32               = windows.NewLazySystemDLL("user32.dll")
+	procGetAsyncKeyState = user32.NewProc("GetAsyncKeyState")
 )
 
 const (
-	modAlt      = 0x0001
-	modControl  = 0x0002
-	modNoRepeat = 0x4000
-	wmHotkey    = 0x0312
-	wmQuit      = 0x0012
-	hotkeyID    = 0x5701
+	vkControl  = 0x11
+	vkMenu     = 0x12 // Alt
+	hotkeyPoll = 30 * time.Millisecond
 )
 
-type msg struct {
-	Hwnd    uintptr
-	Message uint32
-	WParam  uintptr
-	LParam  uintptr
-	Time    uint32
-	X, Y    int32
-	Private uint32
-}
-
-// Hotkey is Ctrl+Alt+L, system-wide: it works while a game has the focus. Windows ties a hotkey to
-// the thread that registered it, so that thread is locked and runs its own message loop.
+// Hotkey watches Ctrl+Alt+L system-wide by reading the keyboard state every 30 ms. RegisterHotKey is
+// not used: a game that reads raw input with RIDEV_NOHOTKEYS switches registered hotkeys off while
+// it has the focus (Frostpunk, 2026-11-17: the keys reached the game, never whynet). Polling only
+// reads the key state and swallows nothing, so the game sees the keys too.
 type Hotkey struct {
-	tid  uint32
-	done chan struct{}
+	stop, done chan struct{}
 }
 
-// ListenHotkey calls onPress on every Ctrl+Alt+L until Close. It fails when another program holds
-// the combination.
+// ListenHotkey calls onPress on every press of Ctrl+Alt+L until Close. The error is kept for the
+// callers: polling cannot be refused, unlike a registered hotkey another program holds.
 func ListenHotkey(onPress func()) (*Hotkey, error) {
-	h := &Hotkey{done: make(chan struct{})}
-	started := make(chan error, 1)
+	h := &Hotkey{stop: make(chan struct{}), done: make(chan struct{})}
 	go func() {
-		runtime.LockOSThread()
-		defer runtime.UnlockOSThread()
 		defer close(h.done)
-		h.tid = windows.GetCurrentThreadId()
-		if r, _, err := procRegisterHotKey.Call(0, hotkeyID, modControl|modAlt|modNoRepeat, 'L'); r == 0 {
-			started <- err
-			return
-		}
-		defer procUnregisterHotKey.Call(0, hotkeyID)
-		started <- nil
-		var m msg
+		t := time.NewTicker(hotkeyPoll)
+		defer t.Stop()
+		was := false
 		for {
-			r, _, _ := procGetMessageW.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0)
-			if int32(r) <= 0 { // WM_QUIT, or an error
+			select {
+			case <-h.stop:
 				return
+			case <-t.C:
 			}
-			if m.Message == wmHotkey && m.WParam == hotkeyID {
+			down := keyDown(vkControl) && keyDown(vkMenu) && keyDown('L')
+			if down && !was { // once per press, however long it is held
 				func() {
 					defer func() { recover() }()
 					onPress()
 				}()
 			}
+			was = down
 		}
 	}()
-	if err := <-started; err != nil {
-		<-h.done
-		return nil, err
-	}
 	return h, nil
 }
 
-// Close frees the combination for other programs.
+func keyDown(vk uintptr) bool {
+	r, _, _ := procGetAsyncKeyState.Call(vk)
+	return r&0x8000 != 0
+}
+
+// Close stops watching.
 func (h *Hotkey) Close() {
 	if h == nil {
 		return
 	}
-	procPostThreadMessageW.Call(uintptr(h.tid), wmQuit, 0, 0)
+	close(h.stop)
 	<-h.done
 }
