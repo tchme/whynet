@@ -18,8 +18,8 @@ import (
 )
 
 func main() {
-	if len(os.Args) == 4 && os.Args[1] == etw.HelperFlag { // the elevated UDP helper
-		if err := etw.RunHelper(os.Args[2], os.Args[3]); err != nil {
+	if ran, err := etw.HelperMain(os.Args[1:]); ran { // the elevated helper (UDP, frames)
+		if err != nil {
 			fmt.Fprintln(os.Stderr, "whynet:", err)
 			os.Exit(1)
 		}

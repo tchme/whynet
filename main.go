@@ -16,8 +16,8 @@ import (
 var assets embed.FS
 
 func main() {
-	if len(os.Args) == 4 && os.Args[1] == etw.HelperFlag { // the elevated UDP helper: no window
-		if etw.RunHelper(os.Args[2], os.Args[3]) != nil {
+	if ran, err := etw.HelperMain(os.Args[1:]); ran { // the elevated helper (UDP, frames): no window
+		if err != nil {
 			os.Exit(1)
 		}
 		return

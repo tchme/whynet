@@ -190,7 +190,8 @@ func programPIDs(exe string, browsers []string) map[uint32]bool {
 // the recording, with State "declined" or "failed" when it never started.
 func StartUDP(start time.Time) (rec *UDPRecorder, stop func() UDPRecording) {
 	rec = NewUDPRecorder(start)
-	end, err := etw.Stream(func(p etw.Packet) { rec.Add(p.Time, p.PID, p.Remote, p.Size, p.Recv) })
+	end, err := etw.Stream(etw.Handlers{Packet: func(p etw.Packet) { rec.Add(p.Time, p.PID, p.Remote, p.Size, p.Recv) }},
+		3*time.Minute) // a recording is 2 minutes at most; the helper must outlive it
 	if err != nil {
 		state := "failed"
 		if errors.Is(err, etw.ErrDeclined) {

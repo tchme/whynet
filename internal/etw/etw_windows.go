@@ -1,7 +1,8 @@
-// Package etw reads the Windows kernel's network events (Microsoft-Windows-Kernel-Network) in
-// real time: every UDP datagram a process sends or receives, with its remote address. Windows
-// keeps no remote address for UDP sockets, so this is the only way to see whom a game talks to
-// over UDP without capturing packets. Needs admin rights; no dependency beyond x/sys.
+// Package etw reads Windows events in real time: every UDP datagram a process sends or receives,
+// with its remote address (Microsoft-Windows-Kernel-Network; Windows keeps no remote address for
+// UDP sockets, so this is the only way to see whom a game talks to over UDP without capturing
+// packets), and every frame a program sends to the screen (Microsoft-Windows-DXGI and DxgKrnl
+// present events). Needs admin rights; no dependency beyond x/sys.
 package etw
 
 import (
@@ -27,6 +28,19 @@ type Packet struct {
 	Local  netip.AddrPort //
 }
 
+// Frame is one present call: a program handed a finished frame to Windows.
+type Frame struct {
+	Time time.Time
+	PID  uint32
+}
+
+// Handlers says what to record: a nil func leaves its provider off. Both are called from one
+// goroutine at a time.
+type Handlers struct {
+	Packet func(Packet)
+	Frame  func(Frame)
+}
+
 // kernelNetwork is Microsoft-Windows-Kernel-Network.
 var kernelNetwork = windows.GUID{Data1: 0x7dd42a49, Data2: 0x5329, Data3: 0x4832, Data4: [8]byte{0x8d, 0xfd, 0x43, 0xd9, 0x79, 0x15, 0x3a, 0x88}}
 
@@ -36,6 +50,21 @@ const (
 	evUDPRecv4 = 43
 	evUDPSend6 = 58
 	evUDPRecv6 = 59
+)
+
+// Frames (checked live 2026-11-17, docs/stability.md): DXGI's Present_Start (42) for DirectX
+// 10-12, and DxgKrnl's Present_Info (184), which comes 1:1 with it and also from programs that
+// don't go through DXGI (D3D9, OpenGL, Vulkan). Only the header's PID and time are read.
+var (
+	dxgi    = windows.GUID{Data1: 0xca11c036, Data2: 0x0102, Data3: 0x4a2d, Data4: [8]byte{0xa6, 0xad, 0xf0, 0x3c, 0xfe, 0xd5, 0xd3, 0xc9}}
+	dxgkrnl = windows.GUID{Data1: 0x802ec45a, Data2: 0x1e99, Data3: 0x4b83, Data4: [8]byte{0x99, 0x20, 0x87, 0xc9, 0x82, 0x77, 0xba, 0x9d}}
+)
+
+const (
+	evDXGIPresent   = 42
+	evKernelPresent = 184
+	kwDXGIEvents    = 0x2       // DXGI's "Events" keyword (Present_Start has it)
+	kwKernelPresent = 0x8000000 // DxgKrnl's "Present" keyword
 )
 
 var (
@@ -49,7 +78,8 @@ var (
 	callbackOnce    sync.Once
 	callbackPtr     uintptr
 	handlerMu       sync.RWMutex
-	handler         func(Packet)
+	handler         Handlers
+	viaDXGI         map[uint32]bool // processes whose frames come through DXGI: their kernel present events are the same frames
 	errAccessDenied = windows.ERROR_ACCESS_DENIED
 )
 
@@ -145,9 +175,9 @@ type Session struct {
 	done  chan struct{}
 }
 
-// Start begins a real-time session named name and calls onPacket (from one goroutine) for every
-// UDP datagram on this computer. Only one session runs per process.
-func Start(name string, onPacket func(Packet)) (*Session, error) {
+// Start begins a real-time session named name and calls h's funcs (from one goroutine) for every
+// UDP datagram and / or every frame on this computer. Only one session runs per process.
+func Start(name string, hs Handlers) (*Session, error) {
 	callbackOnce.Do(func() { callbackPtr = syscall.NewCallback(onEvent) })
 	s := &Session{name: name, done: make(chan struct{})}
 	var h uint64
@@ -163,14 +193,27 @@ func Start(name string, onPacket func(Packet)) (*Session, error) {
 		return nil, err
 	}
 	const levelVerbose, enable = 5, 1
-	if r, _, _ := procEnable.Call(uintptr(h), uintptr(unsafe.Pointer(&kernelNetwork)), enable, levelVerbose,
-		0x30, 0, 0, 0); r != 0 { // keywords: IPv4 | IPv6
-		s.stopTrace()
-		return nil, syscall.Errno(r)
+	type provider struct {
+		guid     *windows.GUID
+		keywords uintptr
+	}
+	var on []provider
+	if hs.Packet != nil {
+		on = append(on, provider{&kernelNetwork, 0x30}) // IPv4 | IPv6
+	}
+	if hs.Frame != nil {
+		on = append(on, provider{&dxgi, kwDXGIEvents}, provider{&dxgkrnl, kwKernelPresent})
+	}
+	for _, p := range on {
+		if r, _, _ := procEnable.Call(uintptr(h), uintptr(unsafe.Pointer(p.guid)), enable, levelVerbose,
+			p.keywords, 0, 0, 0); r != 0 {
+			s.stopTrace()
+			return nil, syscall.Errno(r)
+		}
 	}
 
 	handlerMu.Lock()
-	handler = onPacket
+	handler, viaDXGI = hs, map[uint32]bool{}
 	handlerMu.Unlock()
 	namePtr, _ := windows.UTF16PtrFromString(name)
 	lf := traceLogfile{LoggerName: namePtr, ProcessTraceMode: 0x100 | 0x10000000, EventRecordCallback: callbackPtr} // real time | event record
@@ -223,14 +266,44 @@ func (s *Session) Stop() {
 	case <-time.After(3 * time.Second):
 	}
 	handlerMu.Lock()
-	handler = nil
+	handler = Handlers{}
 	handlerMu.Unlock()
 }
 
 func onEvent(rec *eventRecord) uintptr {
-	if rec.ProviderID != kernelNetwork {
-		return 0
+	switch rec.ProviderID {
+	case kernelNetwork:
+		onPacket(rec)
+	case dxgi, dxgkrnl:
+		onFrame(rec)
 	}
+	return 0
+}
+
+// onFrame passes on one present per frame: DXGI's when the process has them, the kernel's
+// otherwise. The first kernel event of a DXGI process may still slip through once.
+func onFrame(rec *eventRecord) {
+	if rec.ProcessID <= 4 { // idle and System
+		return
+	}
+	handlerMu.Lock() // viaDXGI is written here; ProcessTrace calls back from one thread anyway
+	h := handler.Frame
+	switch {
+	case rec.ProviderID == dxgi && rec.ID == evDXGIPresent:
+		viaDXGI[rec.ProcessID] = true
+	case rec.ProviderID == dxgkrnl && rec.ID == evKernelPresent && !viaDXGI[rec.ProcessID]:
+	default:
+		h = nil
+	}
+	handlerMu.Unlock()
+	if h != nil {
+		h(Frame{Time: fileTime(rec.TimeStamp), PID: rec.ProcessID})
+	}
+}
+
+func fileTime(ft int64) time.Time { return time.Unix(0, (ft-116444736000000000)*100) }
+
+func onPacket(rec *eventRecord) {
 	var p Packet
 	var ok bool
 	data := unsafe.Slice(rec.UserData, rec.UserDataLength)
@@ -241,16 +314,15 @@ func onEvent(rec *eventRecord) uintptr {
 		p, ok = parse(data, 16, rec.ID == evUDPRecv6)
 	}
 	if !ok {
-		return 0
+		return
 	}
-	p.Time = time.Unix(0, (rec.TimeStamp-116444736000000000)*100)
+	p.Time = fileTime(rec.TimeStamp)
 	handlerMu.RLock()
-	h := handler
+	h := handler.Packet
 	handlerMu.RUnlock()
 	if h != nil {
 		h(p)
 	}
-	return 0
 }
 
 // parse reads PID, size, daddr, saddr, dport, sport (ports in network order): the packet's own
