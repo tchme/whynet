@@ -68,6 +68,14 @@ Windows does not always let a script bring a window to the front. Test keystroke
 - **Cause:** the small start window is centred on screen; growing it kept its top edge and pushed the bottom off the screen (y 621 + 1252 > 1392).
 - **Fix:** when the new height doesn't fit below, move the window up first (`WindowGetPosition` / `WindowSetPosition`), at most to the top of the work area; height capped at 90% of the screen.
 - **Verified:** screenshots of the built exe (100% scaling only), window rectangle read with `GetWindowRect`.
+- **Superseded:** that fix threw the window off a second monitor, see the next entry.
+
+## The window flew off a monitor left of the main one
+
+- **Symptom:** on the author's second monitor (left of the main one, work area x -1920..0) the window went off the screen after a check or on "Details", one more monitor-width each time (seen at x -3427 after an app check of Discord) and could not be dragged back.
+- **Cause:** Wails v2 `WindowGetPosition` returns desktop coordinates (`GetWindowRect`), but `WindowSetPosition` adds the current monitor's work-area corner to what it gets; the page also compared against `screen.availWidth` as if every monitor started at 0. On the main monitor (corner 0,0) the two agree, so it never showed there.
+- **Fix:** the page no longer positions the window; it calls `App.FitWindow(w, h)` (`app_window.go`), which resizes and then keeps the window inside its monitor's work area with `MonitorFromWindow` / `GetMonitorInfo` / `SetWindowPos`, all in desktop coordinates. `TestKeepInside` covers negative coordinates.
+- **Verified:** the built exe driven by UI Automation on the left monitor: the old build went to x -3020 after a ya.ru check; the fixed one stayed at x -1100 and moved up to the work area's bottom (1171), "Details" widened it to 1331 px ending at x 0, closing and reopening kept it there. An app check was not rerun (same code path). Pitfall for test scripts: `powershell -File s.ps1 move -1500,400` binds `-1500,400` as a parameter name and the window goes to 0,0; pass `-Arg "-1500,400"`.
 
 ## Edge refused the DevTools connection ("bad status")
 

@@ -42,6 +42,10 @@ export function FinishLive() {
   return window['go']['main']['App']['FinishLive']();
 }
 
+export function FitWindow(arg1, arg2) {
+  return window['go']['main']['App']['FitWindow'](arg1, arg2);
+}
+
 export function Info() {
   return window['go']['main']['App']['Info']();
 }

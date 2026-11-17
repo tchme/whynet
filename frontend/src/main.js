@@ -6,8 +6,8 @@ import './style.css';
 
 import { Info, Check, CheckInBrowser, FinishBrowser, Report, SaveReport, CopyReport, CheckUpdate, Update,
   StartLive, FinishLive, CancelLive, MarkLag, ReadHAR, PasteHAR, ReadHARFile, PickHAR, CompareHAR,
-  ListPrograms, RecordApp, FinishApp, CancelApp } from '../wailsjs/go/main/App';
-import { EventsOn, OnFileDrop, WindowGetPosition, WindowGetSize, WindowSetPosition, WindowSetSize } from '../wailsjs/runtime/runtime';
+  ListPrograms, RecordApp, FinishApp, CancelApp, FitWindow } from '../wailsjs/go/main/App';
+import { EventsOn, OnFileDrop, WindowGetSize } from '../wailsjs/runtime/runtime';
 
 const GLYPH = { ok: '✓', fail: '✗', error: '✗', warn: '!', skip: '—', wait: '', run: '' };
 const TONE = { ok: '✓', warn: '!', bad: '✗' };
@@ -776,12 +776,8 @@ async function fitWindow(again = true) {
     const dialog = $('own-dialog');
     const h = Math.min(Math.floor(screen.availHeight * 0.9), Math.max(want, state.modal ? 620 : 0, dialog ? dialog.scrollHeight + 32 + frame : 0));
     if (Math.abs(size.h - h) <= 2 && w === size.w) return;
-    // Growing keeps the top-left corner, unless the window would go off the screen: then it moves up or left.
-    const pos = await WindowGetPosition();
-    const x = pos.x + w > screen.availWidth ? Math.max(0, screen.availWidth - w) : pos.x;
-    const y = pos.y + h > screen.availHeight ? Math.max(0, screen.availHeight - h) : pos.y;
-    if (x !== pos.x || y !== pos.y) WindowSetPosition(x, y);
-    WindowSetSize(w, h);
+    // Growing keeps the top-left corner, unless the window would go off its monitor: then Go moves it up or left.
+    await FitWindow(w, h);
     if (w !== size.w && again) setTimeout(() => fitWindow(false), 80); // wider rows wrap less: refit the height once
   } catch { /* outside Wails (vite preview): nothing to resize */ }
 }

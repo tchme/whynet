@@ -24,6 +24,8 @@ export function FinishBrowser():Promise<void>;
 
 export function FinishLive():Promise<main.LiveView>;
 
+export function FitWindow(arg1:number,arg2:number):Promise<void>;
+
 export function Info():Promise<main.InfoView>;
 
 export function ListPrograms():Promise<Array<probe.Program>>;

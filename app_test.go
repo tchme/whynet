@@ -41,3 +41,17 @@ func TestHostViewsExplainUnchecked(t *testing.T) {
 		t.Errorf("an ad server beyond the limit: %+v", v)
 	}
 }
+
+// The monitor left of the main one has negative coordinates (the author's: work area x -1920..0).
+func TestKeepInside(t *testing.T) {
+	for _, c := range []struct{ pos, size, lo, hi, want int32 }{
+		{-1000, 1335, -1920, 0, -1335}, // grown past the right edge: moves left
+		{-3427, 1335, -1920, 0, -1920}, // already off to the left: back in
+		{100, 500, 0, 2560, 100},       // fits: stays
+		{100, 3000, 0, 2560, 0},        // wider than the monitor: starts at its edge
+	} {
+		if got := keepInside(c.pos, c.size, c.lo, c.hi); got != c.want {
+			t.Errorf("keepInside(%d, %d, %d, %d) = %d, want %d", c.pos, c.size, c.lo, c.hi, got, c.want)
+		}
+	}
+}
