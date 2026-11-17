@@ -253,3 +253,17 @@ Checked in the running exe on the author's PC (2026-11-16: Start, Ctrl+Alt+L pre
 - **Cause:** a TUN adapter of a sing-box client answers ICMP echo on this PC, so the internet links measured nothing; no rule looked at answers faster than the router. The adapter (`throne-tun`, "sing-tun Tunnel") was not in `vpn_adapters` either, so `live.path_vpn` was not set.
 - **Fix:** `live.fake_answers` (both controls under 1 ms) gives `live_fake_answers` after the router rules; `sing-tun` and `throne` added to `vpn_adapters`.
 - **Verified:** `TestAnalyzeFakeAnswers`, table cases; the recording's facts (0.0 / 0.0 / 0.5 ms) meet the rule. Not re-run with Throne.
+
+## UDP: received packets came "from" this PC (ETW addresses)
+
+- **Symptom:** the first live ETW read (2026-11-17): DNS answers to the DNS client service showed `remote=192.168.1.248:58396`, the PC's own address, and the voice server's answers looked like a second server.
+- **Cause:** Kernel-Network's UDP events carry the packet's own destination and source (daddr, saddr), not "remote" and "local": on a receive the remote end is saddr.
+- **Fix:** `etw.parse` swaps them for receive events.
+- **Verified:** `TestParse`; live: answers from 77.88.8.8:53 and Discord's voice server counted against the right server.
+
+## UDP: the "usual interval" of a Discord call was 0.1 ms
+
+- **Symptom:** live Discord voice: ~300 packets/s in, median pause between incoming packets 0.1 ms.
+- **Cause:** a call mixes several speakers' packets that arrive in bursts; the median pause is the one inside a burst.
+- **Fix:** the average interval (span / packets) sets the freeze threshold (still at least 250 ms).
+- **Verified:** `TestUDPRecorder` (16-17 ms for a 60 Hz game stream with one freeze).

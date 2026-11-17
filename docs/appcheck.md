@@ -97,9 +97,21 @@ Facts `app.*` from the steps above go through a separate rules file (`rules/app.
 - AI report: the program (exe name; its path masked like other personal paths), the recording's length, a servers table (name and how it was found, address, port, owner, what the program saw, what whynet's check found, zapret coverage), the verdict, raw JSON.
 - The window: a third mode "Программа" next to "Сайт" and "Стабильность": the picker, the recording screen with the servers appearing live, the result (verdict card, servers table in Details, the AI report buttons). An HTML mockup comes before any UI code, as for the other two modes.
 
+## Stage 2: UDP (built 2026-11-17)
+
+The author's calls: admin rights through an on-demand helper, UDP inside the "Программа" mode, ETW read with own syscalls (no new dependency). Mockup: `docs/mockups/app-udp.html` (approved). Plan: `~/.claude/plans/whynet-app-check-udp.md`.
+
+- **Source.** Windows keeps no remote address for UDP sockets, so the program's datagrams come from the kernel's network events: a real-time ETW session on Microsoft-Windows-Kernel-Network (events 42/43 IPv4 send/receive, 58/59 IPv6), package `internal/etw`. Payload: PID, size, daddr, saddr, dport, sport (ports big-endian). The addresses are the packet's own destination and source, so the remote end is saddr on a receive (checked live: DNS answers from 77.88.8.8:53).
+- **Admin rights.** The checkbox "И UDP" (remembered in the window) makes `RecordApp` call `probe.StartUDP`: if whynet already runs elevated it reads ETW itself; otherwise `ShellExecute("runas")` starts `whynet.exe -udp-helper 127.0.0.1:<port> <key>` (UAC prompt). The helper connects back, sends the one-time key first (anything else is dropped), then every datagram as a JSON line, flushed every 200 ms; it stops when the window closes the connection or dies, or after 3 minutes. Declined UAC: the recording goes on with TCP only, `app.udp = declined`, and a line under the verdict says so. `whynet-cli -app -udp` uses the same path.
+- **Recording.** Datagrams of the program's processes (re-read every 2 s) to internet addresses, DNS (port 53) excluded, grouped by remote address and port. Per server: packets and bytes each way, first/last second, the average incoming interval (not the median: a call mixes speakers into bursts, the median was 0.1 ms on Discord), the share of seconds with an incoming packet (steady: 90 %+ over 5 s+).
+- **Freezes.** A pause in the incoming stream over max(250 ms, 5 × the average interval) while the program sent 3+ packets in it. Both sides quiet (nobody speaks in a call) is no freeze. A server that answered and then stayed quiet 2 s+ to the end while the program kept sending is "stopped". No reply: 5+ sent, nothing back.
+- **Check.** Names from the DNS cache or PTR (certificates need TCP), owners by AS, 5 ICMP pings each (`live.Ping` through `Env.Echo`); many game and voice servers ignore ICMP (Discord's Cloudflare voice address does): shown as "не отвечает на пинг", never blamed.
+- **Verdicts** (after the TCP ones, `rules/app.yaml`): `app_udp_no_reply` (the busiest UDP server never answered), `app_udp_freezes` (a steady stream froze 2+ times), `app_udp_stopped`, `app_udp_ok`, and `app_no_traffic_any` when neither TCP nor UDP went out.
+- **Live (2026-11-17, the author's PC):** Discord in a voice channel: 104.29.136.195:19300 (Cloudflare), ~300 packets/s in, steady, no freezes, `app_udp_ok`; the helper path (UAC, 127.0.0.1, exit on close) and the window verified. **Not seen live:** a blocked UDP server, a real freeze, the declined path in the window (the CLI path printed nothing to test), a game with an anti-cheat.
+
 ## Constraints
 
-- Windows 10 and 11, no admin rights, no new dependencies: `GetExtendedTcpTable` (`iphlpapi`), `DnsGetCacheDataTable` (`dnsapi`), process names through the snapshot `dpi_windows.go` already uses.
+- Windows 10 and 11, no admin rights for TCP (UDP asks for them), no new dependencies: `GetExtendedTcpTable` (`iphlpapi`), `DnsGetCacheDataTable` (`dnsapi`), process names through the snapshot `dpi_windows.go` already uses.
 - Every step has its own timeout and panic recovery; a refused DNS cache or a failed name lookup never stops the check.
 - Never interrupts a VPN, never changes a setting.
 - Facts in probes, decisions in rules, texts in `locales/ru.yaml`.

@@ -62,7 +62,10 @@ whynet/
     app_check.go           CheckApp: steps local, record, names, check; each server on its own port (5 connects,
                            the name against example.org when it speaks TLS, zapret names/ipset/Game Filter ports),
                            troubled first, ads never blamed, 20 at most; `app.*` facts
+    app_udp.go             the app check's UDP: UDPRecorder (datagrams by server, freezes, no reply, stopped), the
+                           udp step (names, owners, ICMP ping through Env.Echo), `app.udp*` facts
     app_windows.go         GetExtendedTcpTable (owner PID, IPv4+IPv6), the process snapshot and window titles,
+                           StartUDP (package etw, UAC helper),
                            RecordApp (every 250 ms, processes re-read every 2 s), DNSCacheNames (dnsapi; refused
                            without admin on newer Windows 11)
   internal/live/            the stability check (design: stability.md); Env holds everything external
@@ -202,6 +205,10 @@ App check facts (`internal/probe/app_check.go`; steps record, names, check):
 | `app.program_trouble`, `app.trouble_hosts` | the program had failed connects at least as often as working ones to a server |
 | `app.lossy` | a server lost 2+ of 5 connects |
 | `app.dpi_unlisted`, `app.game_ports` | a blocked server in neither zapret list / on a Game Filter TCP port |
+| `app.udp` | off, recorded, declined (UAC refused), failed (step udp) |
+| `app.udp_servers`, `app.udp_noreply`, `app.udp_stopped` | UDP servers; ones that never answered 5+ packets; ones that answered, then went quiet 2 s+ while the program sent |
+| `app.udp_gaps`, `app.udp_worst_gap_ms`, `app.udp_freezes` | freezes of steady streams, the worst pause; true when a steady stream froze 2+ times |
+| `app.udp_main`, `app.udp_main_noreply`, `app.udp_main_ping`, `app.udp_main_lost` | the busiest UDP server: its label, no reply, ICMP answers/silent, pings lost of 5 |
 
 A link's trouble (a spike: an answer over max(3 × median, median + 50 ms), or a loss) counts only when some link behind it shows trouble at the same tick, and is the link's own only when every nearer link was calm. A link is unstable when its own trouble is ≥ 2 % of the ticks, or (not for `beyond`, an intermediate router answering pings to itself) when p95 − median of its own view reaches 50 ms (router 20 ms).
 

@@ -72,7 +72,8 @@ Rules in `rules/app.yaml` (first match wins), texts under `app_diagnoses` in `lo
 
 | id | Meaning (plain) | Detected by | Tested |
 |---|---|---|---|
-| `app_no_traffic` | The program opened no TCP connection while recording (offline, waiting, or UDP only) | `app.servers=0` | table, lab |
+| `app_no_traffic_any` | Neither TCP nor UDP went out while recording (UDP recorded) | `app.servers=0`, `app.udp=recorded`, `app.udp_servers=0` | table |
+| `app_no_traffic` | The program opened no TCP connection while recording (offline, waiting, or UDP only); UDP not recorded | `app.servers=0`, `app.udp!=recorded` | table, lab |
 | `app_dpi_conflict` | Two bypass tools fight | `local.dpi_tool=several`, `app.blocked` | table |
 | `app_game_filter_none` | zapret's Game Filter on with IPSet Filter `none`: its game rules reach no address | zapret, Game Filter all/tcp, IPSet Filter none, a blocked server on a Game Filter port | table |
 | `app_dpi_not_listed` | zapret runs, a blocked server is in neither of its lists | zapret, `app.dpi_unlisted`, `app.blocked` | table |
@@ -83,6 +84,10 @@ Rules in `rules/app.yaml` (first match wins), texts under `app_diagnoses` in `lo
 | `app_unreachable` | A server doesn't answer on its port | `app.unreachable` | table, lab; live: a test program dialling 192.0.2.1:443 and :2053 (2026-11-16) |
 | `app_lossy` | Servers answer but lose connects | `app.lossy` | table |
 | `app_flaky` | The program had failed connects, whynet's own check passed | `app.program_trouble` | table, lab |
+| `app_udp_no_reply` | The busiest UDP server never answered (blocked UDP: Discord voice in Russia) | `app.udp_main_noreply` | table; unit test on a synthetic stream. Not seen live |
+| `app_udp_freezes` | A steady UDP stream froze 2+ times while the program kept sending: lag | `app.udp_freezes` | table; synthetic stream. Not seen live |
+| `app_udp_stopped` | A UDP server answered, then went quiet for good | `app.udp=recorded`, `app.udp_stopped!=0` | table; synthetic stream |
+| `app_udp_ok` | TCP fine and the UDP stream steady both ways | `app.udp=recorded`, UDP servers, nothing above | table; live: Discord voice (104.29.136.195:19300, Cloudflare) on the author's PC, CLI and window (2026-11-17) |
 | `app_ok` | Every server answers | servers checked, nothing above | table, lab; live: Discord (through the router), Telegram, Spotify, Yandex Messenger on the author's PC (2026-11-16) |
 | `unknown` | Nothing matched | always last | table |
 
