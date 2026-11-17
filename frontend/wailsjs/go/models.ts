@@ -100,6 +100,7 @@ export namespace live {
 export namespace main {
 	
 	export class AppServerView {
+	    proto: string;
 	    label: string;
 	    name_from: string;
 	    addr: string;
@@ -119,6 +120,7 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.proto = source["proto"];
 	        this.label = source["label"];
 	        this.name_from = source["name_from"];
 	        this.addr = source["addr"];
@@ -184,6 +186,7 @@ export namespace main {
 	    steps: StepView[];
 	    servers: AppServerView[];
 	    zapret: boolean;
+	    udp_note?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppView(source);
@@ -197,6 +200,7 @@ export namespace main {
 	        this.steps = this.convertValues(source["steps"], StepView);
 	        this.servers = this.convertValues(source["servers"], AppServerView);
 	        this.zapret = source["zapret"];
+	        this.udp_note = source["udp_note"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

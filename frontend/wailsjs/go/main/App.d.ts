@@ -38,7 +38,7 @@ export function ReadHAR(arg1:string):Promise<main.HARInfo>;
 
 export function ReadHARFile(arg1:string):Promise<main.HARInfo>;
 
-export function RecordApp(arg1:string):Promise<main.AppView>;
+export function RecordApp(arg1:string,arg2:boolean):Promise<main.AppView>;
 
 export function Report(arg1:boolean):Promise<string>;
 

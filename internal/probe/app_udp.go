@@ -127,11 +127,18 @@ func (r *UDPRecorder) Add(at time.Time, pid uint32, remote netip.AddrPort, size 
 	}
 }
 
-// Count is the recording screen's tally: servers and datagrams so far.
-func (r *UDPRecorder) Count() (servers, packets int) {
+// Snapshot is the recording screen's view: each server's packets so far, nothing judged yet.
+func (r *UDPRecorder) Snapshot() []UDPServer {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return len(r.flows), r.packets
+	out := make([]UDPServer, 0, len(r.order))
+	for _, k := range r.order {
+		f := r.flows[k]
+		s := *f.srv
+		s.Sent, s.Recv = len(f.sent), len(f.recv)
+		out = append(out, s)
+	}
+	return out
 }
 
 // Result sums up each server, the busiest first.

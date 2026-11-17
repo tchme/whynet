@@ -22,6 +22,7 @@ const appMaxRecord = 2 * time.Minute
 
 // AppServerView is one server of the program, for the recording screen and the "Details" table.
 type AppServerView struct {
+	Proto    string `json:"proto"`     // TCP, UDP
 	Label    string `json:"label"`     // its name, or its address and port
 	NameFrom string `json:"name_from"` // where the name came from; "" while recording
 	Addr     string `json:"addr"`      // address:port
@@ -42,7 +43,10 @@ type AppTick struct {
 	Conns   int             `json:"conns"`
 	Cut     int             `json:"cut"`
 	Stuck   int             `json:"stuck"`
-	Servers []AppServerView `json:"servers"`
+	UDP     bool            `json:"udp"` // UDP is being recorded
+	UDPSent int             `json:"udp_sent"`
+	UDPRecv int             `json:"udp_recv"`
+	Servers []AppServerView `json:"servers"` // TCP, then UDP
 }
 
 // AppView is a finished app check as the window shows it.
@@ -52,13 +56,15 @@ type AppView struct {
 	Verdict VerdictView     `json:"verdict"`
 	Steps   []StepView      `json:"steps"`
 	Servers []AppServerView `json:"servers"`
-	Zapret  bool            `json:"zapret"` // a zapret column is worth showing
+	Zapret  bool            `json:"zapret"`             // a zapret column is worth showing
+	UDPNote string          `json:"udp_note,omitempty"` // why UDP was not recorded when it was asked for
 }
 
 // appTones colour the app verdicts; anything not listed is "bad".
 var appTones = map[string]string{
 	"app_ok": "ok", "app_no_traffic": "warn", "app_flaky": "warn", "app_lossy": "warn", "app_router_path": "warn",
 	"app_game_filter_none": "warn", "app_dpi_conflict": "warn", "app_dpi_not_listed": "warn", "app_dpi_fails": "warn", "unknown": "warn",
+	"app_no_traffic_any": "warn", "app_udp_freezes": "warn", "app_udp_ok": "ok",
 }
 
 // ListPrograms is the picker's list: programs with a window or with connections right now.
@@ -66,10 +72,10 @@ func (a *App) ListPrograms() ([]probe.Program, error) {
 	return probe.ListPrograms(a.markers.Browsers)
 }
 
-// RecordApp records the program's TCP connections until FinishApp (or 2 minutes), sending
-// "app-tick" once a second, then checks its servers, sending each step as "app-step".
-// CancelApp ends it without a check: the result is then nil.
-func (a *App) RecordApp(exe string) (*AppView, error) {
+// RecordApp records the program's TCP connections (and with udp its UDP, after a UAC prompt) until
+// FinishApp (or 2 minutes), sending "app-tick" once a second, then checks its servers, sending each
+// step as "app-step". CancelApp ends it without a check: the result is then nil.
+func (a *App) RecordApp(exe string, udp bool) (*AppView, error) {
 	a.mu.Lock()
 	if a.running {
 		a.mu.Unlock()
@@ -87,9 +93,24 @@ func (a *App) RecordApp(exe string) (*AppView, error) {
 	}()
 
 	start := time.Now()
-	servers, recorded, err := probe.RecordApp(ctx, exe, a.markers.Browsers, nil, done, func(s []probe.AppServer) {
-		runtime.EventsEmit(a.ctx, "app-tick", a.appTick(s, time.Since(start)))
+	udpRes := probe.UDPRecording{State: "off"}
+	var udpRec *probe.UDPRecorder
+	stopUDP := func() probe.UDPRecording { return udpRes }
+	if udp {
+		udpRec, stopUDP = probe.StartUDP(start) // waits for the UAC answer
+	}
+	servers, recorded, err := probe.RecordApp(ctx, exe, a.markers.Browsers, udpRec, done, func(s []probe.AppServer) {
+		t := a.appTick(s, time.Since(start))
+		if udpRec != nil {
+			t.UDP = true
+			for _, u := range udpRec.Snapshot() {
+				t.UDPSent, t.UDPRecv = t.UDPSent+u.Sent, t.UDPRecv+u.Recv
+				t.Servers = append(t.Servers, a.udpView(&u))
+			}
+		}
+		runtime.EventsEmit(a.ctx, "app-tick", t)
 	})
+	udpRes = stopUDP()
 	if err != nil {
 		return nil, fmt.Errorf("%s", locales.Fill(a.t.App["not_running"], map[string]string{"name": exe}))
 	}
@@ -104,7 +125,7 @@ func (a *App) RecordApp(exe string) (*AppView, error) {
 	defer cancelCheck()
 	env := probe.DefaultEnv(a.markers)
 	env.Echo = live.Ping
-	res := probe.CheckApp(checkCtx, env, exe, servers, probe.UDPRecording{State: "off"}, recorded, probe.DNSCacheNames(), func(s probe.Step) {
+	res := probe.CheckApp(checkCtx, env, exe, servers, udpRes, recorded, probe.DNSCacheNames(), func(s probe.Step) {
 		runtime.EventsEmit(a.ctx, "app-step", a.stepView(s))
 	})
 	v := rules.Match(a.appRules, res.Facts())
@@ -168,14 +189,70 @@ func (a *App) appView(res *probe.AppResult, v rules.Verdict) *AppView {
 		view.Zapret = view.Zapret || sv.Zapret != ""
 		view.Servers = append(view.Servers, sv)
 	}
+	// UDP rows go first when one is in trouble, after TCP otherwise.
+	var udpRows []AppServerView
+	trouble := false
+	for _, s := range res.UDP.Servers {
+		uv := a.udpView(s)
+		trouble = trouble || uv.SeenTone != "ok"
+		udpRows = append(udpRows, uv)
+	}
+	if trouble {
+		view.Servers = append(udpRows, view.Servers...)
+	} else {
+		view.Servers = append(view.Servers, udpRows...)
+	}
+	if res.UDP.State == "recorded" {
+		pk := 0
+		for _, s := range res.UDP.Servers {
+			pk += s.Sent + s.Recv
+		}
+		view.Summary += " " + locales.Fill(a.t.App["udp_summary"], map[string]string{"packets": strconv.Itoa(pk), "servers": strconv.Itoa(len(res.UDP.Servers))})
+	}
+	if st := res.UDP.State; st == "declined" || st == "failed" {
+		view.UDPNote = a.t.App["udp_note_"+st]
+	}
 	return view
+}
+
+// udpView words one UDP server: packets each way, freezes; the ping once it was checked.
+func (a *App) udpView(s *probe.UDPServer) AppServerView {
+	w, n := a.t.App, func(i int) string { return strconv.Itoa(i) }
+	v := AppServerView{Proto: "UDP", Label: s.Label(), Addr: fmt.Sprintf("%s:%d", s.IP, s.Port), Owner: s.Owner, SeenTone: "ok",
+		Seen: locales.Fill(w["udp_seen"], map[string]string{"sent": n(s.Sent), "recv": n(s.Recv)})}
+	switch {
+	case s.NoReply:
+		v.Seen, v.SeenTone = v.Seen+" — "+w["udp_seen_noreply"], "bad"
+	case s.Stopped:
+		v.Seen, v.SeenTone = v.Seen+" — "+w["udp_seen_stopped"], "bad"
+	case s.Steady && s.Gaps > 0:
+		v.Seen, v.SeenTone = v.Seen+" · "+locales.Fill(w["udp_seen_gaps"], map[string]string{"n": n(s.Gaps), "ms": n(int(s.WorstGapMs))}), "warn"
+	}
+	if s.Tries == 0 {
+		return v // still recording
+	}
+	v.NameFrom = w["name_"+s.NameFrom]
+	if s.Name == "" {
+		v.NameFrom = w["name_none"]
+	}
+	v.Check, v.Tone = "—", v.SeenTone // whynet can't ask a UDP server itself: the dot follows what the program saw
+	switch {
+	case s.Lost == s.Tries:
+		v.Ping = w["udp_ping_silent"]
+	default:
+		v.Ping = fmt.Sprintf("%d %s", s.PingMs, a.t.Report["ms"])
+		if s.Lost > 0 {
+			v.Ping += " · " + locales.Fill(a.t.Report["lost"], map[string]string{"lost": n(s.Lost), "tries": n(s.Tries)})
+		}
+	}
+	return v
 }
 
 // serverView words one server for the window: what the program saw and, once checked, what whynet found.
 func (a *App) serverView(s *probe.AppServer) AppServerView {
 	w := a.t.App
 	n := func(i int) string { return strconv.Itoa(i) }
-	v := AppServerView{Label: s.Label(), Addr: fmt.Sprintf("%s:%d", s.IP, s.Port), Ad: s.Ad, Conns: s.Conns,
+	v := AppServerView{Proto: "TCP", Label: s.Label(), Addr: fmt.Sprintf("%s:%d", s.IP, s.Port), Ad: s.Ad, Conns: s.Conns,
 		Owner: s.Owner, SeenTone: "ok", Seen: w["seen_ok"]}
 	if s.Name == "" && s.Result == "" {
 		v.Label = v.Addr

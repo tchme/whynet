@@ -26,6 +26,7 @@ const freshLive = () => ({
 const freshApp = () => ({
   phase: 'idle', // idle (the picker) | recording | checking | done
   list: [], selected: '', name: '', tick: null, steps: [], view: null, error: '',
+  udp: (() => { try { return localStorage.getItem('app-udp') === '1'; } catch { return false; } })(),
 });
 
 const state = {
@@ -545,6 +546,7 @@ function appPickerHTML() {
     <div class="plist" role="listbox">${progs.map(row).join('')}
       ${browsers.length ? `<div class="pgrp">${esc(A.browsers)}</div>${browsers.map(row).join('')}` : ''}</div>
     ${progs.length || browsers.length ? '' : `<p class="hint">${esc(A.none_found)}</p>`}
+    <label class="udpopt"><input type="checkbox" id="app-udp"${ap.udp ? ' checked' : ''}><span><b>${esc(A.udp_opt_title)}</b>${esc(A.udp_opt_text)}</span></label>
     <p class="hint small">${esc(A.idle_note)}</p>`;
 }
 
@@ -561,23 +563,28 @@ function appRecHTML() {
 
 function appRecBodyHTML() {
   const A = state.A, t = state.app.tick;
-  if (!t?.servers?.length) return `<p class="muted">${esc(A.rec_wait)}</p>`;
-  return `<div class="muted">${esc(fill(A.count, { servers: t.servers.length, conns: t.conns, cut: t.cut, stuck: t.stuck }))}</div>
+  if (!t) return `<p class="muted">${esc(state.app.udp ? A.udp_wait_uac : A.rec_wait)}</p>`;
+  if (!t.servers?.length) return `<p class="muted">${esc(A.rec_wait)}</p>`;
+  const udp = t.udp ? ` · ${esc(fill(A.udp_count, { sent: t.udp_sent, recv: t.udp_recv }))}` : '';
+  return `<div class="muted">${esc(fill(A.count, { servers: t.servers.length, conns: t.conns, cut: t.cut, stuck: t.stuck }))}${udp}</div>
     <div class="table-wrap"><table class="hosts"><thead><tr><th>${esc(A.col_server)}</th><th class="num">${esc(A.col_conns)}</th><th>${esc(A.col_seen)}</th></tr></thead>
-      <tbody>${t.servers.map(s => `<tr><td class="host">${esc(s.addr)}</td><td class="num">${s.conns}</td>
+      <tbody>${t.servers.map(s => `<tr><td class="host">${protoTag(s)}${esc(s.addr)}</td><td class="num">${s.proto === 'UDP' ? '—' : s.conns}</td>
         <td class="${toneClass(s.seen_tone)}">${esc(s.seen)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
+const protoTag = s => `<span class="proto${s.proto === 'UDP' ? ' u' : ''}">${esc(s.proto)}</span>`;
+
 function appDoneHTML() {
   const v = state.app.view;
-  return `<div class="grid"><div><ol class="steps">${stepsHTML(v.steps)}</ol><div class="version">whynet ${esc(state.version)}</div></div>${verdictCard(v.verdict)}</div>`
+  const note = v.udp_note ? `<p class="hint small">${esc(v.udp_note)}</p>` : '';
+  return `<div class="grid"><div><ol class="steps">${stepsHTML(v.steps)}</ol><div class="version">whynet ${esc(state.version)}</div></div>${verdictCard(v.verdict, note)}</div>`
     + moreBarHTML(fill(state.A.details_hint, { name: v.program })) + (state.details ? appDetailsHTML(v) : '');
 }
 
 function appDetailsHTML(v) {
   const A = state.A;
   const rows = (v.servers || []).map(s => `<tr>
-      <td class="host"><span class="dot ${esc(s.tone || 'none')}"></span>${esc(s.label)}${s.ad ? ` <span class="tag">${esc(A.ad)}</span>` : ''}<small>${esc(s.name_from)}</small></td>
+      <td class="host"><span class="dot ${esc(s.tone || 'none')}"></span>${protoTag(s)}${esc(s.label)}${s.ad ? ` <span class="tag">${esc(A.ad)}</span>` : ''}<small>${esc(s.name_from)}</small></td>
       <td class="host">${esc(s.addr)}</td><td>${esc(s.owner || '—')}</td>
       <td class="${toneClass(s.seen_tone)}">${esc(s.seen)}</td><td class="${toneClass(s.tone)}">${esc(s.check)}</td>
       <td class="num">${esc(s.ping || '—')}</td>${v.zapret ? `<td>${esc(s.zapret || '—')}</td>` : ''}</tr>`).join('');
@@ -613,7 +620,7 @@ async function startApp() {
   state.details = false;
   render();
   try {
-    const view = await RecordApp(p.exe);
+    const view = await RecordApp(p.exe, !!ap.udp);
     if (view) Object.assign(ap, { phase: 'done', view });
     else { ap.phase = 'idle'; loadPrograms(); } // cancelled
   } catch (err) {
@@ -882,6 +889,11 @@ out.addEventListener('mouseout', e => {
 });
 
 out.addEventListener('change', e => {
+  if (e.target.id === 'app-udp') {
+    state.app.udp = e.target.checked;
+    try { localStorage.setItem('app-udp', state.app.udp ? '1' : '0'); } catch { /* remembered for this run only */ }
+    return;
+  }
   if (e.target.id !== 'reveal') return;
   state.reveal = e.target.checked;
   refreshPreview();

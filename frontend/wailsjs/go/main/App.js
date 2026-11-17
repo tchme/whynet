@@ -70,8 +70,8 @@ export function ReadHARFile(arg1) {
   return window['go']['main']['App']['ReadHARFile'](arg1);
 }
 
-export function RecordApp(arg1) {
-  return window['go']['main']['App']['RecordApp'](arg1);
+export function RecordApp(arg1, arg2) {
+  return window['go']['main']['App']['RecordApp'](arg1, arg2);
 }
 
 export function Report(arg1) {
