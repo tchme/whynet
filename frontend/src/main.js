@@ -765,10 +765,12 @@ function healthHTML() {
   let go;
   if (v.after) {
     const done = v.done?.length ? runListHTML(v.done, v.done.map(x => x.status)) : '';
+    // Something still to fix: that is the main button; otherwise go and try what failed.
+    const site = `<button class="btn${v.fixable ? '' : ' primary'}" data-act="health-site">${esc(H.check_site)}</button>`;
     go = `${done}${v.declined ? `<p class="small bad">${esc(H.declined)}</p>` : ''}
-      <p class="small">${esc(H.try_now)}</p>
-      <div class="actions"><button class="btn primary" data-act="health-site">${esc(H.check_site)}</button>
-        <button class="btn" data-act="health-app">${esc(H.check_app)}</button>${v.fixable ? fixBtn.replace('btn primary', 'btn') : ''}${undo}${report}</div>
+      ${v.fixable ? '' : `<p class="small">${esc(H.try_now)}</p>`}
+      <div class="actions">${v.fixable ? fixBtn : ''}${site}
+        <button class="btn" data-act="health-app">${esc(H.check_app)}</button>${undo}${report}</div>
       ${v.undo ? `<p class="small">${esc(H.undo_note)}</p>` : ''}${v.fix_note && !v.fixable && v.fix_note !== H.clean_note ? `<p class="small bad">${esc(v.fix_note)}</p>` : ''}`;
   } else {
     go = `<div class="actions">${fixBtn}${undo}${report}</div>
