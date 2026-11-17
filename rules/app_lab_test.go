@@ -52,7 +52,7 @@ func TestAppLab(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			res := probe.CheckApp(context.Background(), env, "Test.exe", c.servers, 20*time.Second, c.cache, nil)
+			res := probe.CheckApp(context.Background(), env, "Test.exe", c.servers, probe.UDPRecording{State: "off"}, 20*time.Second, c.cache, nil)
 			if got := rules.Match(rs, res.Facts()); got.ID != c.want {
 				t.Errorf("verdict %s, want %s; facts %v", got.ID, c.want, res.Facts())
 				for _, s := range res.Servers {

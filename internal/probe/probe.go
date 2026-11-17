@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"maps"
 	"net"
+	"net/netip"
 	"net/url"
 	"runtime/debug"
 	"strings"
@@ -142,6 +143,9 @@ type Env struct {
 	// The app check's names and owners; nil skips them (the lab has no internet).
 	PTR func(ctx context.Context, ip string) ([]string, error)
 	ASN func(ctx context.Context, ip string) (asn, name string)
+	// Echo is one ICMP ping (the app check's UDP servers); nil skips it. The caller sets it
+	// (package live has the ICMP code and imports this package).
+	Echo func(ip netip.Addr, timeout time.Duration) (time.Duration, bool)
 }
 
 // DefaultEnv is the real network of this computer.

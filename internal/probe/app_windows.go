@@ -11,6 +11,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"whynet/internal/etw"
 )
 
 var (
@@ -183,13 +185,36 @@ func programPIDs(exe string, browsers []string) map[uint32]bool {
 	return pids
 }
 
+// StartUDP starts recording UDP through package etw: a UAC prompt unless whynet already runs as
+// administrator. Pass rec to RecordApp (nil when it could not start); stop ends it and returns
+// the recording, with State "declined" or "failed" when it never started.
+func StartUDP(start time.Time) (rec *UDPRecorder, stop func() UDPRecording) {
+	rec = NewUDPRecorder(start)
+	end, err := etw.Stream(func(p etw.Packet) { rec.Add(p.Time, p.PID, p.Remote, p.Size, p.Recv) })
+	if err != nil {
+		state := "failed"
+		if errors.Is(err, etw.ErrDeclined) {
+			state = "declined"
+		}
+		return nil, func() UDPRecording { return UDPRecording{State: state, Error: err.Error()} }
+	}
+	return rec, func() UDPRecording {
+		end()
+		return UDPRecording{State: "recorded", Servers: rec.Result()}
+	}
+}
+
 // RecordApp follows the program's TCP connections until done closes or ctx ends, reading the
-// table every 250 ms; progress (may be nil) gets the servers so far about once a second.
-func RecordApp(ctx context.Context, exe string, browsers []string, done <-chan struct{}, progress func([]AppServer)) ([]*AppServer, time.Duration, error) {
+// table every 250 ms; progress (may be nil) gets the servers so far about once a second. udp (may
+// be nil) is told the program's processes as they change; its datagrams come from package etw.
+func RecordApp(ctx context.Context, exe string, browsers []string, udp *UDPRecorder, done <-chan struct{}, progress func([]AppServer)) ([]*AppServer, time.Duration, error) {
 	start := time.Now()
 	pids := programPIDs(exe, browsers)
 	if pids == nil {
 		return nil, 0, errors.New("the program is not running: " + exe)
+	}
+	if udp != nil {
+		udp.SetPIDs(pids)
 	}
 	r := newRecorder()
 	tick := time.NewTicker(appPoll)
@@ -200,6 +225,9 @@ func RecordApp(ctx context.Context, exe string, browsers []string, done <-chan s
 		if now.Sub(lastProcs) >= appProcsEvery {
 			if p := programPIDs(exe, browsers); p != nil {
 				pids = p
+				if udp != nil {
+					udp.SetPIDs(p)
+				}
 			}
 			lastProcs = now
 		}

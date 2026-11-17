@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"whynet/internal/live"
 	"whynet/internal/probe"
 	"whynet/internal/report"
 	"whynet/locales"
@@ -17,8 +18,9 @@ import (
 )
 
 // runApp is the app check from the console: pick the program by name or PID, record its TCP
-// connections for dur (Ctrl+C ends early), check its servers, print the verdict.
-func runApp(target string, dur time.Duration, asJSON, save, hide bool) error {
+// connections (and with withUDP its UDP, admin rights) for dur (Ctrl+C ends early), check its
+// servers, print the verdict.
+func runApp(target string, dur time.Duration, withUDP, asJSON, save, hide bool) error {
 	rs, err := rules.LoadApp()
 	if err != nil {
 		return err
@@ -78,10 +80,22 @@ func runApp(target string, dur time.Duration, asJSON, save, hide bool) error {
 		fmt.Println(locales.Fill(t.App["progress"], map[string]string{"time": fmt.Sprintf("%d:%02d", secs/60, secs%60),
 			"servers": strconv.Itoa(len(s)), "conns": strconv.Itoa(conns), "cut": strconv.Itoa(cut), "stuck": strconv.Itoa(stuck)}))
 	}
-	servers, recorded, err := probe.RecordApp(ctx, prog.Exe, markers.Browsers, nil, progress)
+	udp := probe.UDPRecording{State: "off"}
+	var udpRec *probe.UDPRecorder
+	stopUDP := func() probe.UDPRecording { return udp }
+	if withUDP {
+		udpRec, stopUDP = probe.StartUDP(start)
+	}
+	servers, recorded, err := probe.RecordApp(ctx, prog.Exe, markers.Browsers, udpRec, nil, progress)
+	udp = stopUDP()
 	if err != nil {
 		return err
 	}
+	if withUDP && udp.State != "recorded" && !asJSON {
+		fmt.Println("UDP:", udp.State, udp.Error)
+	}
+	env := probe.DefaultEnv(markers)
+	env.Echo = live.Ping
 
 	checkCtx, cancelCheck := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancelCheck()
@@ -90,7 +104,7 @@ func runApp(target string, dur time.Duration, asJSON, save, hide bool) error {
 			fmt.Printf("%s %s (%d %s)\n", t.Status[s.Status], t.Steps[s.ID].Name, s.Ms, t.Report["ms"])
 		}
 	}
-	res := probe.CheckApp(checkCtx, probe.DefaultEnv(markers), prog.Exe, servers, recorded, probe.DNSCacheNames(), onStep)
+	res := probe.CheckApp(checkCtx, env, prog.Exe, servers, udp, recorded, probe.DNSCacheNames(), onStep)
 	v := rules.Match(rs, res.Facts())
 
 	if asJSON {

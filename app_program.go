@@ -9,6 +9,7 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"whynet/internal/live"
 	"whynet/internal/probe"
 	"whynet/locales"
 	"whynet/rules"
@@ -86,7 +87,7 @@ func (a *App) RecordApp(exe string) (*AppView, error) {
 	}()
 
 	start := time.Now()
-	servers, recorded, err := probe.RecordApp(ctx, exe, a.markers.Browsers, done, func(s []probe.AppServer) {
+	servers, recorded, err := probe.RecordApp(ctx, exe, a.markers.Browsers, nil, done, func(s []probe.AppServer) {
 		runtime.EventsEmit(a.ctx, "app-tick", a.appTick(s, time.Since(start)))
 	})
 	if err != nil {
@@ -101,7 +102,9 @@ func (a *App) RecordApp(exe string) (*AppView, error) {
 
 	checkCtx, cancelCheck := context.WithTimeout(a.ctx, 2*time.Minute)
 	defer cancelCheck()
-	res := probe.CheckApp(checkCtx, probe.DefaultEnv(a.markers), exe, servers, recorded, probe.DNSCacheNames(), func(s probe.Step) {
+	env := probe.DefaultEnv(a.markers)
+	env.Echo = live.Ping
+	res := probe.CheckApp(checkCtx, env, exe, servers, probe.UDPRecording{State: "off"}, recorded, probe.DNSCacheNames(), func(s probe.Step) {
 		runtime.EventsEmit(a.ctx, "app-step", a.stepView(s))
 	})
 	v := rules.Match(a.appRules, res.Facts())

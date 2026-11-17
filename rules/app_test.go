@@ -43,6 +43,15 @@ func TestAppMatch(t *testing.T) {
 		{with(append(blocked, "app.sni", "true", "local.dpi_tool", "goodbyedpi")...), "app_dpi_fails"},
 		{with("app.lossy", "true"), "app_lossy"},
 		{with("app.program_trouble", "true"), "app_flaky"},
+		// UDP: off by default (no facts); recorded adds its own verdicts after the TCP ones
+		{with("app.servers", "0", "app.checked", "0", "app.udp", "declined"), "app_no_traffic"},
+		{with("app.servers", "0", "app.checked", "0", "app.udp", "recorded", "app.udp_servers", "0"), "app_no_traffic_any"},
+		{with("app.udp", "recorded", "app.udp_servers", "3", "app.udp_main_noreply", "true", "app.udp_stopped", "0"), "app_udp_no_reply"},
+		{with("app.servers", "0", "app.checked", "0", "app.udp", "recorded", "app.udp_servers", "1", "app.udp_main_noreply", "true"), "app_udp_no_reply"},
+		{with("app.udp", "recorded", "app.udp_servers", "2", "app.udp_freezes", "true", "app.udp_stopped", "0"), "app_udp_freezes"},
+		{with("app.udp", "recorded", "app.udp_servers", "2", "app.udp_stopped", "1"), "app_udp_stopped"},
+		{with("app.udp", "recorded", "app.udp_servers", "2", "app.udp_stopped", "0", "app.udp_freezes", "false"), "app_udp_ok"},
+		{with("app.udp", "recorded", "app.udp_servers", "2", "app.udp_main_noreply", "true", "app.sni", "true", "app.blocked", "true"), "app_blocked_name"},
 	}
 	for _, c := range cases {
 		if got := rules.Match(rs, c.facts); got.ID != c.want {

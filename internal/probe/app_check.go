@@ -18,14 +18,16 @@ type AppResult struct {
 	Exe     string       `json:"exe"`
 	Seconds float64      `json:"seconds"` // how long it was recorded
 	Servers []*AppServer `json:"servers"` // in check order: troubled first, ads last
+	UDP     UDPRecording `json:"udp"`
 }
 
 // AppStepIDs is the order of the app check's steps.
-var AppStepIDs = []string{"local", "record", "names", "check"}
+var AppStepIDs = []string{"local", "record", "names", "check", "udp"}
 
 // CheckApp names and checks the servers a recording of exe found. cache is the Windows DNS
-// cache (DNSCacheNames; empty when Windows refuses it).
-func CheckApp(ctx context.Context, env Env, exe string, servers []*AppServer, recorded time.Duration, cache map[string]string, onStep func(Step)) *AppResult {
+// cache (DNSCacheNames; empty when Windows refuses it). udp is the UDP side (State "off" when
+// it was not recorded).
+func CheckApp(ctx context.Context, env Env, exe string, servers []*AppServer, udp UDPRecording, recorded time.Duration, cache map[string]string, onStep func(Step)) *AppResult {
 	name := strings.TrimSuffix(strings.TrimSuffix(exe, ".exe"), ".EXE")
 	p := &prober{ctx: ctx, env: env, onStep: onStep, // no host: the local step checks no site
 		res: &Result{Input: exe, Host: name, Started: time.Now().Add(-recorded), Mask: map[string]string{}}}
@@ -47,7 +49,8 @@ func CheckApp(ctx context.Context, env Env, exe string, servers []*AppServer, re
 		s.Facts["app.dns_cache"] = map[bool]string{true: "on", false: "off"}[len(cache) > 0]
 	})
 	p.step("check", func(s *Step) { p.checkApp(s, servers) })
-	return &AppResult{Result: *p.res, Exe: exe, Seconds: recorded.Seconds(), Servers: servers}
+	p.step("udp", func(s *Step) { p.checkUDP(s, udp, cache) })
+	return &AppResult{Result: *p.res, Exe: exe, Seconds: recorded.Seconds(), Servers: servers, UDP: udp}
 }
 
 // recordFacts sums up what the program itself went through.

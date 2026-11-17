@@ -53,6 +53,12 @@ type icmpEchoReply struct {
 
 // systemEcho sends one ICMP echo request to ip with the given TTL (0: the system default) and
 // waits up to timeout. ok is false when nobody answered in time.
+// Ping is one echo to ip: its round trip, or false when nothing came back.
+func Ping(ip netip.Addr, timeout time.Duration) (time.Duration, bool) {
+	r, ok, err := systemEcho(ip, 0, timeout)
+	return r.RTT, err == nil && ok && r.Kind == "reply"
+}
+
 func systemEcho(ip netip.Addr, ttl int, timeout time.Duration) (r Reply, ok bool, err error) {
 	if !ip.Is4() {
 		return r, false, errors.New("IPv4 only")

@@ -3,9 +3,13 @@
 # "Blocked" covers whynet's own findings (cut by name, cut with any name, closed) and the
 # program's own trouble on a server whose name can't be tested.
 
+- id: app_no_traffic_any
+  confidence: likely
+  when: {app.servers: "0", app.udp: recorded, app.udp_servers: "0"}
+
 - id: app_no_traffic
   confidence: likely
-  when: {app.servers: "0"}
+  when: {app.servers: "0", app.udp: "!recorded"}
 
 # A DPI-bypass tool on this PC rewrites the program's packets too: it comes before the ISP.
 - id: app_dpi_conflict
@@ -52,6 +56,25 @@
 - id: app_flaky
   confidence: likely
   when: {app.program_trouble: true}
+
+# UDP (recorded with admin rights): the program's busiest UDP server never answered — the typical
+# picture of blocked UDP (Discord voice in Russia).
+- id: app_udp_no_reply
+  confidence: likely
+  when: {app.udp_main_noreply: true}
+
+# A steady stream (a game, a call) froze while the program kept sending, or a server went quiet for good.
+- id: app_udp_freezes
+  confidence: likely
+  when: {app.udp_freezes: true}
+
+- id: app_udp_stopped
+  confidence: likely
+  when: {app.udp: recorded, app.udp_stopped: "!0"}
+
+- id: app_udp_ok
+  confidence: high
+  when: {app.udp: recorded, app.udp_servers: "!0"}
 
 - id: app_ok
   confidence: high
