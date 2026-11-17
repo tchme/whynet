@@ -115,6 +115,28 @@ func dpiInfo(host string, m Markers) (facts map[string]string, ev map[string]any
 	return facts, ev, lists
 }
 
+// ServiceState is a Windows service's state: "running", "stopped", "absent" or "unknown".
+func ServiceState(name string) string {
+	scm, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
+	if err == nil {
+		defer windows.CloseServiceHandle(scm)
+	}
+	st, _ := serviceState(scm, name)
+	return st
+}
+
+// RunningTools returns the labels of running processes whose exe name is in names (lowercase exe -> label).
+func RunningTools(names map[string]string) ([]string, error) {
+	ps, err := dpiProcesses(names)
+	var out []string
+	for _, p := range ps {
+		if !slices.Contains(out, p.Tool) {
+			out = append(out, p.Tool)
+		}
+	}
+	return out, err
+}
+
 // serviceState is "running", "stopped", "absent" or "unknown", plus the service's command line.
 // The registry key tells whether the service exists; the SCM tells its state.
 func serviceState(scm windows.Handle, name string) (state, image string) {

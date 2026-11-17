@@ -1,0 +1,184 @@
+# The Windows network health check's rules (docs/health.md). Unlike the other files, EVERY matching
+# rule is a finding (a PC can have several independent problems). The same "when" syntax.
+# kind: problem (broken; whynet fixes it when there is a fix), advice (likely trouble whynet can't fix),
+#       info (worth knowing, shown folded). area: the step it belongs to. fix: what "Починить" runs.
+# Facts: health.* from the areas, local.* copied from the site check's local step.
+# A "!x" condition also passes when the fact is missing: guard such rules with a fact the area always sets.
+
+- id: health_no_link
+  confidence: high
+  kind: problem
+  area: health_adapter
+  when: {health.adapter: none, local.net: none}
+
+- id: health_link_slow
+  confidence: likely
+  kind: advice
+  area: health_adapter
+  when: {health.link_slow: true}
+
+- id: health_errors
+  confidence: likely
+  kind: advice
+  area: health_adapter
+  when: {health.errors_growing: true}
+
+- id: health_wifi_weak
+  confidence: likely
+  kind: advice
+  area: health_adapter
+  when: {health.wifi_weak: true}
+
+- id: health_apipa
+  confidence: high
+  kind: problem
+  area: health_address
+  fix: dhcp_renew
+  when: {health.apipa: true}
+
+- id: health_no_gateway
+  confidence: likely
+  kind: problem
+  area: health_address
+  when: {health.gateway: none, health.adapter: [cable, wifi, other]}
+
+- id: health_ncsi_wrong
+  confidence: likely
+  kind: advice
+  area: health_address
+  when: {health.ncsi_wrong: true}
+
+- id: health_vpn
+  confidence: high
+  kind: info
+  area: health_address
+  when: {local.vpn: true}
+
+- id: health_dns_manual_dead
+  confidence: high
+  kind: problem
+  area: health_dns
+  fix: dns_auto
+  when: {health.dns_manual_dead: true}
+
+- id: health_dns_dead
+  confidence: high
+  kind: problem
+  area: health_dns
+  when: {health.dns: dead_all, health.dns_manual_dead: false}
+
+- id: health_dns_some
+  confidence: likely
+  kind: advice
+  area: health_dns
+  when: {health.dns: dead_some, health.dns_manual_dead: false}
+
+- id: health_dns_slow
+  confidence: likely
+  kind: advice
+  area: health_dns
+  when: {health.dns: slow}
+
+- id: health_dnscache_off
+  confidence: high
+  kind: problem
+  area: health_dns
+  fix: dnscache_start
+  when: {health.dnscache: stopped}
+
+- id: health_proxy_dead
+  confidence: high
+  kind: problem
+  area: health_proxy
+  fix: proxy_off
+  when: {health.proxy: dead}
+
+- id: health_pac_dead
+  confidence: high
+  kind: problem
+  area: health_proxy
+  fix: pac_off
+  when: {health.proxy_pac: dead}
+
+- id: health_winhttp_dead
+  confidence: high
+  kind: problem
+  area: health_proxy
+  fix: winhttp_reset
+  when: {health.winhttp: dead}
+
+- id: health_proxy_on
+  confidence: high
+  kind: info
+  area: health_proxy
+  when: {health.proxy: ok}
+
+- id: health_hosts_stale
+  confidence: likely
+  kind: problem
+  area: health_hosts
+  fix: hosts_stale
+  when: {health.hosts: ok, health.hosts_stale: "!0"}
+
+- id: health_ncsi_hosts
+  confidence: high
+  kind: advice
+  area: health_hosts
+  when: {health.hosts_ncsi: true}
+
+- id: health_hosts_pins
+  confidence: high
+  kind: info
+  area: health_hosts
+  when: {health.hosts: ok, health.hosts_pins: "!0"}
+
+- id: health_autotuning
+  confidence: likely
+  kind: problem
+  area: health_tcp
+  fix: autotuning
+  when: {health.autotuning: [disabled, highlyrestricted, restricted, experimental]}
+
+- id: health_rss_off
+  confidence: likely
+  kind: problem
+  area: health_tcp
+  fix: rss
+  when: {health.rss: disabled}
+
+- id: health_winsock
+  confidence: likely
+  kind: advice
+  area: health_tcp
+  when: {health.winsock: foreign}
+
+- id: health_ipv6_broken
+  confidence: likely
+  kind: advice
+  area: health_ipv6
+  when: {health.ipv6: broken}
+
+- id: health_mtu_low
+  confidence: high
+  kind: info
+  area: health_mtu
+  when: {health.mtu_low: true}
+
+- id: health_clock_off
+  confidence: high
+  kind: problem
+  area: health_clock
+  fix: time_sync
+  when: {health.clock_off: true}
+
+- id: health_throttler
+  confidence: likely
+  kind: advice
+  area: health_soft
+  when: {health.throttler_found: true}
+
+- id: health_dpi
+  confidence: high
+  kind: info
+  area: health_soft
+  when: {local.dpi_tool: [zapret, goodbyedpi, several]}

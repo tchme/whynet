@@ -16,6 +16,15 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
+// LocalInfo is the local step without a site (the Windows network health check): route, proxy,
+// adapters, OS, DPI-bypass tools, public address, clock.
+func LocalInfo(ctx context.Context, m Markers) Local {
+	l := localInfo(ctx, "", m)
+	delete(l.Facts, "local.hosts_entry")
+	delete(l.Facts, "local.dpi_listed") // both are about a site
+	return l
+}
+
 // localInfo looks at this computer: route, proxy, hosts file, adapters, OS, public address, clock.
 // Each part fails on its own; its error lands in the evidence.
 func localInfo(ctx context.Context, host string, m Markers) Local {
@@ -143,6 +152,12 @@ type Adapter struct {
 	DNS         []string `json:"dns,omitempty"`
 	Index       uint32   `json:"-"` // IPv4 interface index
 	GUID        string   `json:"-"` // "{...}", as the Wi-Fi API names interfaces
+	// For the Windows network health check; kept out of the site reports.
+	LUID       uint64 `json:"-"`
+	MTU        uint32 `json:"-"`
+	Mbps       uint64 `json:"-"` // link speed, the slower direction
+	DHCP       bool   `json:"-"` // IPv4 address from DHCP
+	IPv6Global bool   `json:"-"` // a global IPv6 address (not ULA, not link-local)
 }
 
 // Adapters lists the network adapters that are up, with their gateways and DNS servers.
@@ -168,7 +183,8 @@ func Adapters() ([]Adapter, error) {
 			continue
 		}
 		ad := Adapter{Name: windows.UTF16PtrToString(a.FriendlyName), Description: windows.UTF16PtrToString(a.Description),
-			Kind: "other", Index: a.IfIndex, GUID: windows.BytePtrToString(a.AdapterName)}
+			Kind: "other", Index: a.IfIndex, GUID: windows.BytePtrToString(a.AdapterName),
+			LUID: a.Luid, MTU: a.Mtu, Mbps: min(a.TransmitLinkSpeed, a.ReceiveLinkSpeed) / 1e6, DHCP: a.Flags&0x4 != 0} // IP_ADAPTER_DHCP_ENABLED
 		switch a.IfType {
 		case windows.IF_TYPE_IEEE80211:
 			ad.Kind = "wifi"
@@ -178,6 +194,8 @@ func Adapters() ([]Adapter, error) {
 		for u := a.FirstUnicastAddress; u != nil; u = u.Next {
 			if ip := u.Address.IP(); ip.To4() != nil {
 				ad.IPv4 = append(ad.IPv4, ip.String())
+			} else if ip.IsGlobalUnicast() && !ip.IsPrivate() {
+				ad.IPv6Global = true
 			}
 		}
 		for g := a.FirstGatewayAddress; g != nil; g = g.Next {

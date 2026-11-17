@@ -16,13 +16,17 @@ import (
 	"whynet/internal/probe"
 )
 
-//go:embed diagnoses.yaml live.yaml app.yaml markers.yaml ads.txt.gz
+//go:embed diagnoses.yaml live.yaml app.yaml health.yaml markers.yaml ads.txt.gz
 var files embed.FS
 
 type Rule struct {
 	ID         string         `yaml:"id"`
 	Confidence string         `yaml:"confidence"` // high | likely
 	When       map[string]any `yaml:"when"`
+	// The health check only (health.yaml): problem | advice | info, the step it belongs to, the fix it offers.
+	Kind string `yaml:"kind"`
+	Area string `yaml:"area"`
+	Fix  string `yaml:"fix"`
 }
 
 type Verdict struct {
@@ -60,6 +64,21 @@ func LoadLive() ([]Rule, error) { return loadRules("live.yaml") }
 
 // LoadApp reads the app check's rules (app.yaml), apart from the site's for the same reason.
 func LoadApp() ([]Rule, error) { return loadRules("app.yaml") }
+
+// LoadHealth reads the Windows network health check's rules (health.yaml): every matching rule is a
+// finding (MatchAll), each with a kind and an area.
+func LoadHealth() ([]Rule, error) {
+	rs, err := loadRules("health.yaml")
+	if err != nil {
+		return nil, err
+	}
+	for i, r := range rs {
+		if r.Area == "" || r.Kind != "problem" && r.Kind != "advice" && r.Kind != "info" {
+			return nil, fmt.Errorf("health.yaml: rule %d (%s): needs an area and kind problem|advice|info", i+1, r.ID)
+		}
+	}
+	return rs, nil
+}
 
 func loadRules(name string) ([]Rule, error) {
 	var rs []Rule
@@ -117,6 +136,17 @@ func Match(rs []Rule, facts map[string]string) Verdict {
 		}
 	}
 	return Verdict{ID: "unknown", Confidence: "likely"}
+}
+
+// MatchAll returns every rule whose conditions all hold, in file order.
+func MatchAll(rs []Rule, facts map[string]string) []Rule {
+	var out []Rule
+	for _, r := range rs {
+		if matches(r.When, facts) {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 func matches(when map[string]any, facts map[string]string) bool {

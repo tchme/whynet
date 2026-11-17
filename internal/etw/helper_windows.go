@@ -19,7 +19,7 @@ import (
 )
 
 // HelperFlag starts whynet as the elevated helper:
-// `whynet.exe -helper <addr> <key> <udp|frames|udp,frames> <seconds>`.
+// `whynet.exe -helper <addr> <key> <udp|frames|udp,frames|fix> <seconds>`.
 const HelperFlag = "-helper"
 
 // helperCap: the helper stops by itself after the time it was given, never later than this,
@@ -63,28 +63,7 @@ func Stream(h Handlers, limit time.Duration) (stop func(), err error) {
 		}
 		return s.Stop, nil
 	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return nil, err
-	}
-	defer ln.Close()
-	k := make([]byte, 16)
-	rand.Read(k)
-	key := hex.EncodeToString(k)
-	exe, err := os.Executable()
-	if err != nil {
-		return nil, err
-	}
-	// ShellExecute "runas" returns once the prompt is answered.
-	args := strings.Join([]string{HelperFlag, ln.Addr().String(), key, jobs(h), strconv.Itoa(int(limit.Seconds()))}, " ")
-	if err := windows.ShellExecute(0, windows.StringToUTF16Ptr("runas"), windows.StringToUTF16Ptr(exe),
-		windows.StringToUTF16Ptr(args), nil, windows.SW_HIDE); err != nil {
-		if errors.Is(err, windows.ERROR_CANCELLED) {
-			return nil, ErrDeclined
-		}
-		return nil, err
-	}
-	conn, rd, err := accept(ln.(*net.TCPListener), key, 15*time.Second)
+	conn, rd, err := Elevate(jobs(h), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -114,6 +93,33 @@ func Stream(h Handlers, limit time.Duration) (stop func(), err error) {
 	}, nil
 }
 
+// Elevate starts an elevated copy of this exe as the helper for job (UAC prompt; ErrDeclined when
+// the person refuses) and returns its connection once it proved itself with the one-time key.
+func Elevate(job string, limit time.Duration) (net.Conn, *bufio.Reader, error) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, nil, err
+	}
+	defer ln.Close()
+	k := make([]byte, 16)
+	rand.Read(k)
+	key := hex.EncodeToString(k)
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, nil, err
+	}
+	// ShellExecute "runas" returns once the prompt is answered.
+	args := strings.Join([]string{HelperFlag, ln.Addr().String(), key, job, strconv.Itoa(int(limit.Seconds()))}, " ")
+	if err := windows.ShellExecute(0, windows.StringToUTF16Ptr("runas"), windows.StringToUTF16Ptr(exe),
+		windows.StringToUTF16Ptr(args), nil, windows.SW_HIDE); err != nil {
+		if errors.Is(err, windows.ERROR_CANCELLED) {
+			return nil, nil, ErrDeclined
+		}
+		return nil, nil, err
+	}
+	return accept(ln.(*net.TCPListener), key, 15*time.Second)
+}
+
 // accept waits for the helper: the first line must be the key; anything else is dropped. The
 // reader carries on after the key: packets may already sit behind it.
 func accept(ln *net.TCPListener, key string, wait time.Duration) (net.Conn, *bufio.Reader, error) {
@@ -134,9 +140,13 @@ func accept(ln *net.TCPListener, key string, wait time.Duration) (net.Conn, *buf
 	}
 }
 
+// Job is a helper job other than recording: it talks to the window over rw (after the key) and
+// returns when done. The helper exits after it.
+type Job func(rw *bufio.ReadWriter) error
+
 // HelperMain runs the elevated helper when args (os.Args[1:]) start with HelperFlag; ran is false
-// otherwise, and the caller starts as usual.
-func HelperMain(args []string) (ran bool, err error) {
+// otherwise, and the caller starts as usual. jobs are the extra jobs by name (the health fixes).
+func HelperMain(args []string, jobs map[string]Job) (ran bool, err error) {
 	if len(args) != 5 || args[0] != HelperFlag {
 		return false, nil
 	}
@@ -144,27 +154,57 @@ func HelperMain(args []string) (ran bool, err error) {
 	if err != nil || secs <= 0 {
 		return true, errors.New("etw: bad helper time limit")
 	}
-	return true, runHelper(args[1], args[2], strings.Split(args[3], ","), time.Duration(secs)*time.Second)
+	limit := time.Duration(secs) * time.Second
+	if job, ok := jobs[args[3]]; ok {
+		return true, runJob(args[1], args[2], job, limit)
+	}
+	return true, runHelper(args[1], args[2], strings.Split(args[3], ","), limit)
+}
+
+// dialWindow connects back to the window (127.0.0.1 only) and proves itself with the key.
+func dialWindow(addr, key string) (net.Conn, error) {
+	if host, _, err := net.SplitHostPort(addr); err != nil || host != "127.0.0.1" {
+		return nil, errors.New("etw: the helper only talks to 127.0.0.1")
+	}
+	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := conn.Write([]byte(key + "\n")); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return conn, nil
+}
+
+// runJob runs one job for the window, for limit at most (capped like the recordings).
+func runJob(addr, key string, job Job, limit time.Duration) error {
+	conn, err := dialWindow(addr, key)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(min(limit, helperCap)))
+	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+	err = job(rw)
+	if ferr := rw.Flush(); err == nil {
+		err = ferr
+	}
+	return err
 }
 
 // runHelper is the elevated side: it connects to the window, proves itself with the key and sends
 // every UDP packet and / or frame until the window closes the connection (or exits), or limit passes.
 func runHelper(addr, key string, jobs []string, limit time.Duration) error {
-	if host, _, err := net.SplitHostPort(addr); err != nil || host != "127.0.0.1" {
-		return errors.New("etw: the helper only talks to 127.0.0.1")
-	}
 	udp, frames := slices.Contains(jobs, "udp"), slices.Contains(jobs, "frames")
 	if !udp && !frames {
 		return errors.New("etw: the helper was given nothing to record")
 	}
-	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	conn, err := dialWindow(addr, key)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
-	if _, err := conn.Write([]byte(key + "\n")); err != nil {
-		return err
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), min(limit, helperCap))
 	defer cancel()
 	go func() { // the window never writes again: a read returns when it closes the connection or dies

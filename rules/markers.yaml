@@ -191,3 +191,26 @@ vpn_adapters:
   - nordlynx
   - mullvad
   - proton
+
+# The Windows network health check: adapters of virtual machines and WSL, not the PC's own link
+# (matched in the adapter name or description).
+virtual_adapters:
+  - hyper-v
+  - vethernet
+  - virtualbox
+  - vmware
+  - virtual adapter
+  - loopback
+
+# Programs that throttle or reshape traffic, by lowercase exe name -> the name shown.
+# shortcut: exe names from vendor docs and forum threads, none seen live; confirm on the first report that has one.
+throttlers:
+  killernetworkservice.exe: Killer Network Service
+  kndbwm.exe: Killer Network Service
+  killer control center.exe: Killer Control Center
+  smartbytenetworkservice.exe: SmartByte
+  smartbyteanalyticsservice.exe: SmartByte
+  cfosspeed.exe: cFosSpeed
+  spd.exe: cFosSpeed
+  nlsvc.exe: NetLimiter
+  netlimiter.exe: NetLimiter

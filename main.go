@@ -16,7 +16,7 @@ import (
 var assets embed.FS
 
 func main() {
-	if ran, err := etw.HelperMain(os.Args[1:]); ran { // the elevated helper (UDP, frames): no window
+	if ran, err := etw.HelperMain(os.Args[1:], nil); ran { // the elevated helper (UDP, frames): no window
 		if err != nil {
 			os.Exit(1)
 		}

@@ -10,7 +10,7 @@ import (
 // The helper's command line: anything that isn't ours starts the app as usual; ours is checked
 // before any connection is made.
 func TestHelperMain(t *testing.T) {
-	if ran, _ := HelperMain([]string{"-live"}); ran {
+	if ran, _ := HelperMain([]string{"-live"}, nil); ran {
 		t.Error("ran on someone else's flags")
 	}
 	for _, args := range [][]string{
@@ -19,7 +19,7 @@ func TestHelperMain(t *testing.T) {
 		{HelperFlag, "127.0.0.1:1", "k", "tcp", "60"},
 		{HelperFlag, "10.0.0.1:1", "k", "udp", "60"},
 	} {
-		if ran, err := HelperMain(args); !ran || err == nil {
+		if ran, err := HelperMain(args, nil); !ran || err == nil {
 			t.Errorf("%v: ran %v, err %v", args, ran, err)
 		}
 	}

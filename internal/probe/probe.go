@@ -77,6 +77,10 @@ type Markers struct {
 	Browsers []string `yaml:"browsers"`
 	// The browser's own services seen in a page's traffic: dropped from the page's servers.
 	BrowserOwn []string `yaml:"browser_own"`
+	// The Windows network health check: virtual machines' adapters (not the PC's own link) and
+	// programs known to throttle or reshape traffic, by lowercase exe name -> name to show.
+	VirtualAdapters []string          `yaml:"virtual_adapters"`
+	Throttlers      map[string]string `yaml:"throttlers"`
 }
 
 // IsAd reports whether host or one of its parent domains is an ad or tracker server.

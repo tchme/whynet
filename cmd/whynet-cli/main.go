@@ -18,14 +18,14 @@ import (
 )
 
 func main() {
-	if ran, err := etw.HelperMain(os.Args[1:]); ran { // the elevated helper (UDP, frames)
+	if ran, err := etw.HelperMain(os.Args[1:], nil); ran { // the elevated helper (UDP, frames)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "whynet:", err)
 			os.Exit(1)
 		}
 		return
 	}
-	asJSON :=flag.Bool("json", false, "print facts and raw evidence as JSON")
+	asJSON := flag.Bool("json", false, "print facts and raw evidence as JSON")
 	save := flag.Bool("save", false, "save the AI report (.md) in the current folder")
 	noHide := flag.Bool("no-hide", false, "keep the public IP and other private values in the report")
 	noBrowser := flag.Bool("no-browser", false, "skip loading the page in a hidden Edge/Chrome")
@@ -33,9 +33,10 @@ func main() {
 	app := flag.Bool("app", false, "app check: record a running program's TCP connections and check its servers (no name: list programs)")
 	udp := flag.Bool("udp", false, "with -app: record its UDP too (games, voice); asks for admin rights")
 	frames := flag.Bool("frames", false, "with -live: record the game's frames too (stalls: is it the computer?); asks for admin rights")
+	windowsHealth := flag.Bool("health", false, "Windows network health: check the PC's network setup (adapter, DNS, proxy, hosts, TCP, clock); checks only, fixing is in the window")
 	dur := flag.Duration("for", 2*time.Minute, "with -live: how long to record (Ctrl+C ends it early); at most 1h. With -app: 30s by default, at most 2m")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "whynet-cli %s — why doesn't a site open?\n\nusage: whynet-cli [flags] <site>\n       whynet-cli -live [-frames] [-for 2m] [game server]\n       whynet-cli -app [-udp] [-for 30s] [program or PID]\n\n", report.Version)
+		fmt.Fprintf(os.Stderr, "whynet-cli %s — why doesn't a site open?\n\nusage: whynet-cli [flags] <site>\n       whynet-cli -live [-frames] [-for 2m] [game server]\n       whynet-cli -app [-udp] [-for 30s] [program or PID]\n       whynet-cli -health\n\n", report.Version)
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -43,6 +44,8 @@ func main() {
 	flag.Visit(func(f *flag.Flag) { durSet = durSet || f.Name == "for" })
 	var err error
 	switch {
+	case *windowsHealth && flag.NArg() == 0:
+		err = runHealth(*asJSON, *save, !*noHide)
 	case *app && flag.NArg() <= 1:
 		d := 30 * time.Second
 		if durSet {
@@ -51,7 +54,7 @@ func main() {
 		err = runApp(flag.Arg(0), d, *udp, *asJSON, *save, !*noHide)
 	case *stability && flag.NArg() <= 1:
 		err = runLive(flag.Arg(0), min(*dur, time.Hour), *frames, *asJSON, *save, !*noHide)
-	case !*stability && !*app && flag.NArg() == 1:
+	case !*stability && !*app && !*windowsHealth && flag.NArg() == 1:
 		err = run(flag.Arg(0), *asJSON, *save, !*noHide, !*noBrowser)
 	default:
 		flag.Usage()

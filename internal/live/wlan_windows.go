@@ -51,6 +51,10 @@ type wlanConnectionAttributes struct {
 // phyNames are DOT11_PHY_TYPE values as people know them.
 var phyNames = map[uint32]string{4: "802.11a", 5: "802.11b", 6: "802.11g", 7: "802.11n (Wi-Fi 4)", 8: "802.11ac (Wi-Fi 5)", 10: "802.11ax (Wi-Fi 6)", 11: "802.11be (Wi-Fi 7)"}
 
+// ReadWiFi is the Wi-Fi link of the adapter with this GUID right now (the health check); ok is
+// false when it is not connected.
+func ReadWiFi(guid string) (w WiFi, ok bool, err error) { return systemWiFi(guid) }
+
 // systemWiFi reads the Wi-Fi connection of the adapter with this GUID ("{...}"); with an empty
 // GUID, the first connected one. ok is false when there is no connected Wi-Fi.
 func systemWiFi(guid string) (w WiFi, ok bool, err error) {

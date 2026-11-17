@@ -30,18 +30,21 @@ type Texts struct {
 	// The app check's verdicts and words.
 	AppDiagnoses map[string]Diagnosis `yaml:"app_diagnoses"`
 	App          map[string]string    `yaml:"app"`
-	Steps        map[string]StepText  `yaml:"steps"`
-	Status       map[string]string    `yaml:"status"`
-	Confidence   map[string]string    `yaml:"confidence"`
-	Report       map[string]string    `yaml:"report"`
-	Values       map[string]string    `yaml:"values"`
-	Notes        []Note               `yaml:"notes"`
-	Kinds        map[string]string    `yaml:"kinds"`
-	Results      map[string]string    `yaml:"results"`
-	Phases       map[string]string    `yaml:"phases"`    // where a slow file's time went
-	Countries    map[string]string    `yaml:"countries"` // ISO code -> name as in "из <name>"
-	Colos        map[string]string    `yaml:"colos"`     // Cloudflare node (airport code) -> city
-	UI           map[string]string    `yaml:"ui"`
+	// The Windows network health check's findings and words.
+	HealthFindings map[string]Diagnosis `yaml:"health_findings"`
+	Health         map[string]string    `yaml:"health"`
+	Steps          map[string]StepText  `yaml:"steps"`
+	Status         map[string]string    `yaml:"status"`
+	Confidence     map[string]string    `yaml:"confidence"`
+	Report         map[string]string    `yaml:"report"`
+	Values         map[string]string    `yaml:"values"`
+	Notes          []Note               `yaml:"notes"`
+	Kinds          map[string]string    `yaml:"kinds"`
+	Results        map[string]string    `yaml:"results"`
+	Phases         map[string]string    `yaml:"phases"`    // where a slow file's time went
+	Countries      map[string]string    `yaml:"countries"` // ISO code -> name as in "из <name>"
+	Colos          map[string]string    `yaml:"colos"`     // Cloudflare node (airport code) -> city
+	UI             map[string]string    `yaml:"ui"`
 }
 
 // Load reads one language, e.g. "ru".
