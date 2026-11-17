@@ -22,7 +22,7 @@ import (
 // liveTones colour the stability verdicts; anything not listed is "bad".
 var liveTones = map[string]string{
 	"live_stable": "ok", "live_too_short": "warn", "live_router_silent": "warn",
-	"live_wifi": "warn", "live_lan": "warn", "live_vpn": "warn",
+	"live_wifi": "warn", "live_lan": "warn", "live_vpn": "warn", "live_pc_cpu": "warn", "live_pc_frames": "warn",
 }
 
 type LiveLinkView struct {
@@ -88,7 +88,7 @@ type LiveView struct {
 	TraceTitle string            `json:"trace_title"`
 	WiFi       *live.WiFiSummary `json:"wifi,omitempty"`
 	CPU        *live.CPUSummary  `json:"cpu,omitempty"`
-	Lags     []LagView         `json:"lags"`
+	Lags       []LagView         `json:"lags"`
 	Chart      ChartView         `json:"chart"`
 	Compare    *CompareView      `json:"compare,omitempty"`
 	Note       string            `json:"note,omitempty"` // the server was found through DoH
@@ -208,7 +208,7 @@ func (a *App) liveView(res *live.Result, v rules.Verdict, prev *live.Result) *Li
 	view := &LiveView{
 		Verdict: VerdictView{ID: v.ID, Title: d.Title, Tone: tone, Confidence: a.t.Confidence[v.Confidence],
 			Explain: locales.Fill(d.Explain, res.Facts), Advice: locales.Fill(d.Advice, res.Facts)},
-		Extras:  report.LiveExtras(a.t, res),
+		Extras:  report.LiveExtras(a.t, res, v.ID),
 		Seconds: res.Seconds,
 		Chart:   ChartView{Start: res.Chart.Start.UnixMilli(), Step: res.Chart.Step, Series: res.Chart.Series, CPU: res.Chart.CPU},
 		CPU:     res.CPU,

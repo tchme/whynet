@@ -39,8 +39,16 @@ func liveResult(t0 time.Time) *live.Result {
 	for i := range 200 {
 		res.Spikes = append(res.Spikes, live.Episode{At: t0.Add(time.Duration(i) * 18 * time.Second), Link: live.Router, Seconds: 1.5, WorstMs: 400})
 	}
+	// The game stalled too, 260 times in the hour: 200 listed.
+	res.Facts["live.frames"], res.Facts["live.frames_stalled"] = "recorded", "true"
+	res.Frames = &live.FramesSummary{Exe: "cs2.exe", FrontPct: 96.5, FPSMedian: 143.9, FPSAvg: 141.2, FPSLow1: 61.3, WorstMs: 512, Frames: 497000, StallsTotal: 260, StallsNet: 40, StallsCPU: 12,
+		Pauses: []live.Stall{{At: t0.Add(30 * time.Minute), Ms: 4200, CPU: -1}}}
+	for i := range 200 {
+		res.Frames.Stalls = append(res.Frames.Stalls, live.Stall{At: t0.Add(time.Duration(i) * 17 * time.Second), Ms: 180, CPU: 40})
+	}
+	res.Lags[0].Stall, res.Lags[0].StallAgoS, res.Lags[0].StallMs = true, 1.5, 180
 	for i := range 60 {
-		bk := live.Bucket{At: t0.Add(time.Duration(i) * time.Minute), Links: map[string]live.BucketStats{}}
+		bk := live.Bucket{At: t0.Add(time.Duration(i) * time.Minute), Links: map[string]live.BucketStats{}, FPSMin: 58, Stalls: 4}
 		for _, id := range ids {
 			bk.Links[id] = live.BucketStats{Min: 1.2, Median: 2.5, Max: 480, Lost: 2}
 		}
@@ -60,7 +68,10 @@ func TestLiveMarkdown(t *testing.T) {
 	md := LiveMarkdown(res, v, tx, true, liveResult(t0.Add(-time.Hour)))
 	for _, want := range []string{tx.Live["report_title"], tx.Live["report_prompt"], tx.LiveDiagnoses["live_wifi"].Title,
 		"обычно 2.0 мс", "Роутер · Wi-Fi", "раз в 60 секунд", "Отметка в 12:39:11 — за 2,5 с до неё скакала сеть (Роутер · Wi-Fi, до 412 мс).", "Отметка в 12:40:52 — за 10 секунд до неё сеть не скакала.",
-		tx.Live["note_rate_limited"], "…и ещё 250.", tx.Live["report_compare"], "[wifi-name]", "95.24.x.x", "````json"} {
+		tx.Live["note_rate_limited"], "…и ещё 250.", tx.Live["report_compare"], "[wifi-name]", "95.24.x.x", "````json",
+		"Ещё у игры (cs2.exe) замирала картинка: замираний — 260, самый долгий кадр — 512 мс.", "## " + tx.Live["report_frames"],
+		"game: cs2.exe", "60 more not listed", "У игры за 1,5 с до отметки замер кадр — на 180 мс.", "game frame stall: true (1.5 s before, 180 ms)",
+		"| game min fps | stalls |", "| 58 | 4 |", "12:38:02.0", "Pauses over 2 s"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("report lacks %q", want)
 		}
@@ -76,6 +87,14 @@ func TestLiveMarkdown(t *testing.T) {
 	// A 1-hour session with the comparison stays small enough to drop into a chat.
 	if n := len(md); n > 150<<10 {
 		t.Errorf("1-hour report with a comparison is %d KB", n>>10)
+	}
+	// The computer's verdict says it all: no extra frames line. Frames asked for but declined: a line why.
+	if pc := LiveExtras(tx, res, "live_pc_frames"); strings.Contains(strings.Join(pc, "\n"), "cs2.exe") {
+		t.Errorf("extras repeat the verdict: %v", pc)
+	}
+	res.Frames, res.Facts["live.frames"] = nil, "declined"
+	if md := LiveMarkdown(res, v, tx, true, nil); !strings.Contains(md, tx.Live["frames_declined"]) || !strings.Contains(md, "not recorded: declined") {
+		t.Error("declined frames: no line why")
 	}
 	if got := LiveFileName(res); got != "whynet-stability-185.25.182.77-2026-11-16-1238.md" {
 		t.Errorf("LiveFileName = %s", got)

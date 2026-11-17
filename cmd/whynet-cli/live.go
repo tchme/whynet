@@ -17,7 +17,7 @@ import (
 )
 
 // runLive records a stability check for dur (or until Ctrl+C), then prints the verdict.
-func runLive(server string, dur time.Duration, asJSON, save, hide bool) error {
+func runLive(server string, dur time.Duration, frames, asJSON, save, hide bool) error {
 	rs, err := rules.LoadLive()
 	if err != nil {
 		return err
@@ -47,12 +47,19 @@ func runLive(server string, dur time.Duration, asJSON, save, hide bool) error {
 			}
 			fmt.Printf("  %s %s ms (%d)", l.ID, now, l.Own)
 		}
+		if g := p.Game; g != nil {
+			fmt.Printf("  %s %.0f fps (%d)", g.Exe, g.FPS, g.Stalls)
+		}
 		fmt.Println()
 	}
 	if !asJSON {
 		fmt.Println(t.Live["starting"])
 	}
-	s, err := live.Start(context.Background(), live.DefaultEnv(markers), server, onUpdate)
+	env := live.DefaultEnv(markers)
+	if frames {
+		env.Frames = live.SystemFrames // asks for admin rights (UAC) before recording
+	}
+	s, err := live.Start(context.Background(), env, server, onUpdate)
 	switch {
 	case errors.Is(err, probe.ErrIPv6):
 		return errors.New("IPv6: " + t.Live["placeholder"])
@@ -78,7 +85,7 @@ func runLive(server string, dur time.Duration, asJSON, save, hide bool) error {
 	} else {
 		d := t.LiveDiagnoses[v.ID]
 		fmt.Printf("\n%s (%s)\n%s\n", d.Title, t.Confidence[v.Confidence], locales.Fill(d.Explain, res.Facts))
-		for _, x := range report.LiveExtras(t, &res) {
+		for _, x := range report.LiveExtras(t, &res, v.ID) {
 			fmt.Println(x)
 		}
 		fmt.Printf("→ %s\n", locales.Fill(d.Advice, res.Facts))

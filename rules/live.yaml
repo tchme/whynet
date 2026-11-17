@@ -47,6 +47,17 @@
   confidence: likely
   when: {live.server: unstable}
 
+# The game's frames (admin rights, docs/stability.md stage 3): no link above was unstable, yet the
+# picture froze 3+ times. The analysis decides both facts: frames_stalled (3+ stalls) and
+# frames_cause = cpu (more than half of them with the CPU at 90 %+).
+- id: live_pc_cpu
+  confidence: likely
+  when: {live.frames_stalled: true, live.frames_cause: cpu}
+
+- id: live_pc_frames
+  confidence: likely
+  when: {live.frames_stalled: true}
+
 - id: live_stable
   confidence: high
   when: {}

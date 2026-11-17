@@ -44,6 +44,11 @@ func TestLiveMatch(t *testing.T) {
 		{with("live.internet", "unstable", "live.server", "unstable"), "live_isp_network"},
 		{with("live.server", "unstable"), "live_route"},
 		{with("live.server", "none", "live.lag_marks", "2"), "live_stable"}, // marks are bookmarks: no verdict from them
+		{with("live.frames_stalled", "true"), "live_pc_frames"},
+		{with("live.frames_stalled", "true", "live.frames_cause", "cpu"), "live_pc_cpu"},
+		{with("live.frames_stalled", "true", "live.router", "unstable"), "live_wifi"}, // the network's verdict stays first
+		{with("live.frames_stalled", "true", "live.too_short", "true"), "live_too_short"},
+		{with("live.frames_stalls", "2"), "live_stable"},
 	}
 	for _, c := range cases {
 		if got := rules.Match(rs, c.facts); got.ID != c.want {

@@ -57,8 +57,9 @@ func HopNote(t *locales.Texts, h live.Hop, standIn netip.Addr) string {
 	return strings.Join(notes, "; ")
 }
 
-// LiveExtras are the verdict's extra lines: the Wi-Fi signal, the rhythm of the spikes, the lag marks.
-func LiveExtras(t *locales.Texts, res *live.Result) []string {
+// LiveExtras are the verdict's extra lines: the Wi-Fi signal, the rhythm of the spikes, the CPU,
+// the game's frames, the lag marks. verdict is the verdict's id.
+func LiveExtras(t *locales.Texts, res *live.Result, verdict string) []string {
 	var out []string
 	L := t.Live
 	if res.WiFi != nil && res.Facts["live.router"] == "unstable" {
@@ -70,6 +71,20 @@ func LiveExtras(t *locales.Texts, res *live.Result) []string {
 	if res.CPU != nil && res.CPU.Max >= live.CPUBusy {
 		out = append(out, locales.Fill(L["cpu_line"], map[string]string{"avg": strconv.Itoa(res.CPU.Avg), "max": strconv.Itoa(res.CPU.Max),
 			"busy": strings.Replace(fmtPct1(res.CPU.BusyPct), ".", ",", 1)}))
+	}
+	if f := res.Frames; f != nil {
+		vars := FramesVars(f)
+		switch {
+		case verdict == "live_pc_cpu" || verdict == "live_pc_frames": // the verdict itself says it
+		case res.Facts["live.frames_stalled"] == "true":
+			out = append(out, locales.Fill(L["frames_also"], vars))
+		case f.StallsTotal > 0:
+			out = append(out, locales.Fill(L["frames_few"], vars))
+		default:
+			out = append(out, locales.Fill(L["frames_ok"], vars))
+		}
+	} else if s := res.Facts["live.frames"]; s == "no_game" || s == "declined" || s == "failed" {
+		out = append(out, L["frames_"+s])
 	}
 	names := map[string]string{}
 	for _, l := range res.Links {
@@ -93,10 +108,21 @@ func LagText(t *locales.Texts, m live.LagMark, names map[string]string, short bo
 		cpuKey = "lag_short_cpu"
 	}
 	s := locales.Fill(t.Live[key], vars)
+	if m.Stall {
+		stallKey := map[bool]string{true: "lag_short_stall", false: "lag_stall"}[short]
+		s += locales.Fill(t.Live[stallKey], map[string]string{"ms": strconv.Itoa(int(m.StallMs)),
+			"ago": strings.Replace(strconv.FormatFloat(max(m.StallAgoS, 0), 'f', -1, 64), ".", ",", 1)})
+	}
 	if m.CPU >= 0 {
 		s += locales.Fill(t.Live[cpuKey], map[string]string{"cpu": strconv.Itoa(m.CPU)})
 	}
 	return s
+}
+
+// FramesVars are the game's numbers as the texts use them.
+func FramesVars(f *live.FramesSummary) map[string]string {
+	return map[string]string{"exe": f.Exe, "fps": strconv.Itoa(int(f.FPSMedian + 0.5)), "low": strconv.Itoa(int(f.FPSLow1 + 0.5)),
+		"worst": fmtMs(f.WorstMs), "n": strconv.Itoa(f.StallsTotal)}
 }
 
 func cpuCell(v int) string {
@@ -146,7 +172,7 @@ func LiveMarkdown(res *live.Result, v rules.Verdict, t *locales.Texts, hide bool
 	w("- %s: %s\n", r["time"], res.Started.Format("2006-01-02 15:04:05 -07:00"))
 	w("- %s: %d мин %02d с\n", L["duration"], res.Seconds/60, res.Seconds%60)
 	w("- %s: **%s** (%s). %s\n", r["verdict"], d.Title, t.Confidence[v.Confidence], locales.Fill(d.Explain, res.Facts))
-	for _, x := range LiveExtras(t, res) {
+	for _, x := range LiveExtras(t, res, v.ID) {
 		w("  %s\n", x)
 	}
 	w("- %s: %s\n", r["advice"], locales.Fill(d.Advice, res.Facts))
@@ -194,11 +220,19 @@ func LiveMarkdown(res *live.Result, v rules.Verdict, t *locales.Texts, hide bool
 		w("\n## %s\n\n- average %d %%, max %d %%, at %d %% or more: %s %% of the time (%d readings, every 0.5 s, whole computer)\n",
 			L["report_cpu"], res.CPU.Avg, res.CPU.Max, live.CPUBusy, fmtPct1(res.CPU.BusyPct), res.CPU.Readings)
 	}
+	writeFrames(w, t, res)
 	if len(res.Lags) > 0 {
 		w("\n## %s\n\n", L["report_lags"])
 		for _, m := range res.Lags {
-			w("- %s: network jumped within 10 s before the mark: %v; seconds before: %v; link: %s; worst: %s ms; CPU max: %s\n",
+			w("- %s: network jumped within 10 s before the mark: %v; seconds before: %v; link: %s; worst: %s ms; CPU max: %s",
 				m.At.Format("15:04:05"), m.Spike, m.AgoS, cmp(m.Link, "-"), fmtMs(m.WorstMs), cpuCell(m.CPU))
+			if res.Frames != nil {
+				w("; game frame stall: %v", m.Stall)
+				if m.Stall {
+					w(" (%v s before, %s ms)", m.StallAgoS, fmtMs(m.StallMs))
+				}
+			}
+			w("\n")
 		}
 	}
 	if len(res.Spikes) > 0 {
@@ -220,6 +254,10 @@ func LiveMarkdown(res *live.Result, v rules.Verdict, t *locales.Texts, hide bool
 			w(" CPU max |")
 			cols++
 		}
+		if res.Frames != nil {
+			w(" game min fps | stalls |")
+			cols += 2
+		}
 		w("\n|---|%s\n", strings.Repeat("---|", cols))
 		for _, bk := range res.Buckets {
 			w("| %s |", bk.At.Format("15:04:05"))
@@ -232,6 +270,13 @@ func LiveMarkdown(res *live.Result, v rules.Verdict, t *locales.Texts, hide bool
 			}
 			if res.CPU != nil {
 				w(" %s |", cpuCell(bk.CPU))
+			}
+			if res.Frames != nil {
+				fps := "—" // the game was not in front
+				if bk.FPSMin >= 0 {
+					fps = strconv.Itoa(int(bk.FPSMin + 0.5))
+				}
+				w(" %s | %d |", fps, bk.Stalls)
 			}
 			w("\n")
 		}
@@ -263,6 +308,39 @@ func LiveMarkdown(res *live.Result, v rules.Verdict, t *locales.Texts, hide bool
 		}
 	}
 	return out
+}
+
+// writeFrames is the game's frames section; a line on why there is none when they were asked for.
+func writeFrames(w func(string, ...any), t *locales.Texts, res *live.Result) {
+	f := res.Frames
+	if f == nil {
+		if s := res.Facts["live.frames"]; s == "no_game" || s == "declined" || s == "failed" {
+			w("\n## %s\n\n- not recorded: %s (%s)\n", t.Live["report_frames"], s, t.Live["frames_"+s])
+		}
+		return
+	}
+	w("\n## %s\n\n", t.Live["report_frames"])
+	w("- game: %s (its window in front %s %% of the recording; picked as the program with the most frames while in front)\n", f.Exe, fmtPct1(f.FrontPct))
+	w("- frames counted: %d; fps median %s, average %s, 1 %% low %s; worst frame %s ms\n", f.Frames,
+		fmtPct1(f.FPSMedian), fmtPct1(f.FPSAvg), fmtPct1(f.FPSLow1), fmtMs(f.WorstMs))
+	w("- stalls (a frame over max(3 × the median frame of the 2 s before, that + 30 ms); within 1 s = one): %d; at a moment the network jumped: %d; at CPU ≥ %d %%: %d\n",
+		f.StallsTotal, f.StallsNet, live.CPUBusy, f.StallsCPU)
+	if len(f.Stalls) > 0 {
+		w("\n| time | longest frame, ms | CPU max | network jumped |\n|---|---|---|---|\n")
+		for _, s := range f.Stalls {
+			w("| %s | %s | %s | %v |\n", s.At.Format("15:04:05.0"), fmtMs(s.Ms), cpuCell(s.CPU), s.Net)
+		}
+		if more := f.StallsTotal - len(f.Stalls); more > 0 {
+			w("\n%d more not listed\n", more)
+		}
+	}
+	if len(f.Pauses) > 0 {
+		w("\nPauses over 2 s (loading, menus; not stalls):")
+		for _, p := range f.Pauses {
+			w(" %s (%s s);", p.At.Format("15:04:05"), strconv.FormatFloat(p.Ms/1000, 'f', 1, 64))
+		}
+		w("\n")
+	}
 }
 
 func writeLinks(w func(string, ...any), t *locales.Texts, res *live.Result) {

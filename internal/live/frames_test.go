@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"whynet/rules"
 )
 
 // gameFrames is a program presenting at fps for secs, with a freeze of ms[i] at second at[i].
@@ -83,6 +85,37 @@ func TestFramesStalls(t *testing.T) {
 		r.cpu[s] = 100
 	}
 	wantFacts(t, analyze(r), map[string]string{"live.frames_stalls_cpu": "3", "live.frames_cause": "cpu"})
+}
+
+// From frames to the verdict: a calm network with 3 stalls blames the computer; the same stalls on
+// an unstable Wi-Fi leave the network's verdict first.
+func TestFramesToVerdict(t *testing.T) {
+	rs, err := rules.LoadLive()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stalls := gameFrames(120, 60, []float64{20, 50, 90}, []float64{250, 300, 400})
+	r := framed(240, 0, stalls)
+	if got := rules.Match(rs, analyze(r).Facts); got.ID != "live_pc_frames" {
+		t.Errorf("calm network: got %s", got.ID)
+	}
+	r.cpu = make([]int8, 240)
+	for _, s := range []int{40, 100, 180} {
+		r.cpu[s] = 100
+	}
+	if got := rules.Match(rs, analyze(r).Facts); got.ID != "live_pc_cpu" {
+		t.Errorf("CPU full at the stalls: got %s", got.ID)
+	}
+	w := synth(240, 5, chainLinks("wifi", true), bases, func(id string, t int) float64 {
+		if t%25 == 7 {
+			return 300
+		}
+		return 0
+	})
+	w.framesState, w.fg, w.frames = r.framesState, r.fg, r.frames
+	if got := rules.Match(rs, analyze(w).Facts); got.ID != "live_wifi" {
+		t.Errorf("unstable Wi-Fi: got %s", got.ID)
+	}
 }
 
 func TestFramesNoGame(t *testing.T) {

@@ -32,9 +32,10 @@ func main() {
 	stability := flag.Bool("live", false, "stability check: ping the chain (router, ISP, internet, server) while you play")
 	app := flag.Bool("app", false, "app check: record a running program's TCP connections and check its servers (no name: list programs)")
 	udp := flag.Bool("udp", false, "with -app: record its UDP too (games, voice); asks for admin rights")
+	frames := flag.Bool("frames", false, "with -live: record the game's frames too (stalls: is it the computer?); asks for admin rights")
 	dur := flag.Duration("for", 2*time.Minute, "with -live: how long to record (Ctrl+C ends it early); at most 1h. With -app: 30s by default, at most 2m")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "whynet-cli %s — why doesn't a site open?\n\nusage: whynet-cli [flags] <site>\n       whynet-cli -live [-for 2m] [game server]\n       whynet-cli -app [-udp] [-for 30s] [program or PID]\n\n", report.Version)
+		fmt.Fprintf(os.Stderr, "whynet-cli %s — why doesn't a site open?\n\nusage: whynet-cli [flags] <site>\n       whynet-cli -live [-frames] [-for 2m] [game server]\n       whynet-cli -app [-udp] [-for 30s] [program or PID]\n\n", report.Version)
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -49,7 +50,7 @@ func main() {
 		}
 		err = runApp(flag.Arg(0), d, *udp, *asJSON, *save, !*noHide)
 	case *stability && flag.NArg() <= 1:
-		err = runLive(flag.Arg(0), min(*dur, time.Hour), *asJSON, *save, !*noHide)
+		err = runLive(flag.Arg(0), min(*dur, time.Hour), *frames, *asJSON, *save, !*noHide)
 	case !*stability && !*app && flag.NArg() == 1:
 		err = run(flag.Arg(0), *asJSON, *save, !*noHide, !*noBrowser)
 	default:
