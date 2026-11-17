@@ -14,7 +14,7 @@
 
 </div>
 
-Один небольшой `.exe`, без установки и прав администратора. Проходит путь от твоего компьютера до сайта: сеть, DNS, соединение, страница, её картинки, видео и скрипты. Находит шаг, на котором ломается, и говорит, что делать. Технические подробности — под кнопкой «Подробнее».
+Один небольшой `.exe`, без установки; права администратора нужны только для необязательной записи UDP. Проходит путь от твоего компьютера до сайта: сеть, DNS, соединение, страница, её картинки, видео и скрипты. Находит шаг, на котором ломается, и говорит, что делать. Технические подробности — под кнопкой «Подробнее».
 
 ## Скачать
 
@@ -29,11 +29,11 @@
 | **Медленные файлы** | Какой именно файл грузился долго или не загрузился, с какого адреса и на каком этапе ушло время: DNS, подключение, шифрование, ответ сервера или скачивание. |
 | **Твой браузер** | Если у тебя блоки не догружаются, а у whynet всё в порядке, скопируй запись сети из своего браузера (F12 → Network → Copy all as HAR). whynet сравнит её со своей проверкой и покажет, что остановил сам браузер, например блокировщик рекламы. Cookies из записи не читаются. |
 | **Окно браузера** | Обычное окно, которым пользуешься ты сам (пройти проверку на робота, войти, включить видео), пока whynet записывает, что грузит страница. |
-| **Стабильность для игр** | Пингует роутер, провайдера, интернет и игровой сервер одновременно и показывает, какое звено даёт скачки пинга. Кнопка Ctrl+Alt+L отмечает момент, когда лагнуло. Если на пинги отвечает VPN-клиент на этом компьютере, whynet это замечает и не выдаёт «всё стабильно». |
+| **Стабильность для игр** | Пингует роутер, провайдера, интернет и игровой сервер одновременно и показывает, какое звено даёт скачки пинга. Кнопка Ctrl+Alt+L отмечает момент, когда лагнуло. Рядом записывается загрузка процессора, чтобы было видно, когда лаг от компьютера, а не от сети. Если на пинги отвечает VPN-клиент на этом компьютере, whynet это замечает и не выдаёт «всё стабильно». |
 | **Проверка программы** | Выбираешь запущенную программу (Discord, лаунчер, игру), повторяешь в ней то, что не работает, а whynet записывает, к каким серверам она подключается по TCP, и проверяет каждый: отвечает ли, режут ли по имени, покрывает ли его zapret. TCP без прав администратора; с галочкой «И UDP» (Windows спросит права) whynet видит и UDP — голос Discord и саму игру: отвечает ли сервер, не замирает ли его поток. |
 | **Отчёт для ИИ** | Одна кнопка сохраняет всё, что узнал whynet, в один Markdown-файл с инструкцией для нейросети наверху. Перетащи его в ChatGPT или Claude и ничего не пиши. |
 
-Больше 60 диагнозов, у каждого понятное объяснение и совет. Если уверенности нет, whynet так и говорит: «скорее всего» и почему.
+Больше 70 диагнозов, у каждого понятное объяснение и совет. Если уверенности нет, whynet так и говорит: «скорее всего» и почему.
 
 ## Отчёт для ИИ
 
@@ -74,7 +74,7 @@ MIT, см. [LICENSE](LICENSE). Собрано на [Wails](https://wails.io). С
 
 </div>
 
-One small `.exe`, no installation, no admin rights. It walks the path from your computer to the site: network, DNS, connection, the page and its images, video and scripts. It finds the step where things break and tells you what to do, with the technical details one click away under "Подробнее" (Details). The interface is in Russian.
+One small `.exe`, no installation; admin rights are needed only for the optional UDP recording. It walks the path from your computer to the site: network, DNS, connection, the page and its images, video and scripts. It finds the step where things break and tells you what to do, with the technical details one click away under "Подробнее" (Details). The interface is in Russian.
 
 ## Download
 
@@ -89,11 +89,11 @@ Take `whynet.exe` from the [Releases](../../releases/latest) page and run it. Wi
 | **Slow files** | Which exact file loaded slowly or not at all, from which address, and where the time went: DNS, connect, TLS, the server's answer or download. |
 | **Your own browser** | When blocks hang for you but whynet finds nothing, copy a network record from your browser (F12 → Network → Copy all as HAR). whynet compares it with its own check and shows what your browser stopped itself, such as an ad blocker. Cookies in the record are never read. |
 | **Browser window** | A plain window you use yourself (pass a bot check, log in, play a video) while whynet records what the page loads. |
-| **Stability for games** | Pings the router, the ISP, the internet and a game server at once and shows which link makes the ping jump. Ctrl+Alt+L marks the moment it lagged. If a VPN client on this PC answers the pings itself, whynet notices and doesn't claim "all stable". |
+| **Stability for games** | Pings the router, the ISP, the internet and a game server at once and shows which link makes the ping jump. Ctrl+Alt+L marks the moment it lagged. The CPU load is recorded alongside, so a lag caused by the computer shows up next to one caused by the network. If a VPN client on this PC answers the pings itself, whynet notices and doesn't claim "all stable". |
 | **App check** | Pick a running program (Discord, a launcher, a game), repeat in it what fails, and whynet records which servers it connects to over TCP and checks each one: does it answer, is it cut by name, does zapret cover it. TCP needs no admin rights; with the "И UDP" checkbox (Windows asks for them) whynet sees UDP too: Discord voice and the game itself, whether the server answers and whether its stream freezes. |
 | **AI report** | One button saves everything whynet learned into a single Markdown file with an instruction for the AI at the top. Drop it into ChatGPT or Claude and ask nothing. |
 
-More than 60 diagnoses, each with a plain explanation and what to do. When whynet can't tell, it says "probably" and why.
+More than 70 diagnoses, each with a plain explanation and what to do. When whynet can't tell, it says "probably" and why.
 
 ## The AI report
 
@@ -110,7 +110,7 @@ Needs Go, Node.js and [Wails v2](https://wails.io).
 ```
 go test ./...                              # tests, including a lab of simulated failures
 go run ./cmd/whynet-cli -save youtube.com  # console version, saves the AI report
-go run ./cmd/whynet-cli -app -for 20s discord  # app check from the console
+go run ./cmd/whynet-cli -app [-udp] -for 20s discord  # app check from the console (-udp: UDP too, admin rights)
 wails build                                # build/bin/whynet.exe
 ```
 
