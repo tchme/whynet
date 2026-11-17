@@ -19,6 +19,9 @@ whynet/
   app_live.go              the stability check for the window: StartLive (emits "live-tick" about once a
                            second, "live-done" after an hour), FinishLive, CancelLive, MarkLag; Ctrl+Alt+L hotkey;
                            compare with the previous check; LiveView for the window
+  app_health.go            the Windows network health check for the window: CheckHealth (emits "health-step" per area
+                           with its status from the findings so far), FixHealth / UndoHealth (emit "health-fix" per action,
+                           then check again); HealthView: findings marked fixed/left after a batch, the next plan
   app_program.go           the app check for the window: ListPrograms, RecordApp (emits "app-tick" once a second,
                            then "app-step" per check step; ends with FinishApp or after 2 min), CancelApp;
                            AppView / AppServerView for the window
@@ -68,6 +71,16 @@ whynet/
                            StartUDP (package etw, UAC helper),
                            RecordApp (every 250 ms, processes re-read every 2 s), DNSCacheNames (dnsapi; refused
                            without admin on newer Windows 11)
+  internal/health/          the Windows network health check (design: health.md)
+    health.go              Run: ten areas at once (adapter, address, dns, proxy, hosts, tcp, ipv6, mtu, clock, soft), each a
+                           probe.Step with `health.*` facts; the site check's local step (probe.LocalInfo) for clock, VPN, DPI
+    hosts.go               hosts parsing (pin / block / local), pinned names checked per address and name (stale lines)
+    read_windows.go        Windows readers: connectivity hint, WinINET and WinHTTP proxy, netsh TCP globals, the Winsock
+                           catalog from the registry, DNS set by hand vs DHCP, error counters, IPv4 MTU
+    fix.go                 Action, MakePlan (findings' fixes -> ordered batch + undo), UndoPlan, Validate (the helper's
+                           allowlist), hosts comment / uncomment
+    fix_windows.go         Execute (own process for the proxy and DNS flush, the elevated helper's `fix` job for the rest),
+                           FixJob, each action's Windows call, the undo file in %LOCALAPPDATA%\whynet\health
   internal/live/            the stability check (design: stability.md); Env holds everything external
     live.go                Link, Result and the types the window and the report read; the two control addresses
     session.go             Start: router (physical adapter's gateway), the node beyond it (first trace round),
@@ -86,7 +99,8 @@ whynet/
   internal/update/         newest GitHub release (asset whynet.exe + its SHA-256 digest), version compare,
                            download and swap: running exe -> exe.old, new -> exe; CleanOld on next start
   rules/                   rules engine + data, embedded: diagnoses.yaml, live.yaml (stability verdicts,
-                           LoadLive), app.yaml (app check verdicts, LoadApp), markers.yaml, ads.txt.gz (76k ad
+                           LoadLive), app.yaml (app check verdicts, LoadApp), health.yaml (health findings: every match,
+                           LoadHealth + MatchAll), markers.yaml, ads.txt.gz (76k ad
                            and tracker domains, StevenBlack/hosts MIT, ads-LICENSE.txt)
   tools/adlist/            rebuilds rules/ads.txt.gz from the upstream list
   locales/                 every user-facing string: ru.yaml (diagnoses, live_diagnoses, live, app_diagnoses,
@@ -110,6 +124,11 @@ app check: exe -> probe.RecordApp(ctx, exe, done, progress) -> []AppServer (what
       -> probe.CheckApp(ctx, Env, exe, servers, recorded, DNSCacheNames(), onStep) -> AppResult{Result, Servers}
       -> rules.Match(rules.LoadApp(), AppResult.Facts()) -> Verdict (app_* texts)
       -> report.AppMarkdown(AppResult, Verdict, texts, hide) -> .md file
+
+health: health.Run(ctx, markers, onStep) -> Result{Steps per area}
+      -> rules.MatchAll(rules.LoadHealth(), Result.Facts()) -> every finding (kind, area, fix)
+      -> health.MakePlan(Result, fixes) -> Execute (UAC helper `fix` job) -> outcomes, undo.json -> health.Run again
+      -> report.HealthMarkdown(Result, findings, batches, re-check, texts, hide) -> .md file
 ```
 
 - The window renders only what Go sends: step names, verdict texts with placeholders filled, one-line notes under failed steps (`notes` in ru.yaml, matched by `key=value`), UI strings. The UI never builds its own diagnosis text.

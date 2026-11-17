@@ -1,6 +1,6 @@
 # Windows network health (design)
 
-Status: approved 2026-11-17 with the mockup `docs/mockups/health.html` ("макет ок"); the author agreed to the heavy reset as stage 2 and the name "Сеть Windows". Roadmap item 2 in [design.md](design.md).
+Status: approved 2026-11-17 with the mockup `docs/mockups/health.html` ("макет ок"); the author agreed to the heavy reset as stage 2 and the name "Сеть Windows". Roadmap item 2 in [design.md](design.md). Stage 1 BUILT 2026-11-17 (`internal/health`, `rules/health.yaml`, `app_health.go`, `internal/report/health.go`, `whynet-cli -health`); plan `~/.claude/plans/whynet-health.md`. See "Built: stage 1" at the end for what differs from the design and what was verified.
 
 ## Intent
 
@@ -116,3 +116,19 @@ Behind "Не помогло?" under the findings: `netsh winsock reset` and `net
 ## Left to the builder
 
 Whether `DnsFlushResolverCache` and DHCP renew need admin on Windows 10 / 11 (measure; the tier follows), reading adapter power saving without admin (drop the check if it can't be read), the exact check list order on screen, hosts pin sampling (how many names per pinned address), fact names, finding texts, timeouts, the helper's `fix` job format.
+
+## Built: stage 1 (2026-11-17)
+
+Measured before building (the author's PC, no admin): `DnsFlushResolverCache` works without admin; `FlushIpNetTable2` is refused without it (so the ARP cache is flushed only when the batch already runs elevated: no UAC prompt for it alone); `GetNetworkConnectivityHint` and `WinHttpGetDefaultProxyConfiguration` work without admin. `netsh int tcp show global` prints labels in the Windows language (Russian on the author's PC) but English values in a fixed line order, so it is read by order and value; the Winsock catalog is read from the registry (`Protocol_Catalog9\Catalog_Entries*\PackedCatalogItem`, the provider path first) instead of netsh. The adapter's own MTU (`IP_ADAPTER_ADDRESSES.Mtu`) stays 1500 when a person lowers the IPv4 MTU: the check reads the IPv4 interface's `NlMtu` (`GetIpInterfaceEntry`).
+
+Differences from the design (the builder's calls):
+
+- IPv6 "address but no route": advice only (turning IPv6 off on one adapter has no clean API without PowerShell).
+- "Default route through a VPN adapter whose program is not running": not detected (no reliable sign that the VPN program is gone); VPN adapters are listed in the report.
+- MTU: a fact and an info finding; no don't-fragment path test.
+- Starting the DNS Client service has no undo (stopping it again helps nobody); a new DHCP address, time resync and the caches have nothing to undo either.
+- hosts pins: one TCP connect per pinned address, then a TLS handshake per name (up to 400 names, 16 at a time, 4 s each). Stale = the address doesn't answer (dead), answers with a certificate for another name (other_cert), or answers TLS for no name (no_tls). Cut only with the real name = DPI, not stale; an untrusted certificate (interceptor, clock) is not stale either. A line is stale only when every name on it is.
+- Findings show all matching rules (`rules.MatchAll`); a rule has `kind`, `area`, `fix`. A `"!x"` condition passes when the fact is missing, so such rules are guarded by a fact the area always sets (a test caught `health_throttler` firing with no facts; it now uses `health.throttler_found`).
+- Fix batch: actions run in a fixed order; the person's own proxy setting and the DNS flush run in the window's process, the rest through the elevated helper's `fix` job (`whynet.exe -helper <addr> <key> fix 120`): one JSON line of actions in, one outcome per line out; the helper validates every action against a fixed list (`health.Validate`: adapter by IPv4 index or name and never a VPN adapter, enum values, IP addresses, hosts lines matched exactly) and runs Windows tools without a shell. hosts lines are commented as `# [whynet <date>] <line>`, a copy goes next to the file (`hosts.whynet-<date>`), undo removes exactly that prefix. Undo actions are saved in `%LOCALAPPDATA%\whynet\health\undo.json`, newest batch first; "Вернуть как было" runs them and keeps what failed.
+
+Verified on the author's PC (2026-11-17): `whynet-cli -health` and the built window (UI Automation + PrintWindow): areas tick off live, the findings screen as in the mockup. Found live: 31 stale hosts lines of 289 (17 addresses): checked by hand with curl/schannel — `kws1.web.telegram.org` at 149.154.167.220 gets `SEC_E_WRONG_PRINCIPAL` (DNS now gives 149.154.174.100) while `web.telegram.org` there works and is kept; Akamai/anticheatexpert addresses time out, 47.246.2.226 refuses, gryphline answers no TLS. MTU 1400 found after switching to `NlMtu`. Not seen live yet: the fix batch and undo in the window (they change the author's hosts and ask for UAC: waiting for the author's go), a dead proxy, APIPA, a dead manual DNS, autotuning off, a throttler, Wi-Fi, Windows 10.

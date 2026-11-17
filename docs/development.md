@@ -24,6 +24,7 @@ go run ./cmd/whynet-cli -no-browser ...      # skip the hidden Edge/Chrome step 
 go run ./cmd/whynet-cli -live -for 1m [server]  # stability check: ping the chain for 1 minute (Ctrl+C ends early)
 go run ./cmd/whynet-cli -app                    # app check: list running programs
 go run ./cmd/whynet-cli -app -for 20s discord   # record Discord's TCP connections 20 s, check its servers
+go run ./cmd/whynet-cli -health                 # Windows network health: every finding (checks only)
 wails dev                                    # app with live reload
 wails build                                  # build/bin/whynet.exe
 ```

@@ -1,6 +1,6 @@
 # whynet
 
-Windows 10/11 desktop app (Go + Wails v2) that tells a non-technical person why a site doesn't open or loads broken: it walks local -> DNS -> TCP -> TLS -> HTTP, then loads the page in a hidden Edge and checks every server its content comes from; finds the broken step and explains it in plain Russian, with technical facts under "Подробнее". A second mode, the stability check, pings the router, the ISP, the internet and a game server at once while the person plays and says which link makes the ping jump. A third, the app check, records which servers a running program (Discord, a launcher) connects to over TCP (and, with admin rights through a UAC helper, its UDP: game and voice streams) and checks each of them. Open source, MIT.
+Windows 10/11 desktop app (Go + Wails v2) that tells a non-technical person why a site doesn't open or loads broken: it walks local -> DNS -> TCP -> TLS -> HTTP, then loads the page in a hidden Edge and checks every server its content comes from; finds the broken step and explains it in plain Russian, with technical facts under "Подробнее". A second mode, the stability check, pings the router, the ISP, the internet and a game server at once while the person plays and says which link makes the ping jump. A third, the app check, records which servers a running program (Discord, a launcher) connects to over TCP (and, with admin rights through a UAC helper, its UDP: game and voice streams) and checks each of them. A fourth, "Сеть Windows", checks the PC's own network setup (adapter, DNS, proxy, hosts, TCP, clock), lists every finding and fixes what it found through the same UAC helper, with undo. Open source, MIT.
 
 ## Commands
 
@@ -8,6 +8,7 @@ Windows 10/11 desktop app (Go + Wails v2) that tells a non-technical person why 
 - `go run ./cmd/whynet-cli [-json] [-save] [-no-hide] <site>` — console run; `-save` writes the AI report
 - `go run ./cmd/whynet-cli -live [-for 2m] [server]` — the stability check from the console
 - `go run ./cmd/whynet-cli -app [-udp] [-for 30s] [program or PID]` — the app check from the console (no name: lists programs; `-udp` asks for admin rights and records UDP too)
+- `go run ./cmd/whynet-cli -health [-json] [-save]` — the Windows network health check from the console (checks only; fixing is in the window)
 - `wails dev` / `wails build` — app / exe (`wails` is in `%USERPROFILE%\go\bin`)
 
 ## Key rules
@@ -25,6 +26,6 @@ Windows 10/11 desktop app (Go + Wails v2) that tells a non-technical person why 
 - [docs/diagnoses.md](docs/diagnoses.md) — every diagnosis: detection and how to reproduce
 - [docs/stability.md](docs/stability.md) — the stability check for games (design): ping chain, trace, Wi-Fi, picking a program
 - [docs/appcheck.md](docs/appcheck.md) — the app check (design): pick a program, record its TCP connections, check each server
-- [docs/health.md](docs/health.md) — Windows network health (design): check the PC's network setup, fix what was found with undo
+- [docs/health.md](docs/health.md) — Windows network health (design + what stage 1 built): check the PC's network setup, fix what was found with undo
 - [docs/development.md](docs/development.md) — setup, commands, conventions
 - [docs/bugs.md](docs/bugs.md) — verified pitfalls and fixed bugs
