@@ -1,6 +1,6 @@
 # Stability check (design)
 
-Status: approved by the author 2026-11-16. Stage 1 built 2026-11-16 (package `internal/live`, `app_live.go`, the window's "Стабильность" mode, `whynet-cli -live`); stage 2 is designed here and not built yet.
+Status: approved by the author 2026-11-16. Stage 1 built 2026-11-16 (package `internal/live`, `app_live.go`, the window's "Стабильность" mode, `whynet-cli -live`); stage 2's program pick became the "Программа" mode (docs/appcheck.md), its CPU lane is built here. Stage 3 (frame times) designed 2026-11-17, not built.
 
 ## Intent
 
@@ -19,7 +19,7 @@ Status: approved by the author 2026-11-16. Stage 1 built 2026-11-16 (package `in
 - Fixing anything. This check only reads; fixes belong to the planned "Windows network health" feature.
 - Packet capture or payloads: addresses, ports, sizes and timings only.
 - Background monitoring: it runs only while its screen says it is recording.
-- Measuring the game's own frame rate or CPU load (named in advice as a possible cause, not measured).
+- Measuring the game's own frame rate or CPU load in stage 1 (CPU came in stage 2, frame times are stage 3 below).
 
 ## Anti-goals (failure even if it works)
 
@@ -106,6 +106,89 @@ Order (picked): stage 1 first, the chain without picking a program, because the 
 - The program's main server is the remote UDP address with the most packets (DNS, multicast and LAN addresses excluded); it becomes the chain's server link and the trace target. Every other address it used is listed with the per-address checks a site's content servers get today.
 - First rule on facts whynet already records: Game Filter on with IPSet Filter `none` reaches no address (Flowseal's game sections use `--ipset=ipset-all.txt`).
 - **The computer as a lane** (the author's choice, 2026-11-16, instead of judging by "лагнуло" marks; built the same day): the whole computer's CPU load is read every tick (0.5 s) without admin (`GetSystemTimes`, busy share since the previous tick). It is drawn as one more lane "Компьютер · процессор" in the lanes view (bar height = load, orange from 90 %), shown in the hover and a Details card, and recorded in the AI report: a summary section (average, max, share of readings at 90 % or more), a "CPU max" column in the time table, and the CPU max of the 10 s each "лагнуло" mark looks back over. The verdict gets one extra line when the CPU hit 90 %. So "the network was calm while the CPU sat at 100 %" is measured, not guessed. No rule uses it yet: total CPU misses one maxed-out core of a game's main thread. Frame times (PresentMon-style ETW, admin rights) are the next step, with the same helper as UDP. Only then can a verdict like "the lag is the computer" come back.
+
+## Stage 3: frame times (designed 2026-11-17, not built)
+
+**Intent.** The stability check says where the *network* jumps. A game also "lags" when its own frames stall (a hitch, a freeze for 100-500 ms) while the network is calm, and people call both "лагнуло". Since the marks were demoted to bookmarks, whynet can't tell the two apart. Measuring the game's frames gives back the verdict "the network held, the game's frames stalled: this is the computer, not the internet", with numbers, the way the friend's Wi-Fi case got its numbers.
+
+**Goals.**
+
+- While recording, whynet sees every frame the game sends to the screen, without the person naming the game (the author's choice, variant A).
+- A verdict for "network calm, frames stalled", and an extra line when both happened.
+- A "лагнуло" mark names a frame stall in its 10 s look-back, as it names network jumps today.
+- The frames lane, Details card and AI report section, like the CPU lane.
+- Works on Windows 10 and 11, with any graphics API (DirectX 9-12, Vulkan, OpenGL).
+
+**Non-goals.** Frames on the screen as displayed (tearing, VRR, "MsBetweenDisplayChange": needs PresentMon's whole state machine); GPU load; per-core CPU; input lag; an FPS overlay; frames in the "Программа" mode; choosing the game by hand.
+
+**Anti-goals (failure even if it works).**
+
+- Touching the game: no injection, no overlay, no hooks, nothing an anti-cheat would see. ETW only reads what Windows already emits system-wide.
+- Costing the game frames: only the present events are enabled, never GPU scheduling or context switches.
+- Blaming the computer for the network or the other way round: when the network is unstable its verdict stays first.
+- Needing admin for the core answer: without consent the check runs as today (network + CPU).
+
+**Approaches considered** (the author picked A on 2026-11-17):
+
+| | How | Trade-off |
+|---|---|---|
+| **A (picked)** | Present events from ETW in the existing elevated helper, own syscalls, as for UDP | No new binary or dependency; the event layouts are ours to verify live |
+| B | Ship Intel's PresentMon.exe and parse its CSV | Proven numbers; but a third-party exe in the app (size, antivirus flags), breaks the no-new-dependency rule, still needs admin |
+| C | No admin: GPU load counters | Not frame times; can't see a stall |
+
+**Source.** A real-time ETW session in the helper with the present providers only:
+
+- `Microsoft-Windows-DXGI` (DirectX 10-12) and `Microsoft-Windows-D3D9`: `Present_Start` per call, with the process id in the event header.
+- `Microsoft-Windows-DxgKrnl`, present keyword only: catches what the runtimes miss (Vulkan, OpenGL), the way PresentMon fills its "Other" runtime.
+- Per process, a frame is one present call; a process with runtime events uses those only, so a DXGI frame is not counted twice through DxgKrnl. Frame time = the interval between consecutive presents of the same process (PresentMon's `MsBetweenPresents`): what a frame-time graph in CapFrameX or Afterburner shows.
+
+**The helper.** One helper for both jobs: `whynet.exe -helper <addr> <key> <udp|frames|udp,frames> <max>`, one ETW session with the providers asked for. The JSON-lines stream carries two kinds of line (a datagram, a present: pid, time). Its own time limit comes from the window (3 min for the app check, 61 min for the stability check), capped at 61 min whatever it is told. The UAC prompt, the key, exit on close stay as they are. The pairing of the old flag `-udp-helper` is dropped (both sides are the same exe).
+
+**Which process is the game** (variant A). The main window reads the foreground window's process every tick (`GetForegroundWindow` + `GetWindowThreadProcessId`, no admin). Processes are grouped by exe name, not PID: a browser's frames come from its GPU process while its window belongs to the main process. The game is the exe with the most frames presented while it was in the foreground; `dwm.exe` and whynet's own WebView2 never count. If no exe presented frames in the foreground for at least 30 s in all, there is no game: `live.frames = no_game`, no frame verdict, a line says so. The report names the exe and the share of the recording it was in front.
+
+**Reading the frames** (start values, recorded as facts so they can be re-read after real runs):
+
+- Per tick (0.5 s): frames, worst frame time.
+- Over the session: median fps, average fps, 1 % low (fps from the 99th percentile frame time), worst frame, the time the game was in the background (not counted: a minimised game presents slowly or not at all).
+- **A stall** is a frame time over max(3 × the median of the previous 2 s, median + 30 ms), counted only while the game was in front. Stalls closer than 1 s together are one stall (a hitch often spans a few slow frames).
+- **A pause** is a gap over 2 s (a loading screen, a menu, alt-tab): listed with its time, never counted as a stall, so a level load doesn't read as "the computer lags".
+- **Stalls during a network spike:** a stall in the same tick as confirmed network trouble is counted separately (`live.frames_stalls_net`): some games freeze on network waits.
+- CPU at each stall comes from the CPU lane (busy ≥ 90 % in that tick or the one before).
+
+**Facts** (prefix `live.`): `frames` = recorded, off, declined, failed, no_game; `frames_exe`, `frames_front_pct`, `frames_fps_median`, `frames_fps_low1`, `frames_worst_ms`, `frames_stalls`, `frames_stalls_per_min`, `frames_stalls_net`, `frames_stalls_cpu` (stalls at CPU ≥ 90 %).
+
+**Verdicts** (`rules/live.yaml`, after `live_route`, before `live_stable`; texts in `locales/ru.yaml`):
+
+| id | When | Says |
+|---|---|---|
+| `live_pc_cpu` | network stable; stalls ≥ 3; more than half of them at CPU ≥ 90 % | the game's frames stalled N times (up to X ms) while the network held; the processor was full at those moments: close background programs, check what loads it (antivirus scans, updates, the browser) |
+| `live_pc_frames` | network stable; stalls ≥ 3 | the game's frames stalled N times while the network held: this is the computer (the video card, its driver, the disk, the game itself), not the internet; whynet can't tell which part |
+
+"Network stable" is the rule order itself: these two sit after every network verdict, so they fire only when none did. When a network verdict wins and the game also stalled, an extra line under it gives the stall count. Below the bar (1-2 stalls), the numbers are in Details and the report, no verdict. `live_stable` adds "кадры игры тоже были ровными" when frames were recorded.
+
+**Compare.** When both runs recorded frames, the before / after table gets a row "Замирания кадров".
+
+**Calls made here (the author can overturn any):** pauses over 2 s are not stalls; the bar is 3 stalls whatever the length; "most at CPU ≥ 90 %" means more than half; the checkbox starts off and is remembered, like "И UDP"; the compare row.
+
+**"Лагнуло" marks.** The 10 s look-back names the nearer of a network jump and a frame stall: "за 1,5 с до отметки игра замерла на 180 мс".
+
+**Screen** (the mockup `docs/mockups/stability.html` gets these first, for the author's approval):
+
+- Before recording: a checkbox "И кадры игры (нужны права администратора)" by the server field, remembered as "И UDP" is in the "Программа" mode.
+- While recording: one more row "Игра · кадры" under the chain: the game's exe once found, fps now, stalls so far.
+- Afterwards: a lane "Игра · кадры" in "Полосы" (fps as bar height, red at a stall, grey while the game was in the background); the hover shows fps and the worst frame of that second; a Details card (game, fps, 1 % low, worst frame, stalls, how many at CPU ≥ 90 %).
+- Declined or failed: a line under the verdict, as `udp_note_*` does.
+
+**AI report.** A "Кадры игры" section: exe, time in front, fps median / average / 1 % low, worst frame, stalls (time, length, CPU then, network trouble then) up to 200; per bucket in the time table: min fps, stalls. A 1-hour report grows by a few KB. The game's exe name is not masked (not personal); window titles are never read.
+
+**CLI.** `whynet-cli -live -frames [-for 2m] [server]`.
+
+**Constraints.** Windows 10 and 11; no new dependencies (`advapi32` ETW as in `internal/etw`, `user32` for the foreground window); every part under the house rules (facts → rules → locale, timeouts, panic recovery).
+
+**Left to the builder.** The exact provider GUIDs, event ids and keywords (from the providers' manifests, confirmed live), the DxgKrnl dedup rule details, keeping frame intervals only for exes that were ever in the foreground, how the frames row sits in the live view.
+
+**Verification plan.** Live on the author's PC: a browser page whose animation busy-waits 200 ms every few seconds (stalls on cue, the browser's GPU process named through its exe); then a real game if the author has one at hand; the declined UAC path; Windows 10 on a friend's PC when one is available. Not reproducible here: an anti-cheat game (expected fine: nothing touches the game).
+
 ## Calls made in writing this (the author can overturn any)
 
 - **A VPN on this PC** (WARP, AmneziaWG): the router link is always the gateway of the physical adapter (VPN adapters skipped by the existing `vpn_adapters` markers), which stays reachable on the LAN; when the default route goes through a VPN adapter, link 2 is named "the VPN server" instead of the ISP, and the verdicts say the path goes through the VPN. Nothing is switched off to measure.
