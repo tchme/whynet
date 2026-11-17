@@ -261,6 +261,20 @@ Checked in the running exe on the author's PC (2026-11-16: Start, Ctrl+Alt+L pre
 - **Fix:** `etw.parse` swaps them for receive events.
 - **Verified:** `TestParse`; live: answers from 77.88.8.8:53 and Discord's voice server counted against the right server.
 
+## Frames: Frostpunk's small hitches made "the computer lags"
+
+- **Symptom:** a Frostpunk run on the author's PC (2026-11-17, 169 fps): `live_pc_frames` from three "stalls" of 36, 40 and 65 ms; nobody saw a freeze.
+- **Cause:** the first stall threshold was max(3 × the usual frame, usual + 30 ms): at 169 fps that is 36 ms, a hitch the eye doesn't catch.
+- **Fix:** a stall is a frame over max(3 × the usual, 100 ms) (`isStall`, `stallMinMs`).
+- **Verified:** `TestFramesSmallHitches` (the same frames: 0 stalls, no verdict); live: Frostpunk again, `live_stable`, "кадры шли ровно", worst frame 32 ms.
+
+## Frames: the live row disagreed with the result
+
+- **Symptom:** the recording's "Игра · кадры" row showed 169 fps through a 17 fps loading screen (Frostpunk), and "замираний: 1" where the analysis found none (Valorant, Frostpunk in the window).
+- **Cause:** the running estimate left slow frames out of its average, so a lasting drop never moved it; and it counted a slow frame the moment it came, while the window in front is read only every 0.5 s: a game slows down as the person switches away, before the tick sees the switch.
+- **Fix:** every frame below a pause goes into the average; a stall waits for the next tick and counts only if the game is still in front; a window switch restarts the count (`readForeground`).
+- **Verified:** `TestSessionFramesByExe` (the drop, a slow frame at the switch, a switch back); live: not yet re-run after the fix.
+
 ## UDP: the "usual interval" of a Discord call was 0.1 ms
 
 - **Symptom:** live Discord voice: ~300 packets/s in, median pause between incoming packets 0.1 ms.

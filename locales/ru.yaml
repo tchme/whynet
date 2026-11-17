@@ -291,9 +291,9 @@ live:
   card_game: игра
   card_front: "{exe}, в активном окне {pct} % времени"
   card_fps: кадров в секунду
-  card_fps_val: "обычно {fps}, 1 % худших — {low}"
+  card_fps_val: "обычно {fps}, 1 % худших — {low}"
   card_stalls: замираний
-  card_stalls_val: "{n}, при процессоре 90 %+ — {cpu}"
+  card_stalls_val: "{n}, при процессоре 90 %+ — {cpu}"
   card_pauses: паузы больше 2 с (загрузка, меню)
   tip_game: Игра
   tip_game_away: не в активном окне

@@ -186,7 +186,13 @@ Stability check facts (`internal/live/analyze.go`; ids: router, beyond, ctl_ru, 
 | `live.server_stand_in` | the hop pinged instead of a server that ignores pings |
 | `live.router_periodic_s` | 60: the router's own spikes repeat about every minute (background Wi-Fi scan) |
 | `live.wifi_signal`, `live.wifi_band`, `live.wifi_rssi` | average signal %, 2.4 / 5, last RSSI dBm |
-| `live.cpu_avg`, `live.cpu_max`, `live.cpu_busy_pct` | the whole computer's CPU load over the session: average %, max %, share of 0.5 s readings at 90 % or more (evidence only, no rule uses them) |
+| `live.cpu_avg`, `live.cpu_max`, `live.cpu_busy_pct` | the whole computer's CPU load over the session: average %, max %, share of 0.5 s readings at 90 % or more (evidence; with frames, `live.frames_cause` uses the CPU at each stall) |
+| `live.frames` | the game's frames (stage 3, admin rights): off (not asked), recorded, declined (UAC "Нет"), failed, no_game (no program with frames in front for 30 s) |
+| `live.frames_exe`, `live.frames_front_pct` | the game (the exe with the most frames while its window was in front) and its share of the recording in front |
+| `live.frames_fps_median`, `live.frames_fps_low1`, `live.frames_worst_ms` | fps from the median and the 99th percentile frame time; the longest frame, pauses (gaps over 2 s) left out |
+| `live.frames_stalls`, `live.frames_stalls_per_min`, `live.frames_stalls_net`, `live.frames_stalls_cpu` | stalls (a frame over max(3 × the median of the 2 s before, 100 ms); within 1 s = one), per minute in front, at a network spike, at CPU ≥ 90 % |
+| `live.frames_stalled` | true: 3+ stalls (rules: `live_pc_cpu`, `live_pc_frames`, after every network verdict) |
+| `live.frames_cause` | cpu: more than half of the stalls with the CPU at 90 %+ |
 | `live.lag_marks` | how many "лагнуло" marks (bookmarks: each looks back 10 s for the nearest jump; no rule uses them) |
 | `live.route_jump_hop` | TTL where the delay goes up and stays |
 | `live.seconds`, `live.too_short` | length; true under 30 s |

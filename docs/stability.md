@@ -1,6 +1,6 @@
 # Stability check (design)
 
-Status: approved by the author 2026-11-16. Stage 1 built 2026-11-16 (package `internal/live`, `app_live.go`, the window's "Стабильность" mode, `whynet-cli -live`); stage 2's program pick became the "Программа" mode (docs/appcheck.md), its CPU lane is built here. Stage 3 (frame times) designed and built 2026-11-17 (CLI and report; the window's part waits for the mockup `docs/mockups/stability-frames.html`).
+Status: approved by the author 2026-11-16. Stage 1 built 2026-11-16 (package `internal/live`, `app_live.go`, the window's "Стабильность" mode, `whynet-cli -live`); stage 2's program pick became the "Программа" mode (docs/appcheck.md), its CPU lane is built here. Stage 3 (frame times) designed and built 2026-11-17: CLI, report and window (mockup `docs/mockups/stability-frames.html`, approved).
 
 ## Intent
 
@@ -207,7 +207,7 @@ Order (picked): stage 1 first, the chain without picking a program, because the 
 - Steam's own window (`steamwebhelper.exe`) presents at 170 fps; when it is in front the most, it is "the game". Correct by the rule; the report names it.
 - Pitfall for testers: the UAC prompt covers the chat and gets "Да" by reflex; announce it and wait 10 s before triggering it.
 
-**Not verified live:** a D3D12 or Vulkan game (presents may skip DxgKrnl 184; DXGI 42 should still come for D3D12), the window's part (not built yet), Windows 10.
+**Not verified live:** a D3D12 or Vulkan game (presents may skip DxgKrnl 184; DXGI 42 should still come for D3D12), Windows 10. The window was checked in the running exe with Frostpunk (checkbox, UAC, the live row, the result row, the lane, the hover, the Details card); the compare row and a stall in the hover were not seen live (no stall happened).
 
 **Verification plan.** Live on the author's PC: a browser page whose animation busy-waits 200 ms every few seconds (stalls on cue, the browser's GPU process named through its exe); then a real game if the author has one at hand; the declined UAC path; Windows 10 on a friend's PC when one is available. Not reproducible here: an anti-cheat game (expected fine: nothing touches the game).
 
