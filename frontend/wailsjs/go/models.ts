@@ -32,6 +32,96 @@ export namespace live {
 	        this.state = source["state"];
 	    }
 	}
+	export class Stall {
+	    // Go type: time
+	    at: any;
+	    ms: number;
+	    cpu_max_pct: number;
+	    net: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Stall(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.at = this.convertValues(source["at"], null);
+	        this.ms = source["ms"];
+	        this.cpu_max_pct = source["cpu_max_pct"];
+	        this.net = source["net"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class FramesSummary {
+	    exe: string;
+	    front_pct: number;
+	    fps_median: number;
+	    fps_avg: number;
+	    fps_low1: number;
+	    worst_ms: number;
+	    frames: number;
+	    stalls?: Stall[];
+	    stalls_total: number;
+	    stalls_net: number;
+	    stalls_cpu: number;
+	    pauses?: Stall[];
+	
+	    static createFrom(source: any = {}) {
+	        return new FramesSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.exe = source["exe"];
+	        this.front_pct = source["front_pct"];
+	        this.fps_median = source["fps_median"];
+	        this.fps_avg = source["fps_avg"];
+	        this.fps_low1 = source["fps_low1"];
+	        this.worst_ms = source["worst_ms"];
+	        this.frames = source["frames"];
+	        this.stalls = this.convertValues(source["stalls"], Stall);
+	        this.stalls_total = source["stalls_total"];
+	        this.stalls_net = source["stalls_net"];
+	        this.stalls_cpu = source["stalls_cpu"];
+	        this.pauses = this.convertValues(source["pauses"], Stall);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class WiFi {
 	    signal_pct: number;
 	    rssi_dbm?: number;
@@ -226,6 +316,8 @@ export namespace main {
 	    step: number;
 	    series: Record<string, live.ChartSeries>;
 	    cpu?: number[];
+	    fps?: number[];
+	    stall?: number[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ChartView(source);
@@ -237,6 +329,8 @@ export namespace main {
 	        this.step = source["step"];
 	        this.series = this.convertValues(source["series"], live.ChartSeries, true);
 	        this.cpu = source["cpu"];
+	        this.fps = source["fps"];
+	        this.stall = source["stall"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -615,6 +709,7 @@ export namespace main {
 	export class LiveStartView {
 	    links: LiveLinkView[];
 	    hotkey: boolean;
+	    frames: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new LiveStartView(source);
@@ -624,6 +719,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.links = this.convertValues(source["links"], LiveLinkView);
 	        this.hotkey = source["hotkey"];
+	        this.frames = source["frames"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -653,6 +749,7 @@ export namespace main {
 	    trace_title: string;
 	    wifi?: live.WiFiSummary;
 	    cpu?: live.CPUSummary;
+	    frames?: live.FramesSummary;
 	    lags: LagView[];
 	    chart: ChartView;
 	    compare?: CompareView;
@@ -672,6 +769,7 @@ export namespace main {
 	        this.trace_title = source["trace_title"];
 	        this.wifi = this.convertValues(source["wifi"], live.WiFiSummary);
 	        this.cpu = this.convertValues(source["cpu"], live.CPUSummary);
+	        this.frames = this.convertValues(source["frames"], live.FramesSummary);
 	        this.lags = this.convertValues(source["lags"], LagView);
 	        this.chart = this.convertValues(source["chart"], ChartView);
 	        this.compare = this.convertValues(source["compare"], CompareView);

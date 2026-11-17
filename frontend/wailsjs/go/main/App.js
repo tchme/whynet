@@ -82,8 +82,8 @@ export function SaveReport(arg1) {
   return window['go']['main']['App']['SaveReport'](arg1);
 }
 
-export function StartLive(arg1, arg2) {
-  return window['go']['main']['App']['StartLive'](arg1, arg2);
+export function StartLive(arg1, arg2, arg3) {
+  return window['go']['main']['App']['StartLive'](arg1, arg2, arg3);
 }
 
 export function Update() {

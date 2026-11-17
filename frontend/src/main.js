@@ -41,6 +41,7 @@ const state = {
   visible: false, progress: null, // a check with a visible browser window
   update: null, updating: false, // a newer release offered at the top
   live: freshLive(),
+  liveFrames: (() => { try { return localStorage.getItem('live-frames') === '1'; } catch { return false; } })(),
   app: freshApp(),
 };
 
@@ -210,6 +211,8 @@ function ownModalHTML() {
 const LINK_COLOR = { router: '#f07468', beyond: '#e6ae52', ctl_ru: '#8fa3b3', ctl_world: '#c2cdd6', server: '#6fb6ff' };
 const ENOUGH = 180, MIN_SECONDS = 30, LIVE_POINTS = 240; // 3 minutes; 2 minutes of 0.5 s ticks on the live chart
 const CPU_BUSY = 90; // live.CPUBusy
+const STALLS_BAR = 3; // live.stallsBar: this many stalls make a verdict
+const FPS_COLOR = '#3f8f7a', STALL_COLOR = '#ff6b5e', AWAY_COLOR = '#2a353f';
 const num = v => v < 10 ? v.toLocaleString('ru-RU', { maximumFractionDigits: 1 }) : String(Math.round(v));
 const ms = v => (v == null || v < 0) ? '—' : `${num(v)} ${state.L.ms}`;
 const clock = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -234,8 +237,8 @@ function linesSVG(series, ids, n, w, marks = []) {
 
 // Lanes: one row per link; red where the link caused trouble, pale red where it repeated a nearer link's.
 function lanesSVG(chart, ids, n, w, marks = []) {
-  const cpu = chart.cpu?.length ? chart.cpu : null;
-  const H = 180, top = 6, lh = (H - top * 2) / (ids.length + (cpu ? 1 : 0)), cw = w / Math.max(n, 1);
+  const cpu = chart.cpu?.length ? chart.cpu : null, fps = chart.fps?.length ? chart.fps : null;
+  const H = 180, top = 6, lh = (H - top * 2) / (ids.length + (cpu ? 1 : 0) + (fps ? 1 : 0)), cw = w / Math.max(n, 1);
   let svg = '';
   ids.forEach((id, li) => {
     const y = top + li * lh, s = chart.series[id];
@@ -258,6 +261,20 @@ function lanesSVG(chart, ids, n, w, marks = []) {
       svg += `<rect x="${(i * cw).toFixed(2)}" y="${(y + h - h * p / 100).toFixed(2)}" width="${Math.max(cw, 1.2).toFixed(2)}" height="${(h * p / 100).toFixed(2)}" fill="${p >= CPU_BUSY ? '#f0a35e' : '#4f6a85'}"/>`;
     });
     svg += laneLabel(y - 3, lh, state.L.link_cpu);
+  }
+  // The game's lane: a bar per point as high as its fps against the usual, red at a stall, grey while
+  // another window was in front.
+  if (fps) {
+    const y = top + (ids.length + (cpu ? 1 : 0)) * lh + 3, h = lh - 6;
+    const shown = fps.filter(f => f > 0).sort((a, b) => a - b), usual = shown[Math.floor(shown.length / 2)] || 1;
+    svg += `<rect x="0" y="${y}" width="${w}" height="${h}" fill="#1f2a35"/>`;
+    fps.forEach((f, i) => {
+      const x = (i * cw).toFixed(2), wd = Math.max(cw, 1.2).toFixed(2);
+      if (chart.stall?.[i]) svg += `<rect x="${(i * cw - 1).toFixed(2)}" y="${y}" width="${Math.max(cw, 3).toFixed(2)}" height="${h}" fill="${STALL_COLOR}"/>`;
+      else if (f < 0) svg += `<rect x="${x}" y="${y}" width="${wd}" height="${h}" fill="${AWAY_COLOR}"/>`;
+      else if (f > 0) { const bh = h * Math.min(1, f / usual); svg += `<rect x="${x}" y="${(y + h - bh).toFixed(2)}" width="${wd}" height="${bh.toFixed(2)}" fill="${FPS_COLOR}"/>`; }
+    });
+    svg += laneLabel(y - 3, lh, state.L.link_frames);
   }
   return svg + lagSVG(marks, n, w);
 }
@@ -286,7 +303,10 @@ function legendHTML(view) {
     <span><span class="lane-key" style="background:#ff4d3d"></span>${esc(L.legend_lost)}</span>
     <span><span class="lane-key" style="background:#c792ea"></span>${esc(L.legend_lag)}</span>`
     + (state.live.view?.chart.cpu?.length ? `<span><span class="lane-key" style="background:#4f6a85"></span>${esc(L.legend_cpu)}</span>
-    <span><span class="lane-key" style="background:#f0a35e"></span>${esc(L.legend_cpu_busy)}</span>` : '');
+    <span><span class="lane-key" style="background:#f0a35e"></span>${esc(L.legend_cpu_busy)}</span>` : '')
+    + (state.live.view?.chart.fps?.length ? `<span><span class="lane-key" style="background:${FPS_COLOR}"></span>${esc(L.legend_frames)}</span>
+    <span><span class="lane-key" style="background:${STALL_COLOR}"></span>${esc(L.legend_stall)}</span>
+    <span><span class="lane-key" style="background:${AWAY_COLOR}"></span>${esc(L.legend_away)}</span>` : '');
   return state.live.links.map(l => `<span><span class="key" style="background:${LINK_COLOR[l.id]}"></span>${esc(l.name)}</span>`).join('');
 }
 
@@ -294,7 +314,22 @@ function liveChainRecHTML() {
   const lv = state.live;
   return lv.links.map(l => `<li id="link-${l.id}"><span class="ico run"></span>
       <span class="what"><span class="key" style="background:${LINK_COLOR[l.id]}"></span>${esc(l.name)}<small>${esc(l.addr)}</small></span>
-      <span class="num"></span></li>`).join('');
+      <span class="num"></span></li>`).join('')
+    + (lv.framesState === 'recorded' ? `<li id="link-frames" class="sep"><span class="ico wait"></span>
+      <span class="what"><span class="key" style="background:${FPS_COLOR}"></span>${esc(state.L.link_frames)}<small>${esc(state.L.frames_waiting)}</small></span>
+      <span class="num"></span></li>` : '');
+}
+
+// The game's row while recording: its exe once found, fps now (— while it is not in front), stalls so far.
+function patchFramesRow() {
+  const li = $('link-frames'), g = state.live.game, L = state.L;
+  if (!li || !g) return;
+  const warn = g.stalls > 0, ico = li.querySelector('.ico');
+  if (!ico.classList.contains(warn ? 'warn' : 'run')) { ico.className = `ico ${warn ? 'warn' : 'run'}`; ico.textContent = warn ? '!' : ''; }
+  li.querySelector('small').textContent = g.exe;
+  const html = `${esc(L.now)} <b>${g.fps > 0 ? esc(fill(L.frames_now, { fps: Math.round(g.fps) })) : '—'}</b><br>${esc(fill(L.frames_stalls_now, { n: g.stalls }))}`;
+  const num = li.querySelector('.num');
+  if (num.dataset.v !== html) { num.innerHTML = html; num.dataset.v = html; }
 }
 
 // Numbers change in place: replacing the rows every second would restart the spinners and jerk them.
@@ -313,6 +348,7 @@ function patchLiveChain() {
     const num = li.querySelector('.num');
     if (num.dataset.v !== html) { num.innerHTML = html; num.dataset.v = html; }
   }
+  patchFramesRow();
 }
 
 function progressKey(sec) { return `${sec < MIN_SECONDS}${sec >= ENOUGH}`; }
@@ -336,6 +372,7 @@ function liveRecHTML() {
       <div class="legend">${legendHTML('lines')}<span>· ${esc(L.chart_live)}</span></div>
       <p class="muted" id="live-hint"></p>
       ${lv.hotkey ? '' : `<p class="muted">${esc(L.hotkey_busy)}</p>`}
+      ${lv.framesState === 'declined' || lv.framesState === 'failed' ? `<p class="muted">${esc(L['frames_' + lv.framesState])}</p>` : ''}
       <div class="actions"><button class="btn primary" data-act="live-done" id="live-done"></button>
         ${lv.hotkey ? '' : `<button class="btn" data-act="live-mark">${esc(L.mark)}</button>`}
         <button class="btn link" data-act="live-cancel">${esc(L.cancel)}</button></div>
@@ -371,7 +408,14 @@ function liveDoneChainHTML(v) {
       <span class="what">${esc(l.name)}<small>${esc(l.addr)}</small></span>
       <span class="num">${silent ? '' : `${esc(L.usual)} <b>${ms(l.median)}</b><br>${esc(L.up_to)} <b>${ms(l.worst)}</b><br>`}${esc(fill(L.own, { n: l.own }))}</span>
       ${sub ? `<span class="sub">${esc(sub)}</span>` : ''}</li>`;
-  }).join('');
+  }).join('') + (v.frames ? framesDoneRow(v.frames) : '');
+}
+
+function framesDoneRow(f) {
+  const L = state.L, bad = f.stalls_total >= STALLS_BAR;
+  return `<li class="sep${bad ? ' warn' : ''}"><span class="ico ${bad ? 'warn' : 'ok'}">${bad ? '!' : '✓'}</span>
+    <span class="what">${esc(L.link_frames)}<small>${esc(f.exe)}</small></span>
+    <span class="num">${esc(L.usual)} <b>${esc(fill(L.frames_now, { fps: Math.round(f.fps_median) }))}</b><br>${esc(L.frames_worst_label)} <b>${ms(f.worst_ms)}</b><br>${esc(fill(L.frames_stalls_now, { n: f.stalls_total }))}</span></li>`;
 }
 
 function compareHTML(c) {
@@ -422,6 +466,12 @@ function liveDetailsHTML(v) {
       ${w.phy ? `<span>${esc(L.wifi_phy)}:</span> ${esc(w.phy)}<br>` : ''}${w.rx_mbps ? `<span>${esc(L.wifi_rate)}:</span> ${w.rx_mbps} ${esc(L.mbps)}<br>` : ''}
       <span>${esc(L.wifi_ssid_hidden)}</span></div>` : '';
   const lags = v.lags?.length ? `<div class="fact-card"><b>${esc(L.lags_title)}</b>${v.lags.map(m => `<span>${esc(m.time)}:</span> ${esc(m.text)}`).join('<br>')}</div>` : '';
+  const f = v.frames;
+  const frames = f ? `<div class="fact-card"><b>${esc(L.frames_title)}</b><span>${esc(L.card_game)}:</span> ${esc(fill(L.card_front, { exe: f.exe, pct: num(f.front_pct) }))}<br>
+      <span>${esc(L.card_fps)}:</span> ${esc(fill(L.card_fps_val, { fps: Math.round(f.fps_median), low: Math.round(f.fps_low1) }))}<br>
+      <span>${esc(L.frames_worst_label)}:</span> ${ms(f.worst_ms)}<br>
+      <span>${esc(L.card_stalls)}:</span> ${esc(fill(L.card_stalls_val, { n: f.stalls_total, cpu: f.stalls_cpu }))}${f.pauses?.length ? `<br>
+      <span>${esc(L.card_pauses)}:</span> ${f.pauses.length}` : ''}</div>` : '';
   const cpu = v.cpu ? `<div class="fact-card"><b>${esc(L.link_cpu)}</b>${esc(fill(L.cpu_line, { avg: v.cpu.avg_pct, max: v.cpu.max_pct, busy: v.cpu.busy_pct.toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) }))}</div>` : '';
   return `<div class="details">
     <div class="charthead"><div class="details-title">${esc(L.chart_title)}</div>
@@ -430,7 +480,7 @@ function liveDetailsHTML(v) {
     <div class="chartbox hover" id="full-box"><svg class="chart" id="full-chart" viewBox="0 0 900 180" preserveAspectRatio="none"></svg><div class="tip" id="tip" hidden></div></div>
     <div class="legend">${legendHTML(view)}</div>
     <div class="details-title">${esc(L.links_title)}</div>${links}${trace}
-    ${wifi || cpu || lags ? `<div class="details-grid">${wifi}${cpu}${lags}</div>` : ''}</div>`;
+    ${frames || wifi || cpu || lags ? `<div class="details-grid">${frames}${wifi}${cpu}${lags}</div>` : ''}</div>`;
 }
 
 function drawFullChart() {
@@ -459,6 +509,8 @@ function chartHover(e) {
     const val = v.chart.series[l.id].ms[i];
     return `<div class="row"><span><span class="key" style="background:${LINK_COLOR[l.id]}"></span>${esc(l.name)}</span><span>${val < 0 ? esc(L.lost) : ms(val)}</span></div>`;
   }).join('') + (v.chart.cpu?.length ? `<div class="row"><span><span class="key" style="background:#4f6a85"></span>${esc(L.cpu_title)}</span><span>${v.chart.cpu[i] < 0 ? '—' : `${v.chart.cpu[i]} %`}</span></div>` : '')
+    + (v.chart.fps?.length ? `<div class="row"><span><span class="key" style="background:${FPS_COLOR}"></span>${esc(L.tip_game)}</span><span>${v.chart.fps[i] < 0 ? esc(L.tip_game_away) : esc(fill(L.frames_now, { fps: Math.round(v.chart.fps[i]) }))}</span></div>` : '')
+    + (v.chart.stall?.[i] ? stallTip(v, at) : '')
     + (lag ? `<div class="why lag">${esc(L.tip_lag)} ${esc(lag.time)}: ${esc(lag.text)}</div>` : '')
     + (blame ? `<div class="why">${fill(esc(L.tip_blame), { link: `<b>${esc(linkName(blame))}</b>` })}</div>` : `<div class="why calm">${esc(L.tip_calm).replace(/:\s*(.+)$/, ': <b>$1</b>')}</div>`);
   tip.hidden = false;
@@ -467,26 +519,33 @@ function chartHover(e) {
   tip.style.top = `${Math.max(0, e.clientY - bx.top - 40)}px`;
 }
 
+// The stall at a point of the chart: its length and whether the network jumped then.
+function stallTip(v, at) {
+  const L = state.L, st = (v.frames?.stalls || []).find(s => Math.abs((Date.parse(s.at) - v.chart.start) / 1000 - at) <= v.chart.step);
+  return `<div class="why stall">${esc(fill(L.tip_stall, { ms: st ? Math.round(st.ms) : '100+', net: st?.net ? L.tip_stall_net_jump : L.tip_stall_net_calm }))}</div>`;
+}
+
 function liveHTML() {
   const lv = state.live, L = state.L;
   switch (lv.phase) {
-    case 'starting': return `<p class="hint">${esc(L.starting)}</p>`;
+    case 'starting': return `<p class="hint">${esc(lv.frames ? L.frames_wait_uac : L.starting)}</p>`;
     case 'recording': return liveRecHTML();
     case 'done': return liveDoneHTML();
   }
-  return `<p class="hint">${esc(L.idle_text)}</p><p class="hint">${esc(L.idle_lag)}</p>${lv.error ? `<p class="hint error-text" role="alert">${esc(lv.error)}</p>` : ''}`;
+  return `<label class="udpopt"><input type="checkbox" id="live-frames"${state.liveFrames ? ' checked' : ''}><span><b>${esc(L.frames_opt_title)}</b>${esc(L.frames_opt_text)}</span></label>
+    <p class="hint">${esc(L.idle_text)}</p><p class="hint">${esc(L.idle_lag)}</p>${lv.error ? `<p class="hint error-text" role="alert">${esc(lv.error)}</p>` : ''}`;
 }
 
 async function startLive(target, compare) {
   const lv = state.live;
   if (state.phase === 'running' || lv.phase === 'starting' || lv.phase === 'recording') return;
   const chart = lv.chart;
-  state.live = { ...freshLive(), phase: 'starting', target, chart };
+  state.live = { ...freshLive(), phase: 'starting', target, chart, frames: state.liveFrames };
   state.details = false;
   render();
   try {
-    const s = await StartLive(target, compare);
-    Object.assign(state.live, { phase: 'recording', links: s.links, hotkey: s.hotkey });
+    const s = await StartLive(target, compare, state.liveFrames);
+    Object.assign(state.live, { phase: 'recording', links: s.links, hotkey: s.hotkey, framesState: s.frames });
     render();
   } catch (err) {
     Object.assign(state.live, { phase: 'idle', error: err?.message ?? String(err) });
@@ -504,6 +563,7 @@ EventsOn('live-tick', p => {
   if (lv.phase !== 'recording') return;
   lv.seconds = p.seconds;
   lv.lags = p.lags;
+  lv.game = p.game;
   for (const l of p.links) { lv.now[l.id] = l.ms; lv.own[l.id] = l.own; }
   for (const [id, vals] of Object.entries(p.new || {})) {
     const s = (lv.series[id] ||= []);
@@ -889,6 +949,11 @@ out.addEventListener('mouseout', e => {
 });
 
 out.addEventListener('change', e => {
+  if (e.target.id === 'live-frames') {
+    state.liveFrames = e.target.checked;
+    try { localStorage.setItem('live-frames', state.liveFrames ? '1' : '0'); } catch { /* remembered for this run only */ }
+    return;
+  }
   if (e.target.id === 'app-udp') {
     state.app.udp = e.target.checked;
     try { localStorage.setItem('app-udp', state.app.udp ? '1' : '0'); } catch { /* remembered for this run only */ }

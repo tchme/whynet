@@ -44,6 +44,6 @@ export function Report(arg1:boolean):Promise<string>;
 
 export function SaveReport(arg1:boolean):Promise<string>;
 
-export function StartLive(arg1:string,arg2:boolean):Promise<main.LiveStartView>;
+export function StartLive(arg1:string,arg2:boolean,arg3:boolean):Promise<main.LiveStartView>;
 
 export function Update():Promise<void>;

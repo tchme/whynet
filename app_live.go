@@ -76,32 +76,37 @@ type ChartView struct {
 	Start  int64                       `json:"start"` // unix ms
 	Step   float64                     `json:"step"`
 	Series map[string]live.ChartSeries `json:"series"`
-	CPU    []int                       `json:"cpu,omitempty"` // CPU load % per point, -1 unknown
+	CPU    []int                       `json:"cpu,omitempty"`   // CPU load % per point, -1 unknown
+	FPS    []float64                   `json:"fps,omitempty"`   // the game's lowest fps per point, -1 not in front
+	Stall  []int                       `json:"stall,omitempty"` // the game's stalls per point
 }
 
 type LiveView struct {
-	Verdict    VerdictView       `json:"verdict"`
-	Extras     []string          `json:"extras"`
-	Seconds    int               `json:"seconds"`
-	Links      []LiveLinkView    `json:"links"`
-	Trace      []HopView         `json:"trace"`
-	TraceTitle string            `json:"trace_title"`
-	WiFi       *live.WiFiSummary `json:"wifi,omitempty"`
-	CPU        *live.CPUSummary  `json:"cpu,omitempty"`
-	Lags       []LagView         `json:"lags"`
-	Chart      ChartView         `json:"chart"`
-	Compare    *CompareView      `json:"compare,omitempty"`
-	Note       string            `json:"note,omitempty"` // the server was found through DoH
+	Verdict    VerdictView         `json:"verdict"`
+	Extras     []string            `json:"extras"`
+	Seconds    int                 `json:"seconds"`
+	Links      []LiveLinkView      `json:"links"`
+	Trace      []HopView           `json:"trace"`
+	TraceTitle string              `json:"trace_title"`
+	WiFi       *live.WiFiSummary   `json:"wifi,omitempty"`
+	CPU        *live.CPUSummary    `json:"cpu,omitempty"`
+	Frames     *live.FramesSummary `json:"frames,omitempty"` // the game's frames; nil when not recorded or no game
+	Lags       []LagView           `json:"lags"`
+	Chart      ChartView           `json:"chart"`
+	Compare    *CompareView        `json:"compare,omitempty"`
+	Note       string              `json:"note,omitempty"` // the server was found through DoH
 }
 
 type LiveStartView struct {
 	Links  []LiveLinkView `json:"links"`
 	Hotkey bool           `json:"hotkey"` // Ctrl+Alt+L is ours; false: another program holds it
+	Frames string         `json:"frames"` // the game's frames: off, recorded, declined, failed
 }
 
 // StartLive starts a stability check; target may be empty, an IP or a name. With compare, the
-// previous stability check is kept to show before / after.
-func (a *App) StartLive(target string, compare bool) (*LiveStartView, error) {
+// previous stability check is kept to show before / after. With frames, the game's frames are
+// recorded too: Windows asks for admin rights first (UAC), and StartLive returns after the answer.
+func (a *App) StartLive(target string, compare, frames bool) (*LiveStartView, error) {
 	a.mu.Lock()
 	if a.running {
 		a.mu.Unlock()
@@ -110,7 +115,11 @@ func (a *App) StartLive(target string, compare bool) (*LiveStartView, error) {
 	a.running = true
 	a.mu.Unlock()
 
-	s, err := live.Start(a.ctx, live.DefaultEnv(a.markers), target, func(p live.Progress) {
+	env := live.DefaultEnv(a.markers)
+	if frames {
+		env.Frames = live.SystemFrames
+	}
+	s, err := live.Start(a.ctx, env, target, func(p live.Progress) {
 		runtime.EventsEmit(a.ctx, "live-tick", p)
 	})
 	if err != nil {
@@ -149,7 +158,7 @@ func (a *App) StartLive(target string, compare bool) (*LiveStartView, error) {
 		}
 	}()
 
-	view := &LiveStartView{Hotkey: herr == nil}
+	view := &LiveStartView{Hotkey: herr == nil, Frames: s.FramesState()}
 	for _, l := range s.Links() {
 		view.Links = append(view.Links, LiveLinkView{ID: l.ID, Name: report.LinkName(a.t, l), Addr: l.Addr.String()})
 	}
@@ -210,8 +219,10 @@ func (a *App) liveView(res *live.Result, v rules.Verdict, prev *live.Result) *Li
 			Explain: locales.Fill(d.Explain, res.Facts), Advice: locales.Fill(d.Advice, res.Facts)},
 		Extras:  report.LiveExtras(a.t, res, v.ID),
 		Seconds: res.Seconds,
-		Chart:   ChartView{Start: res.Chart.Start.UnixMilli(), Step: res.Chart.Step, Series: res.Chart.Series, CPU: res.Chart.CPU},
-		CPU:     res.CPU,
+		Chart: ChartView{Start: res.Chart.Start.UnixMilli(), Step: res.Chart.Step, Series: res.Chart.Series, CPU: res.Chart.CPU,
+			FPS: res.Chart.FPS, Stall: res.Chart.Stall},
+		Frames: res.Frames,
+		CPU:    res.CPU,
 	}
 	if res.Server != nil && res.Server.Via == "doh" {
 		view.Note = a.t.Live["doh"]
@@ -283,12 +294,17 @@ func (a *App) compare(before, after *live.Result) *CompareView {
 	row := func(label string, x, y float64, f func(float64) string) CompareRow {
 		return CompareRow{Label: a.t.Live[label], Before: f(x), After: f(y), Better: y < x, Worse: y > x}
 	}
-	return &CompareView{Link: report.LinkName(a.t, n.Link), Rows: []CompareRow{
+	cv := &CompareView{Link: report.LinkName(a.t, n.Link), Rows: []CompareRow{
 		row("row_usual", b.Median, n.Median, ms),
 		row("row_worst", b.Worst, n.Worst, ms),
 		row("row_spikes", float64(b.Events), float64(n.Events), func(v float64) string { return strconv.Itoa(int(v)) }),
 		row("row_loss", b.LossPct, n.LossPct, func(v float64) string { return comma(strconv.FormatFloat(v, 'f', 1, 64)) + " %" }),
 	}}
+	if before.Frames != nil && after.Frames != nil {
+		cv.Rows = append(cv.Rows, row("row_stalls", float64(before.Frames.StallsTotal), float64(after.Frames.StallsTotal),
+			func(v float64) string { return strconv.Itoa(int(v)) }))
+	}
+	return cv
 }
 
 // shutdown stops a recording when the window closes.

@@ -119,6 +119,8 @@ main { flex: 1; overflow: auto; position: relative; }
 .chain li.bad .num b { color: var(--bad); }
 .chain .sub { grid-column: 2 / -1; font-size: 12.5px; line-height: 1.4; color: var(--muted); }
 .chain li.bad .sub { color: var(--bad); }
+.chain li.sep { margin-top: 6px; border-top: 1px solid var(--line); border-radius: 0 0 8px 8px; } /* the game's frames, below the network */
+.chain li.warn .num b { color: var(--warn); }
 .key { display: inline-block; width: 10px; height: 3px; border-radius: 2px; vertical-align: 4px; margin-right: 6px; }
 
 .rec { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
@@ -151,6 +153,7 @@ kbd { font: 500 12px var(--mono); background: var(--panel); border: 1px solid va
 .tip .why b { color: var(--bad); font-weight: 600; }
 .tip .why.calm b { color: var(--ok); }
 .tip .why.lag { color: var(--lag); }
+.tip .why.stall { color: #ff6b5e; }
 .extras { display: grid; gap: 4px; font-size: 13.5px; color: var(--muted); }
 .compare td.good { color: var(--ok); }
 .compare td.bad { color: var(--bad); }
