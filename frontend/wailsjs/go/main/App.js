@@ -14,6 +14,10 @@ export function Check(arg1) {
   return window['go']['main']['App']['Check'](arg1);
 }
 
+export function CheckHealth() {
+  return window['go']['main']['App']['CheckHealth']();
+}
+
 export function CheckInBrowser(arg1) {
   return window['go']['main']['App']['CheckInBrowser'](arg1);
 }
@@ -44,6 +48,10 @@ export function FinishLive() {
 
 export function FitWindow(arg1, arg2) {
   return window['go']['main']['App']['FitWindow'](arg1, arg2);
+}
+
+export function FixHealth() {
+  return window['go']['main']['App']['FixHealth']();
 }
 
 export function Info() {
@@ -88,6 +96,10 @@ export function SaveReport(arg1) {
 
 export function StartLive(arg1, arg2, arg3) {
   return window['go']['main']['App']['StartLive'](arg1, arg2, arg3);
+}
+
+export function UndoHealth() {
+  return window['go']['main']['App']['UndoHealth']();
 }
 
 export function Update() {

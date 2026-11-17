@@ -10,6 +10,8 @@ export function CancelLive():Promise<void>;
 
 export function Check(arg1:string):Promise<main.CheckView>;
 
+export function CheckHealth():Promise<main.HealthView>;
+
 export function CheckInBrowser(arg1:string):Promise<main.CheckView>;
 
 export function CheckUpdate():Promise<update.Release>;
@@ -25,6 +27,8 @@ export function FinishBrowser():Promise<void>;
 export function FinishLive():Promise<main.LiveView>;
 
 export function FitWindow(arg1:number,arg2:number):Promise<void>;
+
+export function FixHealth():Promise<main.HealthView>;
 
 export function Info():Promise<main.InfoView>;
 
@@ -47,5 +51,7 @@ export function Report(arg1:boolean):Promise<string>;
 export function SaveReport(arg1:boolean):Promise<string>;
 
 export function StartLive(arg1:string,arg2:boolean,arg3:boolean):Promise<main.LiveStartView>;
+
+export function UndoHealth():Promise<main.HealthView>;
 
 export function Update():Promise<void>;

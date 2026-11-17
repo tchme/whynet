@@ -111,3 +111,20 @@ func Fill(s string, facts map[string]string) string {
 	}
 	return s
 }
+
+// Plural picks the Russian form for n from "one|few|many" ("проблему|проблемы|проблем").
+// shortcut: Russian rules only; a second language needs its own.
+func Plural(n int, forms string) string {
+	f := strings.Split(forms, "|")
+	if len(f) != 3 {
+		return forms
+	}
+	n10, n100 := n%10, n%100
+	switch {
+	case n10 == 1 && n100 != 11:
+		return f[0]
+	case n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14):
+		return f[1]
+	}
+	return f[2]
+}

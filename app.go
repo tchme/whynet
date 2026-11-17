@@ -52,7 +52,10 @@ type App struct {
 	lastApp     *probe.AppResult
 	appVerdict  rules.Verdict
 
-	lastKind string // site, live, app: which check the report is about
+	healthRules []rules.Rule
+	health      *healthState // the last Windows network health check and the fixes since
+
+	lastKind string // site, live, app, health: which check the report is about
 }
 
 func NewApp() (*App, error) {
@@ -68,11 +71,15 @@ func NewApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	hrs, err := rules.LoadHealth()
+	if err != nil {
+		return nil, err
+	}
 	t, err := locales.Load("ru")
 	if err != nil {
 		return nil, err
 	}
-	return &App{rules: rs, liveRules: lrs, appRules: ars, markers: m, t: t}, nil
+	return &App{rules: rs, liveRules: lrs, appRules: ars, healthRules: hrs, markers: m, t: t}, nil
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -301,6 +308,9 @@ type InfoView struct {
 	App      map[string]string `json:"app"`
 	Version  string            `json:"version"`
 	Browser  string            `json:"browser"` // chromium or firefox: the default browser, for the record instructions
+	Health   map[string]string `json:"health"`
+	// The Windows network health check's areas, all waiting.
+	HealthAreas []StepView `json:"health_areas"`
 }
 
 // tones colour the verdict; anything not listed is "bad".
@@ -324,7 +334,8 @@ func (a *App) Info() InfoView {
 	for i, id := range probe.AppStepIDs {
 		appSteps[i] = StepView{ID: id, Name: a.t.Steps[id].Name, Status: "wait"}
 	}
-	return InfoView{Steps: steps, AppSteps: appSteps, UI: a.t.UI, Live: a.t.Live, App: a.t.App, Version: report.Version, Browser: probe.DefaultBrowserFamily()}
+	return InfoView{Steps: steps, AppSteps: appSteps, UI: a.t.UI, Live: a.t.Live, App: a.t.App, Version: report.Version, Browser: probe.DefaultBrowserFamily(),
+		Health: a.t.Health, HealthAreas: a.healthAreas()}
 }
 
 // Check runs one check, sending each finished step as a "step" event.
@@ -427,6 +438,9 @@ func (a *App) report(hide bool) (md, name string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	switch {
+	case a.lastKind == "health" && a.health != nil:
+		h := a.health
+		return report.HealthMarkdown(h.res, h.finds, h.batches, h.after, h.afterF, a.t, hide), report.HealthFileName(h.res)
 	case a.lastKind == "app" && a.lastApp != nil:
 		return report.AppMarkdown(a.lastApp, a.appVerdict, a.t, hide), report.AppFileName(a.lastApp)
 	case a.lastKind == "live" && a.lastLive != nil:

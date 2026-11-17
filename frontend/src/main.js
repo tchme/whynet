@@ -6,7 +6,7 @@ import './style.css';
 
 import { Info, Check, CheckInBrowser, FinishBrowser, Report, SaveReport, CopyReport, CheckUpdate, Update,
   StartLive, FinishLive, CancelLive, MarkLag, ReadHAR, PasteHAR, ReadHARFile, PickHAR, CompareHAR,
-  ListPrograms, RecordApp, FinishApp, CancelApp, FitWindow } from '../wailsjs/go/main/App';
+  ListPrograms, RecordApp, FinishApp, CancelApp, FitWindow, CheckHealth, FixHealth, UndoHealth } from '../wailsjs/go/main/App';
 import { EventsOn, OnFileDrop, WindowGetSize } from '../wailsjs/runtime/runtime';
 
 const GLYPH = { ok: '✓', fail: '✗', error: '✗', warn: '!', skip: '—', wait: '', run: '' };
@@ -29,12 +29,17 @@ const freshApp = () => ({
   udp: (() => { try { return localStorage.getItem('app-udp') === '1'; } catch { return false; } })(),
 });
 
+const freshHealth = () => ({
+  phase: 'idle', // idle | checking | done | fixing
+  areas: [], view: null, error: '', run: [], undoing: false,
+});
+
 const state = {
-  ui: {}, L: {}, A: {}, version: '', blank: [], appBlank: [], steps: [], hosts: [], slow: [],
+  ui: {}, L: {}, A: {}, H: {}, version: '', blank: [], appBlank: [], healthAreas: [], steps: [], hosts: [], slow: [],
   own: null, // the person's own browser record, once compared
   ownModal: null, // { tab: chromium | firefox, status: '' | reading | warn, msg }
   browser: 'chromium', // the default browser: which instructions to show first
-  mode: 'site', // site | live | app
+  mode: 'site', // site | live | app | health
   phase: 'idle', // idle | running | done
   host: '', verdict: null, error: '',
   details: false, modal: false, reveal: false,
@@ -43,6 +48,7 @@ const state = {
   live: freshLive(),
   liveFrames: (() => { try { return localStorage.getItem('live-frames') === '1'; } catch { return false; } })(),
   app: freshApp(),
+  health: freshHealth(),
 };
 
 function updateHTML() {
@@ -712,21 +718,121 @@ EventsOn('app-step', s => {
   render();
 });
 
+/* ---------- Windows network health ---------- */
+
+const healthMark = st => ({ fail: '✗', error: '✗', warn: '!', ok: '✓' })[st];
+const healthTone = st => ({ fail: 'bad', error: 'bad', warn: 'warn', ok: 'ok' })[st] || 'wait';
+
+function healthAreasHTML(areas) {
+  return `<ul class="areas">${areas.map(a => `<li><span class="ico ${healthTone(a.status)}">${healthMark(a.status) ?? '<span class="spin"></span>'}</span>${esc(a.name)}</li>`).join('')}</ul>`;
+}
+
+function findHTML(f) {
+  const cls = f.state || f.kind, mark = { fixed: '✓', left: '✗', problem: '✗', advice: '!' }[cls] ?? 'i';
+  return `<div class="find ${cls}"><span class="ico">${mark}</span><h3>${esc(f.title)}</h3><span class="ftag">${esc(f.tag)}</span><p>${esc(f.text)}</p></div>`;
+}
+
+function runListHTML(items, run) {
+  return `<ul class="run">${items.map((x, i) => {
+    const st = run[i];
+    const mark = st === 'ok' ? '<span class="good">✓</span>' : st === 'fail' ? '<span class="bad">✗</span>' : '<span class="dim">·</span>';
+    return `<li class="${st ? '' : 'dim'}">${mark}<span>${esc(x.text)}${x.error ? `<small class="bad">${esc(x.error)}</small>` : ''}</span></li>`;
+  }).join('')}</ul>`;
+}
+
+function healthHTML() {
+  const H = state.H, hs = state.health, v = hs.view;
+  const err = hs.error ? `<p class="hint error-text" role="alert">${esc(hs.error)}</p>` : '';
+  if (hs.phase === 'idle') return `<p class="hint">${esc(H.idle)}</p>${err}`;
+  if (hs.phase === 'checking') {
+    return `<div class="hbody"><div class="hhead"><span class="spin"></span><strong>${esc(H.checking)}</strong></div>${healthAreasHTML(hs.areas)}</div>`;
+  }
+  if (hs.phase === 'fixing') {
+    const items = hs.undoing ? v.undo_list : v.plan;
+    const all = items.every((x, i) => hs.run[i]);
+    const waitAdmin = !all && items.some((x, i) => x.admin && !hs.run[i]) && items.every((x, i) => x.admin || hs.run[i]);
+    return `<div class="hbody"><div class="hhead"><span class="spin"></span><strong>${esc(hs.undoing ? H.undoing : H.fixing)}</strong></div>
+      ${runListHTML(items, hs.run)}
+      ${waitAdmin ? `<p class="muted">${esc(H.wait_uac)}</p>` : ''}${all ? `<p class="muted"><span class="spin"></span>${esc(H.rechecking)}</p>` : ''}</div>`;
+  }
+  const head = `<div class="hhead"><span class="ico big ${v.tone}">${{ bad: '✗', warn: '!', ok: '✓' }[v.tone]}</span><h2>${esc(v.head)}</h2></div>`;
+  const infos = v.infos?.length ? `<details class="fold"><summary><b>${esc(H.info_title)}</b> ${esc(v.infos.map(f => f.title).join('; '))}</summary>
+      <div class="finds">${v.infos.map(findHTML).join('')}</div></details>` : '';
+  const oks = v.ok_areas?.length ? `<details class="fold"><summary><b>${esc(H.ok_title)}</b> ${esc(v.ok_areas.join(', '))}</summary>${healthAreasHTML(v.areas)}</details>` : '';
+  const report = `<span class="split"><button class="btn" data-act="open">${esc(state.ui.save_report)}</button><button class="btn" data-act="copy">⧉ ${esc(state.ui.copy)}</button></span>`;
+  const undo = v.undo ? `<button class="btn" data-act="health-undo">${esc(H.undo)}</button>` : '';
+  const fixBtn = `<button class="btn primary" data-act="health-fix">${esc(v.fix_label)}</button>`;
+  let go;
+  if (v.after) {
+    const done = v.done?.length ? runListHTML(v.done, v.done.map(x => x.status)) : '';
+    go = `${done}${v.declined ? `<p class="small bad">${esc(H.declined)}</p>` : ''}
+      <p class="small">${esc(H.try_now)}</p>
+      <div class="actions"><button class="btn primary" data-act="health-site">${esc(H.check_site)}</button>
+        <button class="btn" data-act="health-app">${esc(H.check_app)}</button>${v.fixable ? fixBtn.replace('btn primary', 'btn') : ''}${undo}${report}</div>
+      ${v.undo ? `<p class="small">${esc(H.undo_note)}</p>` : ''}${v.fix_note && !v.fixable && v.fix_note !== H.clean_note ? `<p class="small bad">${esc(v.fix_note)}</p>` : ''}`;
+  } else {
+    go = `<div class="actions">${fixBtn}${undo}${report}</div>
+      <ol>${v.plan.map(x => `<li>${esc(x.text)}</li>`).join('')}</ol><p class="small">${esc(v.fix_note)}</p>`;
+  }
+  return `<div class="hbody">${head}${v.tone === 'ok' && !v.after && !v.finds?.length ? `<p class="muted">${esc(H.ok_text)}</p>` : ''}
+    ${v.finds?.length ? `<div class="finds">${v.finds.map(findHTML).join('')}</div>` : ''}${infos}${oks}
+    <div class="go">${go}</div>${err}<p class="muted small">${esc(H.heavy_note)}</p>
+    <div class="version">whynet ${esc(state.version)}</div></div>`;
+}
+
+const healthBusy = () => ['checking', 'fixing'].includes(state.health.phase);
+
+async function startHealth() {
+  const hs = state.health;
+  if (state.phase === 'running' || healthBusy()) return;
+  Object.assign(hs, { phase: 'checking', areas: state.healthAreas.map(a => ({ ...a, status: 'run' })), error: '' });
+  state.details = false;
+  render();
+  try { Object.assign(hs, { phase: 'done', view: await CheckHealth() }); }
+  catch (err) { Object.assign(hs, { phase: hs.view ? 'done' : 'idle', error: err?.message ?? String(err) }); }
+  render();
+}
+
+async function runHealthBatch(undo) {
+  const hs = state.health;
+  if (healthBusy() || !hs.view) return;
+  Object.assign(hs, { phase: 'fixing', run: [], undoing: undo, error: '' });
+  render();
+  try { Object.assign(hs, { phase: 'done', view: await (undo ? UndoHealth() : FixHealth()) }); }
+  catch (err) { Object.assign(hs, { phase: 'done', error: err?.message ?? String(err) }); }
+  render();
+}
+
+EventsOn('health-step', s => {
+  const hs = state.health;
+  if (hs.phase !== 'checking') return; // the re-check after a fix shows only "Проверяю ещё раз"
+  const i = hs.areas.findIndex(a => a.id === s.id);
+  if (i >= 0) { hs.areas[i] = s; render(); }
+});
+
+EventsOn('health-fix', p => {
+  const hs = state.health;
+  if (hs.phase !== 'fixing' || p.i < 0) return;
+  hs.run[p.i] = p.ok ? 'ok' : 'fail';
+  render();
+});
+
 /* ---------- Window ---------- */
 
 function render() {
-  const live = state.mode === 'live', app = state.mode === 'app';
+  const live = state.mode === 'live', app = state.mode === 'app', hm = state.mode === 'health';
   // Before the first check the window is just the address bar and one line of help.
   const site = state.phase === 'idle'
     ? `<p class="hint">${esc(state.ui.idle_text)}</p>${state.error ? `<p class="hint error-text" role="alert">${esc(state.error)}</p>` : ''}`
     : `<div class="grid"><div><ol class="steps">${stepsHTML()}</ol><div class="version">whynet ${esc(state.version)}</div></div>${rightHTML()}</div>`
       + (state.phase === 'done' ? moreBarHTML() : '') + (state.details && state.phase === 'done' ? detailsHTML() : '');
-  out.innerHTML = `<div class="content" id="content">${updateHTML()}${live ? liveHTML() : app ? appHTML() : site}</div>`
+  out.innerHTML = `<div class="content" id="content">${updateHTML()}${live ? liveHTML() : app ? appHTML() : hm ? healthHTML() : site}</div>`
     + (state.modal ? modalHTML() : '') + (state.ownModal ? ownModalHTML() : '');
-  const busy = state.phase === 'running' || ['starting', 'recording'].includes(state.live.phase) || ['recording', 'checking'].includes(state.app.phase);
+  const busy = state.phase === 'running' || ['starting', 'recording'].includes(state.live.phase) || ['recording', 'checking'].includes(state.app.phase) || healthBusy();
   checkBtn.disabled = busy;
   input.disabled = (live || app) && busy;
-  checkBtn.textContent = live ? state.L.start : app ? state.A.record : state.ui.check;
+  checkBtn.textContent = live ? state.L.start : app ? state.A.record : hm ? (state.health.view ? state.H.again : state.H.check) : state.ui.check;
+  input.hidden = hm; // the PC itself is checked: nothing to type
   input.placeholder = live ? state.L.placeholder : app ? state.A.placeholder : state.ui.placeholder;
   for (const b of modeEl.querySelectorAll('button')) {
     b.setAttribute('aria-selected', String(b.dataset.mode === state.mode));
@@ -860,23 +966,27 @@ async function readOwn(reading) {
 }
 
 // Each mode keeps what was typed in it.
-const typed = { site: '', live: '', app: '' };
-modeEl.addEventListener('click', e => {
-  const b = e.target.closest('button[data-mode]');
-  if (!b || b.disabled || b.dataset.mode === state.mode) return;
+const typed = { site: '', live: '', app: '', health: '' };
+function setMode(mode) {
   typed[state.mode] = input.value;
-  state.mode = b.dataset.mode;
+  state.mode = mode;
   input.value = typed[state.mode];
   state.details = false;
   watchPrograms(state.mode === 'app');
   render();
-  input.focus();
+  (mode === 'health' ? checkBtn : input).focus();
+}
+modeEl.addEventListener('click', e => {
+  const b = e.target.closest('button[data-mode]');
+  if (!b || b.disabled || b.dataset.mode === state.mode) return;
+  setMode(b.dataset.mode);
 });
 
 form.addEventListener('submit', e => {
   e.preventDefault();
   if (state.mode === 'live') startLive(input.value.trim(), false);
   else if (state.mode === 'app') startApp();
+  else if (state.mode === 'health') startHealth();
   else startCheck(input.value.trim(), false);
 });
 
@@ -918,6 +1028,10 @@ out.addEventListener('click', async e => {
     else if (p) { state.app.selected = p.exe; render(); }
   }
   else if (act === 'app-done') { el.disabled = true; FinishApp(); }
+  else if (act === 'health-fix') runHealthBatch(false);
+  else if (act === 'health-undo') runHealthBatch(true);
+  else if (act === 'health-site') setMode('site');
+  else if (act === 'health-app') setMode('app');
   else if (act === 'app-cancel') CancelApp();
   else if (act === 'live-done') {
     el.disabled = true;
@@ -976,12 +1090,13 @@ document.addEventListener('paste', e => {
 OnFileDrop((x, y, paths) => { if (state.ownModal && paths?.length) readOwn(ReadHARFile(paths[0])); }, false);
 
 Info().then(info => {
-  Object.assign(state, { ui: info.ui, L: info.live || {}, A: info.app || {}, version: info.version, blank: info.steps, steps: info.steps,
-    appBlank: info.app_steps || [], browser: info.browser || 'chromium' });
-  const [siteBtn, liveBtn, appBtn] = modeEl.querySelectorAll('button');
+  Object.assign(state, { ui: info.ui, L: info.live || {}, A: info.app || {}, H: info.health || {}, version: info.version, blank: info.steps, steps: info.steps,
+    appBlank: info.app_steps || [], healthAreas: info.health_areas || [], browser: info.browser || 'chromium' });
+  const [siteBtn, liveBtn, appBtn, healthBtn] = modeEl.querySelectorAll('button');
   siteBtn.textContent = state.L.mode_site;
   liveBtn.innerHTML = `${esc(state.L.mode_live)} <small>· ${esc(state.L.mode_live_hint)}</small>`;
   appBtn.textContent = state.A.mode;
+  healthBtn.textContent = state.H.mode;
   modeEl.hidden = false;
   render();
   input.focus();

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"embed"
 	"os"
 
@@ -10,13 +11,22 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 
 	"whynet/internal/etw"
+	"whynet/internal/health"
+	"whynet/rules"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
 
 func main() {
-	if ran, err := etw.HelperMain(os.Args[1:], nil); ran { // the elevated helper (UDP, frames): no window
+	jobs := map[string]etw.Job{"fix": func(rw *bufio.ReadWriter) error { // the health fixes (docs/health.md)
+		_, m, err := rules.Load()
+		if err != nil {
+			return err
+		}
+		return health.FixJob(m)(rw)
+	}}
+	if ran, err := etw.HelperMain(os.Args[1:], jobs); ran { // the elevated helper (UDP, frames, fixes): no window
 		if err != nil {
 			os.Exit(1)
 		}

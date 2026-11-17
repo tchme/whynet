@@ -34,3 +34,11 @@ func TestNote(t *testing.T) {
 		}
 	}
 }
+
+func TestPlural(t *testing.T) {
+	for n, want := range map[int]string{1: "проблему", 2: "проблемы", 4: "проблемы", 5: "проблем", 11: "проблем", 12: "проблем", 21: "проблему", 22: "проблемы", 111: "проблем"} {
+		if got := Plural(n, "проблему|проблемы|проблем"); got != want {
+			t.Errorf("%d: %s, want %s", n, got, want)
+		}
+	}
+}
