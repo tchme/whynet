@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"math"
 	"net/netip"
 	"runtime/debug"
 	"sync"
@@ -401,15 +400,13 @@ func (s *Session) onFrame(pid uint32, at time.Time) {
 	if exe == s.fgNow {
 		rf.front++
 		if ms := float64(d-rf.last) / float64(time.Millisecond); rf.last > 0 && ms > 0 && ms <= pauseMs {
-			slow := rf.avgMs > 0 && ms > math.Max(stallFactor*rf.avgMs, rf.avgMs+stallExtraMs)
-			if slow && rf.last-rf.stallUpTo > stallMerge {
-				rf.stalls++
-			}
-			if slow {
+			if rf.avgMs > 0 && isStall(ms, rf.avgMs) {
+				if rf.last-rf.stallUpTo > stallMerge {
+					rf.stalls++
+				}
 				rf.stallUpTo = d
-			} else {
-				rf.avgMs = smooth(rf.avgMs, ms)
 			}
+			rf.avgMs = smooth(rf.avgMs, ms) // every frame: a game that drops to 17 fps for good shows 17, not its old 169
 		}
 	}
 	rf.last = d

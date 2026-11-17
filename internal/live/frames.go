@@ -11,14 +11,14 @@ import (
 // from package etw through the elevated helper; the game is the program with the most frames
 // while its window was in front. A stall is a frame far longer than the ones just before it.
 const (
-	stallFactor  = 3                // a stall: a frame over max(3 × the usual, usual + 30 ms)
-	stallExtraMs = 30               //
-	stallBase    = 2 * time.Second  // "the usual": the median frame of the 2 s before
-	stallMerge   = time.Second      // stalls this close together are one
-	pauseMs      = 2000             // a gap this long is a pause (loading, a menu), not a stall
-	minFront     = 30 * time.Second // less time in front with frames: no game was seen
-	stallsBar    = 3                // this many stalls make a verdict
-	dwmExe       = "dwm.exe"        // the desktop compositor presents all the time; never the game
+	stallFactor = 3                // a stall: a frame over max(3 × the usual, stallMinMs)
+	stallMinMs  = 100              // a freeze the eye sees; Frostpunk's 36-65 ms hitches at 169 fps made a false verdict (2026-11-17)
+	stallBase   = 2 * time.Second  // "the usual": the median frame of the 2 s before
+	stallMerge  = time.Second      // stalls this close together are one
+	pauseMs     = 2000             // a gap this long is a pause (loading, a menu), not a stall
+	minFront    = 30 * time.Second // less time in front with frames: no game was seen
+	stallsBar   = 3                // this many stalls make a verdict
+	dwmExe      = "dwm.exe"        // the desktop compositor presents all the time; never the game
 )
 
 // FramesSummary is the game's frames over the session.
@@ -182,7 +182,7 @@ func analyzeFrames(r recording, n int, netTrouble []bool, facts map[string]strin
 	var lastEnd time.Duration = -1
 	for _, g := range gaps {
 		base := baseOf[tickOf(g.to)]
-		if g.ms <= math.Max(stallFactor*base, base+stallExtraMs) {
+		if !isStall(g.ms, base) {
 			continue
 		}
 		if lastEnd >= 0 && g.from-lastEnd <= stallMerge { // the same hitch, a few slow frames long
@@ -233,6 +233,9 @@ func analyzeFrames(r recording, n int, netTrouble []bool, facts map[string]strin
 	}
 	return s, ft
 }
+
+// isStall: a frame of ms against the usual frame time base.
+func isStall(ms, base float64) bool { return ms > math.Max(stallFactor*base, stallMinMs) }
 
 func fps(frameMs float64) float64 {
 	if frameMs <= 0 {

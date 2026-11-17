@@ -1,6 +1,6 @@
 # Stability check (design)
 
-Status: approved by the author 2026-11-16. Stage 1 built 2026-11-16 (package `internal/live`, `app_live.go`, the window's "Стабильность" mode, `whynet-cli -live`); stage 2's program pick became the "Программа" mode (docs/appcheck.md), its CPU lane is built here. Stage 3 (frame times) designed 2026-11-17, not built.
+Status: approved by the author 2026-11-16. Stage 1 built 2026-11-16 (package `internal/live`, `app_live.go`, the window's "Стабильность" mode, `whynet-cli -live`); stage 2's program pick became the "Программа" mode (docs/appcheck.md), its CPU lane is built here. Stage 3 (frame times) designed and built 2026-11-17 (CLI and report; the window's part waits for the mockup `docs/mockups/stability-frames.html`).
 
 ## Intent
 
@@ -107,7 +107,7 @@ Order (picked): stage 1 first, the chain without picking a program, because the 
 - First rule on facts whynet already records: Game Filter on with IPSet Filter `none` reaches no address (Flowseal's game sections use `--ipset=ipset-all.txt`).
 - **The computer as a lane** (the author's choice, 2026-11-16, instead of judging by "лагнуло" marks; built the same day): the whole computer's CPU load is read every tick (0.5 s) without admin (`GetSystemTimes`, busy share since the previous tick). It is drawn as one more lane "Компьютер · процессор" in the lanes view (bar height = load, orange from 90 %), shown in the hover and a Details card, and recorded in the AI report: a summary section (average, max, share of readings at 90 % or more), a "CPU max" column in the time table, and the CPU max of the 10 s each "лагнуло" mark looks back over. The verdict gets one extra line when the CPU hit 90 %. So "the network was calm while the CPU sat at 100 %" is measured, not guessed. No rule uses it yet: total CPU misses one maxed-out core of a game's main thread. Frame times (PresentMon-style ETW, admin rights) are the next step, with the same helper as UDP. Only then can a verdict like "the lag is the computer" come back.
 
-## Stage 3: frame times (designed 2026-11-17, not built)
+## Stage 3: frame times (2026-11-17)
 
 **Intent.** The stability check says where the *network* jumps. A game also "lags" when its own frames stall (a hitch, a freeze for 100-500 ms) while the network is calm, and people call both "лагнуло". Since the marks were demoted to bookmarks, whynet can't tell the two apart. Measuring the game's frames gives back the verdict "the network held, the game's frames stalled: this is the computer, not the internet", with numbers, the way the friend's Wi-Fi case got its numbers.
 
@@ -159,7 +159,7 @@ Order (picked): stage 1 first, the chain without picking a program, because the 
 
 - Per tick (0.5 s): frames, worst frame time.
 - Over the session: median fps, average fps, 1 % low (fps from the 99th percentile frame time), worst frame, the time the game was in the background (not counted: a minimised game presents slowly or not at all).
-- **A stall** is a frame time over max(3 × the median of the previous 2 s, median + 30 ms), counted only while the game was in front. Stalls closer than 1 s together are one stall (a hitch often spans a few slow frames).
+- **A stall** is a frame time over max(3 × the median of the previous 2 s, 100 ms), counted only while the game was in front (first written as "median + 30 ms"; Frostpunk's 36-65 ms hitches at 169 fps then gave a false `live_pc_frames`, see below). Stalls closer than 1 s together are one stall (a hitch often spans a few slow frames).
 - **A pause** is a gap over 2 s (a loading screen, a menu, alt-tab): listed with its time, never counted as a stall, so a level load doesn't read as "the computer lags".
 - **Stalls during a network spike:** a stall in the same tick as confirmed network trouble is counted separately (`live.frames_stalls_net`): some games freeze on network waits.
 - CPU at each stall comes from the CPU lane (busy ≥ 90 % in that tick or the one before).
@@ -195,6 +195,17 @@ Order (picked): stage 1 first, the chain without picking a program, because the 
 **Constraints.** Windows 10 and 11; no new dependencies (`advapi32` ETW as in `internal/etw`, `user32` for the foreground window); every part under the house rules (facts → rules → locale, timeouts, panic recovery).
 
 **Left to the builder.** The exact provider GUIDs, event ids and keywords (from the providers' manifests, confirmed live), the DxgKrnl dedup rule details, keeping frame intervals only for exes that were ever in the foreground, how the frames row sits in the live view.
+
+**Verified live (2026-11-17, the author's PC, `whynet-cli -live -frames`):**
+
+- The stall page in Edge: `msedge.exe` picked as the game by itself, 16 stalls of 201-202 ms in 80 s (one every 5 s, as built), `live_pc_frames`; the report's table has every stall with the CPU and the network at that moment.
+- UAC declined (the author clicked "Нет"): `live.frames = declined`, the line under the verdict, the network check complete. First live run of a declined path in whynet.
+- The app check's UDP through the reworked helper: Discord voice, 104.29.136.195:19300, `app_udp_ok`, the helper exited after the recording.
+- A real game, Frostpunk (DirectX 11): `frostpunk.exe` picked by itself, ~169 fps, 25 s at ~17 fps at the start, three hitches of 36, 40 and 65 ms. With the first threshold (median + 30 ms) that made 3 stalls and a false `live_pc_frames`; the threshold is now 100 ms (a freeze the eye sees). The running estimate in the live row also kept showing 169 fps through the 17 fps stretch, because slow frames were left out of its average; it now averages every frame below a pause.
+- Steam's own window (`steamwebhelper.exe`) presents at 170 fps; when it is in front the most, it is "the game". Correct by the rule; the report names it.
+- Pitfall for testers: the UAC prompt covers the chat and gets "Да" by reflex; announce it and wait 10 s before triggering it.
+
+**Not verified live:** a D3D12 or Vulkan game (presents may skip DxgKrnl 184; DXGI 42 should still come for D3D12), a game with an anti-cheat (Dead by Daylight with EAC is on the author's PC), the window's part (not built yet), Windows 10.
 
 **Verification plan.** Live on the author's PC: a browser page whose animation busy-waits 200 ms every few seconds (stalls on cue, the browser's GPU process named through its exe); then a real game if the author has one at hand; the declined UAC path; Windows 10 on a friend's PC when one is available. Not reproducible here: an anti-cheat game (expected fine: nothing touches the game).
 

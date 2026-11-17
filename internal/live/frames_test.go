@@ -118,6 +118,20 @@ func TestFramesToVerdict(t *testing.T) {
 	}
 }
 
+// Frostpunk on the author's PC (2026-11-17): 169 fps with hitches of 36, 40 and 65 ms and a stretch
+// at 17 fps. Nothing the eye calls a freeze: no stalls, no verdict.
+func TestFramesSmallHitches(t *testing.T) {
+	fr := gameFrames(25, 17, nil, nil)
+	for _, d := range gameFrames(175, 169, []float64{40, 100, 150}, []float64{65, 36, 40}) {
+		fr = append(fr, 25*time.Second+d)
+	}
+	res := analyze(framed(400, 0, fr))
+	wantFacts(t, res, map[string]string{"live.frames_exe": "game.exe", "live.frames_stalls": "0", "live.frames_stalled": ""})
+	if res.Frames.WorstMs < 60 || res.Frames.FPSLow1 > 20 {
+		t.Errorf("worst %.0f ms, 1%% low %.1f: the numbers should still show the hitch and the slow stretch", res.Frames.WorstMs, res.Frames.FPSLow1)
+	}
+}
+
 func TestFramesNoGame(t *testing.T) {
 	// The game was in front for 20 s only, the desktop (no frames) before it: no game, no frame
 	// facts beyond the state.
@@ -156,7 +170,15 @@ func TestSessionFramesByExe(t *testing.T) {
 	if len(s.frames["msedge.exe"]) != 101 || s.frames["discord.exe"] != nil {
 		t.Errorf("kept: msedge %d, discord %d", len(s.frames["msedge.exe"]), len(s.frames["discord.exe"]))
 	}
-	if rf := s.runFrames["msedge.exe"]; rf == nil || rf.stalls != 1 || math.Abs(rf.avgMs-16) > 1 {
+	if rf := s.runFrames["msedge.exe"]; rf == nil || rf.stalls != 1 || math.Abs(rf.avgMs-16) > 20 {
 		t.Errorf("running estimate: %+v", rf)
+	}
+	// It drops to 17 fps for good: the estimate follows instead of counting one endless stall.
+	last := time.Second + 99*16*time.Millisecond + 400*time.Millisecond
+	for i := 1; i <= 200; i++ {
+		s.onFrame(200, t0.Add(last+time.Duration(i)*59*time.Millisecond))
+	}
+	if rf := s.runFrames["msedge.exe"]; rf.stalls != 1 || math.Abs(rf.avgMs-59) > 3 {
+		t.Errorf("after the drop: %+v", rf)
 	}
 }

@@ -323,7 +323,7 @@ func writeFrames(w func(string, ...any), t *locales.Texts, res *live.Result) {
 	w("- game: %s (its window in front %s %% of the recording; picked as the program with the most frames while in front)\n", f.Exe, fmtPct1(f.FrontPct))
 	w("- frames counted: %d; fps median %s, average %s, 1 %% low %s; worst frame %s ms\n", f.Frames,
 		fmtPct1(f.FPSMedian), fmtPct1(f.FPSAvg), fmtPct1(f.FPSLow1), fmtMs(f.WorstMs))
-	w("- stalls (a frame over max(3 × the median frame of the 2 s before, that + 30 ms); within 1 s = one): %d; at a moment the network jumped: %d; at CPU ≥ %d %%: %d\n",
+	w("- stalls (a frame over max(3 × the median frame of the 2 s before, 100 ms); within 1 s = one): %d; at a moment the network jumped: %d; at CPU ≥ %d %%: %d\n",
 		f.StallsTotal, f.StallsNet, live.CPUBusy, f.StallsCPU)
 	if len(f.Stalls) > 0 {
 		w("\n| time | longest frame, ms | CPU max | network jumped |\n|---|---|---|---|\n")
