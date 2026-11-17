@@ -365,6 +365,11 @@ func (s *Session) readForeground() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.fg = append(s.fg, exe)
+	if exe != s.fgNow { // the gap across a switch is no stall (Valorant, 2026-11-17: one counted live, none in the analysis)
+		for _, rf := range s.runFrames {
+			rf.last = 0
+		}
+	}
 	s.fgNow = exe
 	if _, ok := s.frames[exe]; !ok && exe != "" {
 		s.frames[exe] = nil // from now on its frames are kept

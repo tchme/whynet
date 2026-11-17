@@ -181,4 +181,15 @@ func TestSessionFramesByExe(t *testing.T) {
 	if rf := s.runFrames["msedge.exe"]; rf.stalls != 1 || math.Abs(rf.avgMs-59) > 3 {
 		t.Errorf("after the drop: %+v", rf)
 	}
+	// Away for a moment (another window in front), back 500 ms later: no stall from the gap.
+	fg := "explorer.exe"
+	s.env.Foreground = func() string { return fg }
+	s.readForeground()
+	fg = "msedge.exe"
+	s.readForeground()
+	s.onFrame(200, t0.Add(last+200*59*time.Millisecond+500*time.Millisecond))
+	s.onFrame(200, t0.Add(last+200*59*time.Millisecond+559*time.Millisecond))
+	if rf := s.runFrames["msedge.exe"]; rf.stalls != 1 {
+		t.Errorf("a window switch counted as a stall: %+v", rf)
+	}
 }
