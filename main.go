@@ -8,12 +8,20 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
+
+	"whynet/internal/etw"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
 
 func main() {
+	if len(os.Args) == 4 && os.Args[1] == etw.HelperFlag { // the elevated UDP helper: no window
+		if etw.RunHelper(os.Args[2], os.Args[3]) != nil {
+			os.Exit(1)
+		}
+		return
+	}
 	app, err := NewApp()
 	if err != nil {
 		println("whynet:", err.Error())

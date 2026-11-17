@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"whynet/internal/etw"
 	"whynet/internal/probe"
 	"whynet/internal/report"
 	"whynet/locales"
@@ -17,7 +18,14 @@ import (
 )
 
 func main() {
-	asJSON := flag.Bool("json", false, "print facts and raw evidence as JSON")
+	if len(os.Args) == 4 && os.Args[1] == etw.HelperFlag { // the elevated UDP helper
+		if err := etw.RunHelper(os.Args[2], os.Args[3]); err != nil {
+			fmt.Fprintln(os.Stderr, "whynet:", err)
+			os.Exit(1)
+		}
+		return
+	}
+	asJSON :=flag.Bool("json", false, "print facts and raw evidence as JSON")
 	save := flag.Bool("save", false, "save the AI report (.md) in the current folder")
 	noHide := flag.Bool("no-hide", false, "keep the public IP and other private values in the report")
 	noBrowser := flag.Bool("no-browser", false, "skip loading the page in a hidden Edge/Chrome")
