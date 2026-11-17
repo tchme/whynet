@@ -736,7 +736,7 @@ function runListHTML(items, run) {
   return `<ul class="run">${items.map((x, i) => {
     const st = run[i];
     const mark = st === 'ok' ? '<span class="good">✓</span>' : st === 'fail' ? '<span class="bad">✗</span>' : '<span class="dim">·</span>';
-    return `<li class="${st ? '' : 'dim'}">${mark}<span>${esc(x.text)}${x.error ? `<small class="bad">${esc(x.error)}</small>` : ''}</span></li>`;
+    return `<li class="${st ? '' : 'dim'}">${mark}<span>${esc(st === 'ok' && x.done_text ? x.done_text : x.text)}${x.error ? `<small class="bad">${esc(x.error)}</small>` : ''}</span></li>`;
   }).join('')}</ul>`;
 }
 

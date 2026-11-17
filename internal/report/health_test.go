@@ -29,7 +29,7 @@ func TestHealthMarkdown(t *testing.T) {
 	finds := rules.MatchAll(rs, res.Facts())
 	p := health.MakePlan(res, []string{"proxy_off"})
 	md := HealthMarkdown(res, finds, []HealthBatch{{Outcomes: []health.Outcome{{Action: p.Actions[0], OK: true}}}}, nil, nil, tx, true)
-	for _, want := range []string{"127.0.0.1:10809", "health_proxy_dead", "Beeline", "95.24.x.x", "Выключу прокси 127.0.0.1:10809 — ✓"} {
+	for _, want := range []string{"127.0.0.1:10809", "health_proxy_dead", "Beeline", "95.24.x.x", "Выключил прокси 127.0.0.1:10809 — ✓"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("no %q in the report", want)
 		}
@@ -56,9 +56,11 @@ func TestHealthActionTexts(t *testing.T) {
 		{ID: "service_stop", Value: "W32Time"}, {ID: "tcp_global", Value: "autotuninglevel=normal"}, {ID: "tcp_global", Value: "rss=enabled"},
 		{ID: "tcp_global", Value: "rss=disabled"}, {ID: "dhcp_renew", Adapter: "Ethernet"}, {ID: "time_resync"}, {ID: "flush_dns"}, {ID: "flush_arp"},
 	} {
-		got := HealthAction(tx, a, map[string]string{})
-		if strings.HasPrefix(got, a.ID) || strings.Contains(got, "{") {
-			t.Errorf("%+v: %q", a, got)
+		for _, done := range []bool{false, true} {
+			got := HealthAction(tx, a, map[string]string{}, done)
+			if strings.HasPrefix(got, a.ID) || strings.Contains(got, "{") {
+				t.Errorf("%+v done=%v: %q", a, done, got)
+			}
 		}
 	}
 }

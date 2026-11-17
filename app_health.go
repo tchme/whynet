@@ -32,10 +32,11 @@ type HealthFindingView struct {
 
 // HealthOutcomeView is one action of a fix batch: planned (Status "") or done.
 type HealthOutcomeView struct {
-	Text   string `json:"text"`
-	Status string `json:"status"` // "", ok, fail
-	Error  string `json:"error,omitempty"`
-	Admin  bool   `json:"admin,omitempty"` // runs through the elevated helper
+	Text     string `json:"text"`
+	DoneText string `json:"done_text,omitempty"` // the same, done: shown once it went through
+	Status   string `json:"status"`              // "", ok, fail
+	Error    string `json:"error,omitempty"`
+	Admin    bool   `json:"admin,omitempty"` // runs through the elevated helper
 }
 
 // HealthView is a finished health check (or the re-check after a fix) as the window shows it.
@@ -89,7 +90,7 @@ func (a *App) CheckHealth() (*HealthView, error) {
 	a.lastKind = "health"
 	h := a.health
 	a.mu.Unlock()
-	return a.healthView(h, nil, "", false), nil
+	return a.healthView(h, nil, nil, "", false), nil
 }
 
 func (a *App) begin() bool {
@@ -170,6 +171,15 @@ func (a *App) runBatch(h *healthState, actions []health.Action, undo bool) (*Hea
 		return nil, errors.New(a.t.UI["busy"])
 	}
 	defer a.end()
+	// The words for what was done come from the check the batch was planned on (the re-check no
+	// longer has, say, the proxy's address).
+	var before map[string]string
+	switch {
+	case h.after != nil:
+		before = h.after.Facts()
+	case h.res != nil:
+		before = h.res.Facts()
+	}
 	outs, declined := health.Execute(actions, a.markers, func(o health.Outcome) {
 		i := slices.IndexFunc(actions, func(x health.Action) bool { return actionSame(x, o.Action) })
 		runtime.EventsEmit(a.ctx, "health-fix", map[string]any{"i": i, "ok": o.OK, "error": o.Error})
@@ -201,7 +211,7 @@ func (a *App) runBatch(h *healthState, actions []health.Action, undo bool) (*Hea
 	if undo {
 		mode = "undo"
 	}
-	v := a.healthView(h, outs, mode, declined)
+	v := a.healthView(h, outs, before, mode, declined)
 	if err != nil {
 		v.FixNote = locales.Fill(a.t.Health["undo_failed"], map[string]string{"error": err.Error()})
 	}
@@ -214,7 +224,7 @@ func actionSame(x, y health.Action) bool {
 
 // healthView: the findings of the last check (after a fix: the first check's findings marked
 // fixed or left, plus anything new), the areas, the next batch. mode: "", fix, undo.
-func (a *App) healthView(h *healthState, outs []health.Outcome, mode string, declined bool) *HealthView {
+func (a *App) healthView(h *healthState, outs []health.Outcome, before map[string]string, mode string, declined bool) *HealthView {
 	H := a.t.Health
 	after := mode != ""
 	cur, finds := h.res, h.finds
@@ -224,7 +234,8 @@ func (a *App) healthView(h *healthState, outs []health.Outcome, mode string, dec
 	facts := cur.Facts()
 	v := &HealthView{After: after, Declined: declined}
 	for _, act := range health.LoadUndo() {
-		v.UndoList = append(v.UndoList, HealthOutcomeView{Text: report.HealthAction(a.t, act, facts), Admin: act.Admin()})
+		v.UndoList = append(v.UndoList, HealthOutcomeView{Text: report.HealthAction(a.t, act, facts, false),
+			DoneText: report.HealthAction(a.t, act, facts, true), Admin: act.Admin()})
 	}
 	v.Undo = len(v.UndoList) > 0
 	for _, s := range cur.Steps {
@@ -302,6 +313,14 @@ func (a *App) healthView(h *healthState, outs []health.Outcome, mode string, dec
 
 	plural := func(n int, forms string) string { return strconv.Itoa(n) + " " + locales.Plural(n, forms) }
 	switch {
+	case mode == "undo" && slices.ContainsFunc(outs, func(o health.Outcome) bool { return !o.OK }):
+		ok := 0
+		for _, o := range outs {
+			if o.OK {
+				ok++
+			}
+		}
+		v.Head = locales.Fill(H["undone_part"], map[string]string{"done": strconv.Itoa(ok), "total": strconv.Itoa(len(outs))})
 	case mode == "undo":
 		v.Head = H["undone"]
 	case marked && total > 0:
@@ -330,7 +349,8 @@ func (a *App) healthView(h *healthState, outs []health.Outcome, mode string, dec
 	}
 
 	for _, act := range h.plan.Actions {
-		v.Plan = append(v.Plan, HealthOutcomeView{Text: report.HealthAction(a.t, act, facts), Admin: act.Admin()})
+		v.Plan = append(v.Plan, HealthOutcomeView{Text: report.HealthAction(a.t, act, facts, false),
+			DoneText: report.HealthAction(a.t, act, facts, true), Admin: act.Admin()})
 		v.Admin = v.Admin || act.Admin()
 		v.Fixable = v.Fixable || act.ID != "flush_dns" && act.ID != "flush_arp"
 	}
@@ -353,7 +373,14 @@ func (a *App) healthView(h *healthState, outs []health.Outcome, mode string, dec
 		if !o.OK {
 			st = "fail"
 		}
-		v.Done = append(v.Done, HealthOutcomeView{Text: report.HealthAction(a.t, o.Action, facts), Status: st, Error: o.Error})
+		if before == nil {
+			before = facts
+		}
+		e := o.Error
+		if e == health.ErrDeclined.Error() {
+			e = "" // the line under the list says it in words
+		}
+		v.Done = append(v.Done, HealthOutcomeView{Text: report.HealthAction(a.t, o.Action, before, o.OK), Status: st, Error: e})
 	}
 	return v
 }

@@ -719,6 +719,7 @@ health:
   undo: Вернуть как было
   undo_note: "«Вернуть как было» вернёт изменённые настройки."
   undone: "Вернул как было"
+  undone_part: "Вернул {done} из {total}"
   undo_failed: "Не всё удалось вернуть: {error}"
   heavy_note: "Не помогло? Сохрани отчёт для ИИ — он подскажет, что делать дальше. Глубокий сброс сети (Winsock, TCP/IP) появится в следующей версии."
   act_proxy_off: "Выключу прокси {value}"
@@ -740,6 +741,25 @@ health:
   act_time_resync: "Запущу синхронизацию времени"
   act_flush_dns: "Очищу кэш DNS — безопасно, Windows соберёт его заново"
   act_flush_arp: "Очищу кэш ARP"
+  did_proxy_off: "Выключил прокси {value}"
+  did_proxy_on: "Включил прокси обратно"
+  did_pac_off: "Убрал скрипт прокси"
+  did_pac_on: "Вернул скрипт прокси {value}"
+  did_winhttp_reset: "Сбросил прокси WinHTTP на «напрямую»"
+  did_winhttp_set: "Вернул прокси WinHTTP {value}"
+  did_hosts_comment: "Закомментировал строки в hosts: {n} (копия: hosts.whynet-{date})"
+  did_hosts_uncomment: "Вернул строки в hosts: {n}"
+  did_dns_dhcp: "Вернул автоматический DNS у «{adapter}»"
+  did_dns_static: "Вернул DNS {value} у «{adapter}»"
+  did_service_start: "Запустил службу DNS-клиент"
+  did_service_stop: "Остановил службу времени, как было"
+  did_autotuning: "Вернул автонастройку TCP: {value}"
+  did_rss_on: "Включил распределение сети по ядрам (RSS)"
+  did_rss_off: "Выключил RSS, как было"
+  did_dhcp_renew: "Получил у роутера новый адрес для «{adapter}»"
+  did_time_resync: "Синхронизировал время"
+  did_flush_dns: "Очистил кэш DNS"
+  did_flush_arp: "Очистил кэш ARP"
   report_title: whynet — отчёт о проверке сети Windows
   ai_prompt: >-
     Это отчёт программы whynet о проверке сетевых настроек Windows на компьютере пользователя:

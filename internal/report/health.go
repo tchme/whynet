@@ -41,8 +41,9 @@ func AreaStatus(finds []rules.Rule) map[string]string {
 	return st
 }
 
-// HealthAction is one action in plain words, as the window's list and the report show it.
-func HealthAction(t *locales.Texts, a health.Action, facts map[string]string) string {
+// HealthAction is one action in plain words, as the window's list and the report show it: what
+// whynet will do, or with done what it did (only for an action that went through).
+func HealthAction(t *locales.Texts, a health.Action, facts map[string]string, done bool) string {
 	h := t.Health
 	v := map[string]string{"value": a.Value, "adapter": a.Adapter, "n": strconv.Itoa(len(a.Lines)), "date": time.Now().Format("2006-01-02")}
 	key := "act_" + a.ID
@@ -64,6 +65,9 @@ func HealthAction(t *locales.Texts, a health.Action, facts map[string]string) st
 		if k == "rss" {
 			key = map[bool]string{true: "act_rss_on", false: "act_rss_off"}[val == "enabled"]
 		}
+	}
+	if done {
+		key = "did_" + strings.TrimPrefix(key, "act_")
 	}
 	if h[key] == "" {
 		return a.ID + " " + a.Value
@@ -125,7 +129,7 @@ func HealthMarkdown(res *health.Result, finds []rules.Rule, batches []HealthBatc
 			if !o.OK {
 				mark = "✗ " + o.Error
 			}
-			w("- %s — %s\n", HealthAction(t, o.Action, facts), mark)
+			w("- %s — %s\n", HealthAction(t, o.Action, facts, o.OK), mark)
 		}
 		if bt.Declined {
 			w("\n%s\n", h["declined"])
