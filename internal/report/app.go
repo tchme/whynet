@@ -21,6 +21,62 @@ func AppFileName(res *probe.AppResult) string {
 // AppMarkdown renders the app check's AI report: the program (its exe name only; the window title
 // never comes here), the recording, every server with what the program saw and what whynet found,
 // the raw data. With hide, the private values in res.Mask are replaced across the whole text.
+// writeUDP is the UDP section: one row per server, then when each one froze.
+func writeUDP(w func(string, ...any), t *locales.Texts, u probe.UDPRecording) {
+	a := t.App
+	w("\n## %s\n\n", a["udp_title"])
+	if u.State != "recorded" {
+		w("%s\n", cmpStr(a["udp_"+u.State], u.State))
+		return
+	}
+	if len(u.Servers) == 0 {
+		w("%s\n", a["udp_none"])
+		return
+	}
+	w("%s\n|---|---|---|---|---|---|---|---|---|\n", a["udp_cols"])
+	var gaps []string
+	for _, s := range u.Servers {
+		name := s.Name
+		if name == "" {
+			name = "—"
+		}
+		addr := fmt.Sprintf("%s:%d", s.IP, s.Port)
+		if s.FakeIP {
+			addr += "; " + a["fakeip"] + " " + orDash(s.RealIP)
+		}
+		ping := "—"
+		if s.Tries > 0 {
+			ping = strconv.FormatInt(s.PingMs, 10) + " (" + locales.Fill(t.Report["lost"], map[string]string{"lost": strconv.Itoa(s.Lost), "tries": strconv.Itoa(s.Tries)}) + ")"
+			if s.Lost == s.Tries {
+				ping = a["udp_ping_silent"]
+			}
+		}
+		stream := fmt.Sprintf("%.1f–%.1f s, %.0f %% active, interval %.1f ms, steady %v", s.FirstS, s.LastS, s.ActivePct, s.IntervalMs, s.Steady)
+		state := fmt.Sprintf("freezes %d, worst %.0f ms", s.Gaps, s.WorstGapMs)
+		switch {
+		case s.NoReply:
+			state = "no reply"
+		case s.Stopped:
+			state += ", stopped answering"
+		}
+		w("| %s | %s | %s | %d / %d | %d / %d | %s | %s | %s | %s |\n", cell(name), addr, cell(orDash(strings.TrimSpace(s.ASN+" "+s.Owner))),
+			s.Sent, s.Recv, s.SentBytes, s.RecvBytes, stream, state, cell(ping), s.NameFrom)
+		for _, at := range s.GapAtS {
+			gaps = append(gaps, fmt.Sprintf("%s at %.1f s", addr, at))
+		}
+	}
+	if len(gaps) > 0 {
+		w("\n%s: %s\n", a["udp_gaps"], strings.Join(gaps, "; "))
+	}
+}
+
+func cmpStr(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
 func AppMarkdown(res *probe.AppResult, v rules.Verdict, t *locales.Texts, hide bool) string {
 	facts := res.Facts()
 	d := t.AppDiagnoses[v.ID]
@@ -84,6 +140,7 @@ func AppMarkdown(res *probe.AppResult, v rules.Verdict, t *locales.Texts, hide b
 			w("| %s | %s | %s | %s | %s | %s | %s | %s |\n", cell(name), from, addr, cell(orDash(owner)), seen, cell(check), cell(ping), zapret)
 		}
 	}
+	writeUDP(w, t, res.UDP)
 
 	var raw bytes.Buffer
 	enc := json.NewEncoder(&raw)
