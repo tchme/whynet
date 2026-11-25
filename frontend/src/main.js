@@ -100,7 +100,7 @@ function verdictCard(v, extra = '') {
       <h2>${esc(v.title)}</h2><p>${esc(v.explain)}</p>
       <div class="advice"><b>${esc(ui.advice)}</b>${esc(v.advice)}</div>
       <div class="actions"><span class="split">
-        <button class="btn primary" data-act="open">${esc(ui.save_report)}</button><button class="btn primary" data-act="copy">⧉ ${esc(ui.copy)}</button>
+        <button class="btn primary" data-act="open">${esc(ui.save_report)}</button><button class="btn primary" data-act="copy">${esc(ui.copy)}</button>
       </span></div>${extra}</section>`;
 }
 
@@ -763,7 +763,7 @@ function healthHTML() {
       <div class="finds">${v.infos.map(findHTML).join('')}</div></details>` : '';
   const incomplete = v.areas?.filter(a => a.note) || [];
   const oks = v.ok_areas?.length ? `<details class="fold"><summary><b>${esc(H.ok_title)}</b> ${esc(v.ok_areas.join(', '))}</summary>${healthAreasHTML(v.areas.filter(a => !a.note))}</details>` : '';
-  const report = `<span class="split"><button class="btn" data-act="open">${esc(state.ui.save_report)}</button><button class="btn" data-act="copy">⧉ ${esc(state.ui.copy)}</button></span>`;
+  const report = `<span class="split"><button class="btn" data-act="open">${esc(state.ui.save_report)}</button><button class="btn" data-act="copy">${esc(state.ui.copy)}</button></span>`;
   const undo = v.undo ? `<button class="btn" data-act="health-undo">${esc(H.undo)}</button>` : '';
   const fixBtn = `<button class="btn primary" data-act="health-fix">${esc(v.fix_label)}</button>`;
   const repeat = `<button class="btn${v.after && !v.fixable ? ' primary' : ''}" data-act="health-repeat-site">${esc(state.ui.health_repeat_site)}</button>`;
