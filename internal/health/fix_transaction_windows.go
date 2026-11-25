@@ -38,6 +38,9 @@ type fixResult struct {
 
 type fixWork func() fixResult
 
+// UndoLegacyUnknown identifies old entries that require manual verification.
+const UndoLegacyUnknown = "the old journal does not record the changed value"
+
 func observe(e undoEntry, s fixState, err error) string {
 	switch {
 	case err != nil:
@@ -83,7 +86,7 @@ func settingUndo(e undoEntry, s fixState) (string, error) {
 		if stateMatchesAction(s, e.Undo) {
 			return "before", nil
 		}
-		return "", errors.New("the old journal does not record the changed value")
+		return "", errors.New(UndoLegacyUnknown)
 	}
 	state := observe(e, s, nil)
 	if state == "before" {
@@ -156,7 +159,7 @@ func prepareFix(req fixRequest, check func(string, uint32) bool) (p fixPrepared,
 			if stateMatchesAction(current, a) {
 				return fixPrepared{Done: true}, nil
 			}
-			return fail(errors.New("the old journal does not record the changed value"))
+			return fail(errors.New(UndoLegacyUnknown))
 		}
 		if current.equal(e.Before) {
 			return fixPrepared{Done: true}, nil

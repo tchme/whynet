@@ -180,6 +180,9 @@ func HealthUndoNotes(t *locales.Texts, facts map[string]string, issues []health.
 	for _, issue := range issues {
 		key := "undo_failed"
 		v := map[string]string{"error": issue.Reason}
+		if issue.Reason == health.UndoLegacyUnknown {
+			v["error"] = t.Health["undo_legacy_unknown"]
+		}
 		if issue.Action.ID != "" {
 			key, v["action"] = "undo_manual", HealthAction(t, issue.Action, facts, false)
 		}

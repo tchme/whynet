@@ -98,6 +98,19 @@ func TestHealthMarkdownKeepsEachBatchEvidence(t *testing.T) {
 	}
 }
 
+func TestLegacyUndoNoteUsesReportLanguage(t *testing.T) {
+	tx, err := locales.Load("ru")
+	if err != nil {
+		t.Fatal(err)
+	}
+	notes := HealthUndoNotes(tx, nil, []health.UndoIssue{{
+		Action: health.Action{ID: "winhttp_set"}, Reason: health.UndoLegacyUnknown,
+	}})
+	if len(notes) != 1 || !strings.Contains(notes[0], "старый журнал не содержит значения") || strings.Contains(notes[0], health.UndoLegacyUnknown) {
+		t.Fatalf("legacy journal note: %q", notes)
+	}
+}
+
 // Every action has words in ru.yaml, never the raw id.
 func TestHealthActionTexts(t *testing.T) {
 	tx, err := locales.Load("ru")
