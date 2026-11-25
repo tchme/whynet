@@ -583,6 +583,108 @@ export namespace main {
 	        this.recheck = source["recheck"];
 	    }
 	}
+	export class HealthFindingView {
+	    id: string;
+	    kind: string;
+	    title: string;
+	    text: string;
+	    tag: string;
+	    state?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new HealthFindingView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.kind = source["kind"];
+	        this.title = source["title"];
+	        this.text = source["text"];
+	        this.tag = source["tag"];
+	        this.state = source["state"];
+	    }
+	}
+	export class HealthOutcomeView {
+	    text: string;
+	    done_text?: string;
+	    status: string;
+	    error?: string;
+	    admin?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new HealthOutcomeView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.text = source["text"];
+	        this.done_text = source["done_text"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	        this.admin = source["admin"];
+	    }
+	}
+	export class HealthView {
+	    head: string;
+	    tone: string;
+	    areas: StepView[];
+	    finds: HealthFindingView[];
+	    infos: HealthFindingView[];
+	    ok_areas: string[];
+	    plan: HealthOutcomeView[];
+	    admin: boolean;
+	    fix_label: string;
+	    fix_note: string;
+	    fixable: boolean;
+	    after: boolean;
+	    done?: HealthOutcomeView[];
+	    declined?: boolean;
+	    undo: boolean;
+	    undo_list: HealthOutcomeView[];
+	
+	    static createFrom(source: any = {}) {
+	        return new HealthView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.head = source["head"];
+	        this.tone = source["tone"];
+	        this.areas = this.convertValues(source["areas"], StepView);
+	        this.finds = this.convertValues(source["finds"], HealthFindingView);
+	        this.infos = this.convertValues(source["infos"], HealthFindingView);
+	        this.ok_areas = source["ok_areas"];
+	        this.plan = this.convertValues(source["plan"], HealthOutcomeView);
+	        this.admin = source["admin"];
+	        this.fix_label = source["fix_label"];
+	        this.fix_note = source["fix_note"];
+	        this.fixable = source["fixable"];
+	        this.after = source["after"];
+	        this.done = this.convertValues(source["done"], HealthOutcomeView);
+	        this.declined = source["declined"];
+	        this.undo = source["undo"];
+	        this.undo_list = this.convertValues(source["undo_list"], HealthOutcomeView);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class HopView {
 	    ttl: number;
 	    addr: string;
@@ -620,6 +722,8 @@ export namespace main {
 	    app: Record<string, string>;
 	    version: string;
 	    browser: string;
+	    health: Record<string, string>;
+	    health_areas: StepView[];
 	
 	    static createFrom(source: any = {}) {
 	        return new InfoView(source);
@@ -634,6 +738,8 @@ export namespace main {
 	        this.app = source["app"];
 	        this.version = source["version"];
 	        this.browser = source["browser"];
+	        this.health = source["health"];
+	        this.health_areas = this.convertValues(source["health_areas"], StepView);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
