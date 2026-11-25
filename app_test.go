@@ -1,10 +1,14 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
+	"whynet/internal/health"
+	"whynet/internal/live"
 	"whynet/internal/probe"
 )
 
@@ -53,5 +57,81 @@ func TestKeepInside(t *testing.T) {
 		if got := keepInside(c.pos, c.size, c.lo, c.hi); got != c.want {
 			t.Errorf("keepInside(%d, %d, %d, %d) = %d, want %d", c.pos, c.size, c.lo, c.hi, got, c.want)
 		}
+	}
+}
+
+func TestReportsFollowRequestedMode(t *testing.T) {
+	a, err := NewApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.last = &probe.Result{Input: "https://site.example/?token=preview-secret", Host: "site.example"}
+	a.lastLive = &live.Result{Input: "game.example"}
+	a.lastApp = &probe.AppResult{Result: probe.Result{Host: "fixture.exe"}}
+	a.health = &healthState{res: &health.Result{}}
+	for _, tc := range []struct{ mode, prefix string }{
+		{"health", "whynet-windows-"}, {"site", "whynet-site.example-"},
+		{"app", "whynet-app-fixture.exe-"}, {"live", "whynet-stability-"}, {"site", "whynet-site.example-"},
+	} {
+		md, name := a.report(tc.mode, true)
+		preview, err := a.Report(tc.mode, true)
+		if err != nil || md == "" || md != preview || !strings.HasPrefix(name, tc.prefix) {
+			t.Errorf("mode %s: filename %q, preview matches %v, error %v", tc.mode, name, preview == md, err)
+		}
+		if strings.Contains(md, "preview-secret") {
+			t.Errorf("mode %s: masked report contains a private query", tc.mode)
+		}
+	}
+	if md, err := a.Report("site", false); err != nil || !strings.Contains(md, "preview-secret") {
+		t.Fatalf("explicit unmasked site preview did not include the original query, error %v", err)
+	}
+	a.lastApp = nil
+	if _, err := a.Report("app", true); err == nil {
+		t.Fatal("an empty tab fell back to another result")
+	}
+	if err := a.CopyReport("app", true); err == nil {
+		t.Fatal("an empty tab tried to copy a report")
+	}
+}
+
+func TestHARComparisonUsesSamePage(t *testing.T) {
+	a, err := NewApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := &probe.Result{Input: "https://site.example/first", Host: "site.example"}
+	a.last = first
+	record := func(page string) []byte {
+		entries := make([]map[string]any, 5)
+		for i := range entries {
+			entries[i] = map[string]any{"request": map[string]string{"url": page}, "response": map[string]int{"status": 200}}
+		}
+		out, err := json.Marshal(map[string]any{"log": map[string]any{"entries": entries}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	page := "https://Site.Example:443/second?private=har-secret#fragment"
+	if got, err := a.readHAR(record(page)); err != nil || !got.Recheck {
+		t.Fatalf("a different page must be rechecked: %+v %v", got, err)
+	}
+	failure := errors.New("fixture failed")
+	if _, err := a.compareHAR(func(string) (*probe.Result, error) { return nil, failure }); !errors.Is(err, failure) || a.last != first {
+		t.Fatalf("failed comparison replaced the previous result: %v", err)
+	}
+	if _, err := a.compareHAR(func(site string) (*probe.Result, error) {
+		if site != "https://site.example/second" {
+			t.Fatalf("fresh check got %q", site)
+		}
+		return &probe.Result{Input: site, Host: "site.example"}, nil
+	}); err != nil || a.last.Input != "https://site.example/second" || len(first.Steps) != 0 {
+		t.Fatalf("wrong page compared: %+v, error %v", a.last, err)
+	}
+	if got, err := a.readHAR(record("https://site.example/second?changed=1")); err != nil || got.Recheck {
+		t.Fatalf("the same sanitized page should reuse the check: %+v %v", got, err)
+	}
+	if _, err := a.readHAR(record("https://site.example:8443/second")); err == nil {
+		t.Fatal("an unsupported HTTPS port was allowed in the comparison")
 	}
 }

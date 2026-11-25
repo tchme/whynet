@@ -18,7 +18,7 @@ export function CheckUpdate():Promise<update.Release>;
 
 export function CompareHAR():Promise<main.CheckView>;
 
-export function CopyReport(arg1:boolean):Promise<void>;
+export function CopyReport(arg1:string,arg2:boolean):Promise<void>;
 
 export function FinishApp():Promise<void>;
 
@@ -46,9 +46,11 @@ export function ReadHARFile(arg1:string):Promise<main.HARInfo>;
 
 export function RecordApp(arg1:string,arg2:boolean):Promise<main.AppView>;
 
-export function Report(arg1:boolean):Promise<string>;
+export function RepeatSiteCheck():Promise<main.CheckView>;
 
-export function SaveReport(arg1:boolean):Promise<string>;
+export function Report(arg1:string,arg2:boolean):Promise<string>;
+
+export function SaveReport(arg1:string,arg2:boolean):Promise<string>;
 
 export function StartLive(arg1:string,arg2:boolean,arg3:boolean):Promise<main.LiveStartView>;
 

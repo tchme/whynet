@@ -1,6 +1,7 @@
 package probe
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -9,12 +10,128 @@ import (
 	"errors"
 	"math/big"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"reflect"
 	"syscall"
 	"testing"
 	"time"
 )
+
+func TestHTTPKeepsPageAddressOnTLS(t *testing.T) {
+	type visit struct{ host, target, referer, authorization string }
+	seenHTTP := make(chan visit, 8)
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenHTTP <- visit{r.Host, r.URL.RequestURI(), r.Referer(), r.Header.Get("Authorization")}
+		if r.Host == "127.0.0.1" && r.URL.Path == "/" {
+			http.Redirect(w, r, "http://filter.example/stub", http.StatusFound)
+			return
+		}
+		w.Write([]byte("<title>ISP filter</title>"))
+	}))
+	defer plain.Close()
+
+	seenTLS := make(chan string, 12)
+	secure := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenTLS <- r.URL.RequestURI()
+		switch r.URL.Path {
+		case "/original-private-path":
+			w.Header().Set("Referrer-Policy", "unsafe-url")
+			http.Redirect(w, r, "/second?key=redirect-marker", http.StatusFound)
+		case "/second":
+			w.Header().Set("Referrer-Policy", "unsafe-url")
+			http.Redirect(w, r, "http://user:password@filter.example/never?key=downgrade-marker#fragment-marker", http.StatusTemporaryRedirect)
+		case "/ordinary":
+			http.Redirect(w, r, "/ready?key=ordinary-marker", http.StatusFound)
+		case "/ready":
+			w.Write([]byte("<title>Ready</title>"))
+		}
+	}))
+	defer secure.Close()
+	roots := x509.NewCertPool()
+	roots.AddCert(secure.Certificate())
+	env := Env{Timeout: time.Second, RootCAs: roots, Markers: Markers{Stubs: []string{"filter.example"}},
+		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			_, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			listener := plain.Listener
+			if port == "443" {
+				listener = secure.Listener
+			}
+			return (&net.Dialer{}).DialContext(ctx, network, listener.Addr().String())
+		},
+	}
+	check := func(path string, tlsOK bool) (Step, *prober) {
+		p := &prober{ctx: context.Background(), host: "127.0.0.1", path: path, ip: "127.0.0.1", env: env, tlsOK: tlsOK, res: &Result{}}
+		s := Step{Facts: map[string]string{}, Evidence: map[string]any{}}
+		p.http(&s)
+		return s, p
+	}
+	assertTLS := func(t *testing.T, want ...string) {
+		t.Helper()
+		for _, target := range want {
+			select {
+			case got := <-seenTLS:
+				if got != target {
+					t.Errorf("HTTPS target = %q, want %q", got, target)
+				}
+			default:
+				t.Fatalf("did not reach HTTPS target %q", target)
+			}
+		}
+	}
+	t.Run("fallback", func(t *testing.T) {
+		s, _ := check("/original-private-path?key=input-marker", false)
+		if s.Facts["http.stub"] != "true" || s.Facts["http.scheme"] != "http" {
+			t.Fatalf("fallback lost the ISP stub: %v", s.Facts)
+		}
+		for _, want := range []visit{{host: "127.0.0.1", target: "/"}, {host: "filter.example", target: "/stub"}} {
+			select {
+			case got := <-seenHTTP:
+				if got != want {
+					t.Errorf("HTTP visit = %+v, want %+v", got, want)
+				}
+			default:
+				t.Fatalf("expected HTTP visit %+v", want)
+			}
+		}
+	})
+	t.Run("downgrade", func(t *testing.T) {
+		s, p := check("/original-private-path?key=input-marker", true)
+		assertTLS(t, "/original-private-path?key=input-marker", "/second?key=redirect-marker")
+		select {
+		case got := <-seenHTTP:
+			t.Errorf("unsafe HTTP visit: %+v", got)
+		default:
+		}
+		if s.Facts["http.status"] != "307" || s.Facts["http.redirect_blocked"] != "true" || p.pageOK {
+			t.Errorf("blocked redirect looked like a loaded page: %v, pageOK=%v", s.Facts, p.pageOK)
+		}
+		redirects, _ := s.Evidence["redirects"].([]map[string]any)
+		if len(redirects) != 2 || redirects[1]["to"] != "http://user:password@filter.example/never?key=downgrade-marker#fragment-marker" {
+			t.Errorf("lost raw redirect evidence: %v", redirects)
+		}
+		var browserTarget string
+		p.env.Browser = func(_ context.Context, target string) BrowserResult {
+			browserTarget = target
+			return BrowserResult{Status: "nav_failed"}
+		}
+		p.browser(&Step{Facts: map[string]string{}, Evidence: map[string]any{}})
+		if browserTarget != "https://127.0.0.1/original-private-path?key=input-marker" {
+			t.Errorf("browser target = %q, want the original HTTPS address", browserTarget)
+		}
+	})
+	t.Run("secure redirect", func(t *testing.T) {
+		s, p := check("/ordinary", true)
+		assertTLS(t, "/ordinary", "/ready?key=ordinary-marker")
+		if s.Facts["http.status"] != "200" || !p.pageOK || p.finalURL.RequestURI() != "/ready?key=ordinary-marker" {
+			t.Errorf("HTTPS redirect did not reach the page: %v, final URL=%v", s.Facts, p.finalURL)
+		}
+	})
+}
 
 func TestTarget(t *testing.T) {
 	cases := []struct{ in, host, path string }{
@@ -220,8 +337,8 @@ func TestSameSite(t *testing.T) {
 		{"a.co.uk", "b.co.uk", false},
 		{"194.67.1.14", "rutracker.org", false},
 	} {
-		if got := sameSite(c.a, c.b); got != c.want {
-			t.Errorf("sameSite(%s, %s) = %v", c.a, c.b, got)
+		if got := SameSite(c.a, c.b); got != c.want {
+			t.Errorf("SameSite(%s, %s) = %v", c.a, c.b, got)
 		}
 	}
 }

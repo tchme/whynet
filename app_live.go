@@ -21,7 +21,7 @@ import (
 
 // liveTones colour the stability verdicts; anything not listed is "bad".
 var liveTones = map[string]string{
-	"live_stable": "ok", "live_too_short": "warn", "live_router_silent": "warn",
+	"live_stable": "ok", "live_too_short": "warn", "live_router_silent": "warn", "live_partial": "warn",
 	"live_wifi": "warn", "live_lan": "warn", "live_vpn": "warn", "live_pc_cpu": "warn", "live_pc_frames": "warn",
 }
 
@@ -185,7 +185,7 @@ func (a *App) FinishLive() (*LiveView, error) {
 	res := s.Finish(a.ctx)
 	v := rules.Match(a.liveRules, res.Facts)
 	a.mu.Lock()
-	a.lastLive, a.liveVerdict, a.lastKind = &res, v, "live"
+	a.lastLive, a.liveVerdict = &res, v
 	prev := a.prevLive
 	a.mu.Unlock()
 	return a.liveView(&res, v, prev), nil

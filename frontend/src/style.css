@@ -92,6 +92,10 @@ main { flex: 1; overflow: auto; position: relative; }
 .m { width: min(720px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column; gap: 12px; padding: 18px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 20px 50px -20px rgba(0, 0, 0, .5); }
 .m h2 { margin: 0; font: 600 17px var(--font); }
 .m p { margin: 0; font-size: 13.5px; color: var(--muted); }
+#browser-consent { width: min(520px, calc(100% - 32px)); color: var(--fg); }
+#browser-consent:not([open]) { display: none; }
+#browser-consent::backdrop { background: var(--scrim); }
+body:has(#browser-consent[open]) .ask input { visibility: hidden; }
 .m label { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; cursor: pointer; }
 .m label input { margin-top: 3px; accent-color: var(--accent); }
 .m pre { flex: 1 1 360px; min-height: 0; overflow: auto; margin: 0; padding: 12px; background: var(--panel); border-radius: 8px; font: 11.5px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
@@ -233,14 +237,14 @@ kbd { font: 500 12px var(--mono); background: var(--panel); border: 1px solid va
 .finds { display: grid; gap: 8px; }
 .find { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 4px 12px; align-items: start; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
 .find .ico { width: 26px; height: 26px; font-size: 13px; background: var(--bad-bg); color: var(--bad); }
-.find.advice .ico { background: var(--warn-bg); color: var(--warn); }
+.find.advice .ico, .find.unconfirmed .ico, .find.gone .ico { background: var(--warn-bg); color: var(--warn); }
 .find.info .ico { background: var(--panel); color: var(--muted); }
 .find.fixed .ico { background: var(--ok-bg); color: var(--ok); }
 .find.left { border-color: var(--bad); }
 .find h3 { margin: 2px 0 0; font: 600 15.5px/1.35 var(--font); }
 .find p { margin: 0; grid-column: 2 / -1; font-size: 13.5px; color: var(--muted); }
 .ftag { font: 500 12px var(--font); white-space: nowrap; padding: 3px 9px; border-radius: 999px; background: rgba(52, 195, 161, .12); color: var(--accent); }
-.find.advice .ftag, .find.info .ftag { background: var(--panel); color: var(--muted); }
+.find.advice .ftag, .find.info .ftag, .find.unconfirmed .ftag, .find.gone .ftag { background: var(--panel); color: var(--muted); }
 .find.fixed .ftag { background: var(--ok-bg); color: var(--ok); }
 .find.left .ftag { background: var(--bad-bg); color: var(--bad); }
 .fold { border-top: 1px solid var(--line); padding: 8px 2px 0; color: var(--muted); font-size: 13.5px; }
@@ -259,3 +263,4 @@ kbd { font: 500 12px var(--mono); background: var(--panel); border: 1px solid va
 .hbody .spin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 8px; }
 .hhead .spin { margin: 0; }
 .areas .spin { width: 12px; height: 12px; margin: 0; }
+.health-note { white-space: pre-line; overflow-wrap: anywhere; }

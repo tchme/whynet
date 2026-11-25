@@ -30,8 +30,8 @@ export function CompareHAR() {
   return window['go']['main']['App']['CompareHAR']();
 }
 
-export function CopyReport(arg1) {
-  return window['go']['main']['App']['CopyReport'](arg1);
+export function CopyReport(arg1, arg2) {
+  return window['go']['main']['App']['CopyReport'](arg1, arg2);
 }
 
 export function FinishApp() {
@@ -86,12 +86,16 @@ export function RecordApp(arg1, arg2) {
   return window['go']['main']['App']['RecordApp'](arg1, arg2);
 }
 
-export function Report(arg1) {
-  return window['go']['main']['App']['Report'](arg1);
+export function RepeatSiteCheck() {
+  return window['go']['main']['App']['RepeatSiteCheck']();
 }
 
-export function SaveReport(arg1) {
-  return window['go']['main']['App']['SaveReport'](arg1);
+export function Report(arg1, arg2) {
+  return window['go']['main']['App']['Report'](arg1, arg2);
+}
+
+export function SaveReport(arg1, arg2) {
+  return window['go']['main']['App']['SaveReport'](arg1, arg2);
 }
 
 export function StartLive(arg1, arg2, arg3) {

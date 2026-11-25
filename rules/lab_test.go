@@ -160,7 +160,7 @@ func TestLab(t *testing.T) {
 		env        probe.Env
 		want       string
 	}{
-		{"works", "example.com", l.env(ip("10.0.0.1"), nil, ip("10.0.0.1"), nil), "all_ok"},
+		{"HTTPS works without browser", "example.com", l.env(ip("10.0.0.1"), nil, ip("10.0.0.1"), nil), "http_reached"},
 		{"DPI cuts the name", "example.com", l.env(ip("10.0.0.2"), nil, ip("10.0.0.2"), nil), "sni_blocked"},
 		{"ISP stub over HTTP", "example.com", l.env(ip("10.0.0.3"), nil, ip("10.0.0.3"), nil), "isp_stub"},
 		{"spoofed DNS", "example.com", l.env(ip("10.0.0.9"), nil, ip("10.0.0.1"), nil), "dns_spoofed"},

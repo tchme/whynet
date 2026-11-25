@@ -11,7 +11,6 @@ import (
 
 	"whynet/internal/probe"
 	"whynet/locales"
-	"whynet/rules"
 )
 
 // The person's own browser record (HAR): read it, then compare it with whynet's check of the same site.
@@ -71,34 +70,60 @@ func (a *App) readHAR(b []byte) (HARInfo, error) {
 	case err != nil:
 		return HARInfo{}, errors.New(a.t.UI["own_not"])
 	}
+	page, err := probe.HARPage(rec.PageURL)
+	if err != nil {
+		return HARInfo{}, errors.New(a.t.UI["own_unsupported_page"])
+	}
+	rec.PageURL = page
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.ownRec = rec
-	return HARInfo{Site: rec.Site, Requests: rec.Requests, Recheck: a.last == nil || !probe.SameSite(a.last.Host, rec.Site)}, nil
+	return HARInfo{Site: rec.Site, Requests: rec.Requests, Recheck: !hasPage(a.last, page)}, nil
 }
 
-// CompareHAR adds the record read last to the last check as its "own" step, checking the record's
-// site first when the last check was of another one, and gives the new verdict.
+// CompareHAR adds the latest record to a check of the same page.
 func (a *App) CompareHAR() (*CheckView, error) {
+	return a.compareHAR(func(site string) (*probe.Result, error) {
+		return a.collectSite(site, probe.DefaultEnv(a.markers), 2*time.Minute)
+	})
+}
+
+func hasPage(res *probe.Result, page string) bool {
+	if res == nil {
+		return false
+	}
+	previous, err := probe.HARPage(res.Input)
+	return err == nil && previous == page
+}
+
+func (a *App) compareHAR(check func(string) (*probe.Result, error)) (*CheckView, error) {
+	if !a.begin() {
+		return nil, errors.New(a.t.UI["busy"])
+	}
+	defer a.end()
 	a.mu.Lock()
 	rec, last := a.ownRec, a.last
 	a.mu.Unlock()
 	if rec == nil {
 		return nil, errors.New(a.t.UI["own_not"])
 	}
-	if last == nil || !probe.SameSite(last.Host, rec.Site) {
-		if _, err := a.check(rec.PageURL, probe.DefaultEnv(a.markers), 2*time.Minute); err != nil {
+	if !hasPage(last, rec.PageURL) {
+		var err error
+		last, err = check(rec.PageURL)
+		if err != nil {
 			return nil, err
 		}
 	}
-	a.mu.Lock()
-	res := a.last
-	res.Steps = slices.DeleteFunc(res.Steps, func(s probe.Step) bool { return s.ID == "own" }) // a new record replaces the old
-	res.Steps = append(res.Steps, probe.OwnStep(rec, res))
-	a.verdict, a.lastKind = rules.Match(a.rules, res.Facts()), "site" // the report is of this check again
-	v := a.verdict
-	a.mu.Unlock()
-	return a.view(res, v), nil
+	res := *last
+	res.Steps = slices.DeleteFunc(slices.Clone(last.Steps), func(s probe.Step) bool { return s.ID == "own" })
+	record := *rec
+	record.Files = make([]*probe.OwnFile, len(rec.Files))
+	for i, file := range rec.Files {
+		fileCopy := *file
+		record.Files[i] = &fileCopy
+	}
+	res.Steps = append(res.Steps, probe.OwnStep(&record, &res))
+	return a.finishSite(&res), nil
 }
 
 // OwnView is the record's table in "Details".

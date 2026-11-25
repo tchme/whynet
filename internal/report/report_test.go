@@ -1,6 +1,7 @@
 package report
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +10,72 @@ import (
 	"whynet/locales"
 	"whynet/rules"
 )
+
+func TestMarkdownHidesSiteURLDetails(t *testing.T) {
+	tx, err := locales.Load("ru")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := &probe.Result{Host: "example.com", Steps: []probe.Step{
+		{ID: "http", Status: "warn", Facts: map[string]string{"http.status": "307"}, Evidence: map[string]any{
+			"redirects": []map[string]any{
+				{"status": 302, "to": "https://redirect-user:redirect-pass@first.example/one?key=first-query#first-fragment"},
+				{"status": 307, "to": "http://second.example/two?key=second-query"},
+			},
+			"final_url": "https://first.example/final?key=final-query#final-fragment",
+			"headers":   map[string]string{"Location": "/relative?key=relative-query#relative-fragment"},
+			"error":     `Get "https://example.com/error?key=error-query": failed to parse Location header "../%oops?key=invalid-location": parse "../%oops?key=invalid-location": invalid URL escape "%oo"`,
+		}},
+		{ID: "browser", Status: "fail", Facts: map[string]string{"br.error": "failed on https://example.com/browser?key=browser-query"},
+			Evidence: map[string]any{"browser": probe.BrowserResult{Error: "failed on https://example.com/browser?key=browser-query"}}},
+		{ID: "res", Status: "warn", Evidence: map[string]any{"hosts": []*probe.HostCheck{{Host: "cdn.example", Result: "ip",
+			Detail: `Get "https://cdn.example/asset?key=resource-query": timeout`, Sample: "https://cdn.example/asset"}}}},
+		{ID: "own", Status: "warn", Evidence: map[string]any{"record": &probe.OwnRecord{Site: "example.com", PageURL: "https://example.com/page", Files: []*probe.OwnFile{
+			{URL: "https://img.example/image.png", Kind: "image", Error: "net::ERR_FAILED https://img.example/image.png?key=har-query"},
+		}}}},
+	}}
+	for _, scheme := range []string{"", "https://"} {
+		t.Run("input="+scheme, func(t *testing.T) {
+			res.Input = scheme + "input-user:input-password@example.com/path?key=input-query#input-fragment"
+			before, err := json.Marshal(res)
+			if err != nil {
+				t.Fatal(err)
+			}
+			v := rules.Verdict{ID: "unknown", Confidence: "likely"}
+			hidden, shown := Markdown(res, v, tx, true), Markdown(res, v, tx, false)
+			for _, private := range []string{"input-user", "input-password", "input-query", "input-fragment", "redirect-user", "redirect-pass",
+				"first-query", "first-fragment", "second-query", "final-query", "final-fragment", "relative-query", "relative-fragment",
+				"error-query", "invalid-location", "browser-query", "resource-query", "har-query"} {
+				if strings.Contains(hidden, private) {
+					t.Errorf("masked report leaks %q", private)
+				}
+				if !strings.Contains(shown, private) {
+					t.Errorf("unmasked report lost %q", private)
+				}
+			}
+			for _, want := range []string{scheme + "example.com/path", "https://first.example/one", "http://second.example/two", "https://first.example/final",
+				`"Location": "/relative"`, "../%oops", "https://example.com/error", "https://example.com/browser", "https://cdn.example/asset",
+				"https://img.example/image.png", "`http.status`: 307", `"status": 302`, `"status": 307`} {
+				if !strings.Contains(hidden, want) {
+					t.Errorf("masked report lost %q", want)
+				}
+			}
+			_, raw, _ := strings.Cut(hidden, "````json\n")
+			raw, _, _ = strings.Cut(raw, "````\n")
+			if !json.Valid([]byte(raw)) {
+				t.Error("masked report contains invalid JSON")
+			}
+			after, err := json.Marshal(res)
+			if err != nil || string(after) != string(before) {
+				t.Error("rendering changed raw site evidence")
+			}
+		})
+	}
+	res.Steps[0].Evidence["headers"] = map[string]string{"Location": "//location-user:location-pass@hop.example/end?key=location-query"}
+	if hidden := Markdown(res, rules.Verdict{}, tx, true); !strings.Contains(hidden, `"Location": "//hop.example/end"`) || strings.Contains(hidden, "location-pass") {
+		t.Error("scheme-relative Location was not masked")
+	}
+}
 
 func TestMarkdownHidesPrivateValues(t *testing.T) {
 	tx, err := locales.Load("ru")

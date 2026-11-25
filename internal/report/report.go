@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"whynet/internal/probe"
@@ -16,7 +18,7 @@ import (
 )
 
 // Version is a variable so a test build can claim to be older: -ldflags "-X whynet/internal/report.Version=0.1.0".
-var Version = "0.7.0"
+var Version = "1.0.0"
 
 // cell makes text safe inside a Markdown table cell.
 func cell(s string) string {
@@ -29,24 +31,31 @@ func FileName(res *probe.Result) string {
 	return fmt.Sprintf("whynet-%s-%s.md", host, res.Started.Format("2006-01-02-1504"))
 }
 
-// Markdown renders the report. With hide, the private values in res.Mask are
-// replaced across the whole text, raw data included.
+// Markdown renders a site report. URL fields and URL details in diagnostics are
+// masked on export only. The original result can still be used for a raw export.
 func Markdown(res *probe.Result, v rules.Verdict, t *locales.Texts, hide bool) string {
 	facts := res.Facts()
 	d := t.Diagnoses[v.ID]
 	r := t.Report
 	var b strings.Builder
 	w := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
+	input := strings.TrimSpace(res.Input)
+	if hide {
+		input = maskSiteURL(input, true)
+	}
 
 	w("# %s\n\n", r["title"])
 	w("> **%s** %s\n\n", r["ai_label"], r["ai_prompt"])
 
 	w("## %s\n\n", r["summary"])
-	w("- %s: %s (`%s`)\n", r["site"], strings.TrimSpace(res.Input), res.Host)
+	w("- %s: %s (`%s`)\n", r["site"], input, res.Host)
 	w("- %s: %s\n", r["time"], res.Started.Format("2006-01-02 15:04:05 -07:00"))
 	w("- %s: **%s** (%s). %s\n", r["verdict"], d.Title, t.Confidence[v.Confidence], locales.Fill(d.Explain, facts))
 	w("- %s: %s\n", r["advice"], locales.Fill(d.Advice, facts))
 	writeEnv(w, t, res.Steps, facts, hide)
+	if hide {
+		w("- %s\n", r["privacy_site_urls"])
+	}
 	writeSteps(w, t, res.Steps)
 
 	for _, s := range res.Steps {
@@ -137,11 +146,18 @@ func Markdown(res *probe.Result, v rules.Verdict, t *locales.Texts, hide bool) s
 		}
 	}
 
+	var check any = res
+	if hide {
+		text := maskSiteText(b.String())
+		b.Reset()
+		b.WriteString(text)
+		check = maskedSiteEvidence(res)
+	}
 	var raw bytes.Buffer
 	enc := json.NewEncoder(&raw)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(map[string]any{"verdict": v, "check": res}); err != nil {
+	if err := enc.Encode(map[string]any{"verdict": v, "check": check}); err != nil {
 		raw.WriteString(err.Error())
 	}
 	// four backticks: the raw data may itself contain a ``` fence
@@ -154,6 +170,83 @@ func Markdown(res *probe.Result, v rules.Verdict, t *locales.Texts, hide bool) s
 		}
 	}
 	return out
+}
+
+var (
+	urlAuthority = regexp.MustCompile(`^(?:[A-Za-z][A-Za-z0-9+.-]*:)?//`)
+	embeddedURL  = regexp.MustCompile(`(?i)(?:(?:https?|wss?):)?//[^\s"<>\x60]+`)
+	quotedURL    = regexp.MustCompile(`(?:(?:Location header|parse) )?"(?:[^"\\]|\\.)*"`)
+)
+
+// Split the delimiters directly so a malformed URL in an error can still be masked.
+func maskSiteURL(raw string, input bool) string {
+	if i := strings.IndexAny(raw, "?#"); i >= 0 {
+		raw = raw[:i]
+	}
+	prefix := urlAuthority.FindString(raw)
+	if prefix == "" && !input {
+		return raw
+	}
+	authority, tail, hasPath := strings.Cut(raw[len(prefix):], "/")
+	if i := strings.LastIndexByte(authority, '@'); i >= 0 {
+		authority = authority[i+1:]
+	}
+	if hasPath {
+		return prefix + authority + "/" + tail
+	}
+	return prefix + authority
+}
+
+func maskSiteText(text string) string {
+	// net/http quotes URLs, including a malformed relative Location, in its errors.
+	text = quotedURL.ReplaceAllStringFunc(text, func(quoted string) string {
+		i := strings.IndexByte(quoted, '"')
+		raw, err := strconv.Unquote(quoted[i:])
+		if err != nil || i == 0 && !urlAuthority.MatchString(raw) {
+			return quoted
+		}
+		return quoted[:i] + strconv.Quote(maskSiteURL(raw, false))
+	})
+	return embeddedURL.ReplaceAllStringFunc(text, func(raw string) string { return maskSiteURL(raw, false) })
+}
+
+// Walk a detached JSON value so all diagnostics, including nested browser error keys, are
+// masked as strings before JSON escaping. Every numeric value retains its original precision.
+func maskedSiteEvidence(res *probe.Result) any {
+	raw, err := json.Marshal(res)
+	if err != nil {
+		return nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var check map[string]any
+	if err := dec.Decode(&check); err != nil {
+		return nil
+	}
+	check["input"] = maskSiteURL(strings.TrimSpace(res.Input), true)
+	return maskSiteValue(check)
+}
+
+func maskSiteValue(value any) any {
+	switch value := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(value))
+		for key, field := range value {
+			if s, ok := field.(string); ok && (key == "to" || key == "final_url" || strings.EqualFold(key, "Location")) {
+				out[key] = maskSiteURL(s, false)
+				continue
+			}
+			out[maskSiteText(key)] = maskSiteValue(field)
+		}
+		return out
+	case []any:
+		for i, field := range value {
+			value[i] = maskSiteValue(field)
+		}
+	case string:
+		return maskSiteText(value)
+	}
+	return value
 }
 
 // writeEnv writes the summary lines about this computer and its network: OS, ISP, the path to

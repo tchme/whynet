@@ -28,10 +28,12 @@ var Areas = []string{"health_adapter", "health_address", "health_dns", "health_p
 
 // Result is one health check.
 type Result struct {
-	Started time.Time         `json:"started"`
-	Seconds float64           `json:"seconds"`
-	Steps   []probe.Step      `json:"steps"`
-	Mask    map[string]string `json:"-"`
+	Started         time.Time         `json:"started"`
+	Seconds         float64           `json:"seconds"`
+	Steps           []probe.Step      `json:"steps"`
+	Mask            map[string]string `json:"-"`
+	ActiveHostLines map[string]bool   `json:"-"` // exact active lines, for checking an applied hosts comment
+	adapters        []probe.Adapter
 }
 
 // Facts merges every area's facts.
@@ -64,13 +66,14 @@ const (
 )
 
 type checker struct {
-	ctx      context.Context
-	m        probe.Markers
-	start    time.Time
-	local    func() probe.Local
-	adapters []probe.Adapter // up, read once at the start
-	adErr    error
-	errs0    map[uint64]uint64
+	ctx       context.Context
+	m         probe.Markers
+	start     time.Time
+	local     func() probe.Local
+	adapters  []probe.Adapter // up, read once at the start
+	adErr     error
+	errs0     map[uint64]uint64
+	hostLines map[string]bool
 }
 
 // Run checks every area at once and calls onStep as each one finishes (from one goroutine at a time).
@@ -126,7 +129,7 @@ func Run(ctx context.Context, m probe.Markers, onStep func(probe.Step)) *Result 
 		}()
 	}
 	wg.Wait()
-	res := &Result{Started: c.start, Mask: map[string]string{}}
+	res := &Result{Started: c.start, Mask: map[string]string{}, ActiveHostLines: c.hostLines, adapters: c.physical()}
 	for _, id := range Areas {
 		res.Steps = append(res.Steps, done[id])
 	}
@@ -169,7 +172,9 @@ func (c *checker) view(a probe.Adapter) map[string]any {
 
 func (c *checker) adapter(s *probe.Step) {
 	if c.adErr != nil {
+		s.Status = "error"
 		s.Evidence["error"] = c.adErr.Error()
+		return
 	}
 	var all []map[string]any
 	for _, a := range c.adapters {
@@ -186,6 +191,7 @@ func (c *checker) adapter(s *probe.Step) {
 	s.Facts["health.link_slow"] = strconv.FormatBool(m.Kind == "cable" && m.Mbps > 0 && m.Mbps <= slowLinkMbps)
 	if m.Kind == "wifi" {
 		if w, ok, err := live.ReadWiFi(m.GUID); err != nil {
+			s.Status = "error"
 			s.Evidence["wifi_error"] = err.Error()
 		} else if ok {
 			s.Facts["health.wifi_signal"] = strconv.Itoa(w.Signal)
@@ -199,6 +205,7 @@ func (c *checker) adapter(s *probe.Step) {
 	select {
 	case <-time.After(time.Until(c.start.Add(errorWindow))):
 	case <-c.ctx.Done():
+		s.Status = "skip"
 		return
 	}
 	if n0, ok := c.errs0[m.LUID]; ok {
@@ -211,6 +218,11 @@ func (c *checker) adapter(s *probe.Step) {
 }
 
 func (c *checker) address(s *probe.Step) {
+	if c.adErr != nil {
+		s.Status = "error"
+		s.Evidence["adapter_error"] = c.adErr.Error()
+		return
+	}
 	m := c.main()
 	s.Facts["health.gateway"] = "none"
 	if m != nil {
@@ -233,6 +245,9 @@ func (c *checker) address(s *probe.Step) {
 		s.Facts["health.apipa"] = "false"
 	}
 	s.Facts["health.connectivity"] = connectivity()
+	if s.Facts["health.connectivity"] == "unknown" {
+		s.Status = "error"
+	}
 	var vpn []string
 	for _, a := range c.adapters {
 		if c.m.IsVPN(a) {
@@ -261,15 +276,20 @@ func (c *checker) address(s *probe.Step) {
 
 // dnsServer is one DNS server an adapter uses, and how it answered.
 type dnsServer struct {
-	Adapter string `json:"adapter"`
-	Server  string `json:"server"`
-	Manual  bool   `json:"manual"`
-	Ms      int64  `json:"ms,omitempty"`
-	Error   string `json:"error,omitempty"`
+	Adapter   string `json:"adapter"`
+	Server    string `json:"server"`
+	Manual    bool   `json:"manual"`
+	Ms        int64  `json:"ms,omitempty"`
+	Error     string `json:"error,omitempty"`
+	index     uint32
+	automatic bool
 }
 
 func (c *checker) dns(s *probe.Step) {
 	s.Facts["health.dnscache"] = probe.ServiceState("Dnscache")
+	if s.Facts["health.dnscache"] == "unknown" || c.adErr != nil {
+		s.Status = "error"
+	}
 	var servers []dnsServer
 	var fixes []map[string]any
 	for _, a := range c.physical() {
@@ -278,7 +298,8 @@ func (c *checker) dns(s *probe.Step) {
 			if strings.HasPrefix(ip, "fec0:") {
 				continue // the old site-local placeholder Windows lists when there is no IPv6 DNS
 			}
-			servers = append(servers, dnsServer{Adapter: a.Name, Server: ip, Manual: slices.Contains(manual, ip)})
+			servers = append(servers, dnsServer{Adapter: a.Name, Server: ip, Manual: slices.Contains(manual, ip),
+				index: a.Index, automatic: slices.Contains(dhcp, ip)})
 		}
 		// Servers set by hand that don't answer, while the router's (from DHCP) would: back to automatic.
 		if len(manual) > 0 && len(dhcp) > 0 && a.DHCP {
@@ -370,10 +391,12 @@ func queryDNS(ctx context.Context, server string) (time.Duration, error) {
 
 func (c *checker) proxy(s *probe.Step) {
 	on, server, pac, err := inetProxy()
-	if err != nil {
-		s.Evidence["error"] = err.Error()
-	}
 	s.Facts["health.proxy"], s.Facts["health.proxy_pac"] = "off", "none"
+	if err != nil {
+		s.Status = "error"
+		s.Evidence["error"] = err.Error()
+		s.Facts["health.proxy"], s.Facts["health.proxy_pac"] = "unknown", "unknown"
+	}
 	if on && server != "" {
 		s.Facts["health.proxy"] = proxyState(c.ctx, proxyAddrs(server))
 		s.Facts["health.proxy_server"] = server
@@ -386,6 +409,7 @@ func (c *checker) proxy(s *probe.Step) {
 	ws, bypass, err := winHTTPProxy()
 	switch {
 	case err != nil:
+		s.Status = "error"
 		s.Facts["health.winhttp"] = "unknown"
 		s.Evidence["winhttp_error"] = err.Error()
 	case ws == "":
@@ -469,15 +493,22 @@ func pacState(ctx context.Context, u string) string {
 }
 
 func (c *checker) hosts(s *probe.Step) {
-	b, err := os.ReadFile(hostsPath())
+	c.readHosts(s, hostsPath(), pinCheck{Dial: (&net.Dialer{}).DialContext, Wait: 4 * time.Second, Cap: pinCap, Par: 16})
+}
+
+func (c *checker) readHosts(s *probe.Step, path string, pc pinCheck) {
+	b, err := os.ReadFile(path)
 	if err != nil {
+		s.Status = "error"
 		s.Facts["health.hosts"] = "unreadable"
 		s.Evidence["error"] = err.Error()
 		return
 	}
 	lines := parseHosts(string(b))
+	c.hostLines = make(map[string]bool, len(lines))
 	counts := map[string]int{}
 	for _, l := range lines {
+		c.hostLines[l.Text] = true
 		counts[l.Kind]++
 	}
 	s.Facts["health.hosts"] = "ok"
@@ -485,17 +516,21 @@ func (c *checker) hosts(s *probe.Step) {
 	s.Facts["health.hosts_pins"] = strconv.Itoa(counts["pin"])
 	s.Facts["health.hosts_blocks"] = strconv.Itoa(counts["block"])
 	s.Facts["health.hosts_ncsi"] = strconv.FormatBool(blocksNCSI(lines))
-	pc := pinCheck{Dial: (&net.Dialer{}).DialContext, Wait: 4 * time.Second, Cap: pinCap, Par: 16}
 	res, unchecked := pc.run(c.ctx, lines)
 	s.Facts["health.hosts_unchecked"] = strconv.Itoa(unchecked)
 	byResult := map[string]int{}
 	for _, r := range res {
 		byResult[r.Result]++
 	}
+	if unchecked > 0 {
+		s.Status = "warn"
+		byResult["unchecked"] = unchecked
+	}
 	s.Evidence["pin_results"] = byResult
 	s.Facts["health.hosts_cut"] = strconv.Itoa(byResult["cut"])
 	stale := staleLines(lines, res)
 	s.Facts["health.hosts_stale"] = strconv.Itoa(len(stale))
+	s.Facts["health.hosts_stale_found"] = strconv.FormatBool(len(stale) > 0)
 	if len(stale) == 0 {
 		return
 	}
@@ -531,11 +566,16 @@ func firstOf(items []string, n int) (first, more string) {
 func (c *checker) tcp(s *probe.Step) {
 	out, err := netsh(c.ctx, "int", "tcp", "show", "global")
 	if err != nil {
+		s.Status = "error"
 		s.Evidence["netsh_error"] = err.Error()
 	}
 	s.Facts["health.rss"], s.Facts["health.autotuning"] = parseTCPGlobal(out)
+	if s.Facts["health.rss"] == "unknown" || s.Facts["health.autotuning"] == "unknown" {
+		s.Status = "error"
+	}
 	paths, err := winsockPaths()
 	if err != nil {
+		s.Status = "error"
 		s.Evidence["winsock_error"] = err.Error()
 		s.Facts["health.winsock"] = "unknown"
 		return
@@ -588,6 +628,10 @@ func foreignWinsock(paths []string) []string {
 }
 
 func (c *checker) ipv6(s *probe.Step) {
+	if c.adErr != nil {
+		s.Status = "error"
+		return
+	}
 	m := c.main()
 	if m == nil || !m.IPv6Global {
 		s.Facts["health.ipv6"] = "none"
@@ -598,6 +642,10 @@ func (c *checker) ipv6(s *probe.Step) {
 	defer cancel()
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp6", "[2606:4700:4700::1111]:443")
 	if err != nil {
+		if c.ctx.Err() != nil {
+			s.Status = "skip"
+			return
+		}
 		s.Facts["health.ipv6"] = "broken"
 		s.Evidence["error"] = err.Error()
 		return
@@ -607,6 +655,10 @@ func (c *checker) ipv6(s *probe.Step) {
 }
 
 func (c *checker) mtu(s *probe.Step) {
+	if c.adErr != nil {
+		s.Status = "error"
+		return
+	}
 	m := c.main()
 	if m == nil {
 		return
@@ -632,12 +684,15 @@ func (c *checker) clock(s *probe.Step) {
 	if n, err := strconv.Atoi(l.Facts["local.clock_skew_sec"]); err == nil {
 		s.Facts["health.clock_off"] = strconv.FormatBool(n > 120 || n < -120)
 		s.Facts["health.clock_skew_min"] = strconv.Itoa((max(n, -n) + 30) / 60)
+	} else {
+		s.Status = "skip"
 	}
 }
 
 func (c *checker) soft(s *probe.Step) {
 	tools, err := probe.RunningTools(c.m.Throttlers)
 	if err != nil {
+		s.Status = "error"
 		s.Evidence["error"] = err.Error()
 	}
 	s.Facts["health.throttler_found"] = strconv.FormatBool(len(tools) > 0)

@@ -118,7 +118,7 @@
   kind: problem
   area: health_hosts
   fix: hosts_stale
-  when: {health.hosts: ok, health.hosts_stale: "!0"}
+  when: {health.hosts: ok, health.hosts_stale_found: true}
 
 - id: health_ncsi_hosts
   confidence: high

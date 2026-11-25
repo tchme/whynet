@@ -56,8 +56,8 @@ func padded(entries ...map[string]any) []map[string]any {
 func TestParseHAR(t *testing.T) {
 	m := Markers{Ads: []string{"ad.mail.ru"}}
 	b := harText(t, false,
-		map[string]any{"url": "https://dzen.ru/a/xyz?utm=secret", "type": "document", "status": 200, "time": 300},
-		map[string]any{"url": "https://privacy-cs.mail.ru/static/cmp.js?v=1", "type": "script", "status": 0, "error": "net::ERR_BLOCKED_BY_CLIENT", "time": 1},
+		map[string]any{"url": "https://secret-user:secret-password@dzen.ru/a/xyz?utm=secret#secret-fragment", "type": "document", "status": 200, "time": 300},
+		map[string]any{"url": "https://secret-user:secret-password@privacy-cs.mail.ru/static/cmp.js?v=secret#secret-fragment", "type": "script", "status": 0, "error": "net::ERR_BLOCKED_BY_CLIENT", "time": 1},
 		map[string]any{"url": "https://ad.mail.ru/adq/", "type": "fetch", "status": 0, "error": "net::ERR_BLOCKED_BY_CLIENT", "time": 1},
 		map[string]any{"url": "https://ad.mail.ru/slow.js", "type": "script", "status": 200, "time": 9000},
 		map[string]any{"url": "https://avatars.dzeninfra.ru/a.jpg", "type": "image", "status": 200, "time": 4100,
@@ -183,5 +183,22 @@ func TestOwnStep(t *testing.T) {
 	}
 	if !SameSite("m.dzen.ru", "dzen.ru") || SameSite("dzen.ru", "pinterest.com") {
 		t.Error("SameSite")
+	}
+}
+
+func TestHARPage(t *testing.T) {
+	for _, tc := range []struct{ input, page string }{
+		{"ExAmple.ORG.", "https://example.org/"},
+		{"https://example.org:443/Topic?mode=one#text", "https://example.org/Topic"},
+		{"https://example.org/Topic%2FNext", "https://example.org/Topic%2FNext"},
+		{"https://example.org/Topic/Next", "https://example.org/Topic/Next"},
+		{"https://sub.example.org/Topic", "https://sub.example.org/Topic"},
+		{"http://example.org/Topic", ""},
+		{"https://example.org:8443/Topic", ""},
+	} {
+		got, err := HARPage(tc.input)
+		if got != tc.page || (err == nil) != (tc.page != "") {
+			t.Errorf("HARPage(%q) = %q, %v; want %q", tc.input, got, err, tc.page)
+		}
 	}
 }

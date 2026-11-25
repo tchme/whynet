@@ -32,9 +32,11 @@ func (a Action) Admin() bool {
 
 // Outcome is what happened to one action.
 type Outcome struct {
-	Action Action `json:"action"`
-	OK     bool   `json:"ok"`
-	Error  string `json:"error,omitempty"`
+	Action  Action `json:"action"`
+	OK      bool   `json:"ok"`
+	Error   string `json:"error,omitempty"`
+	Backup  string `json:"backup,omitempty"`
+	Already bool   `json:"already_restored,omitempty"`
 }
 
 // Plan is a fix batch and how to take it back.
@@ -117,16 +119,63 @@ func MakePlan(res *Result, fixes []string) Plan {
 func UndoPlan(p Plan, outs []Outcome) []Action {
 	var undo []Action
 	for i := len(p.Actions) - 1; i >= 0; i-- {
-		if i < len(p.Undo) && p.Undo[i] != nil && slices.ContainsFunc(outs, func(o Outcome) bool { return o.OK && actionEqual(o.Action, p.Actions[i]) }) {
+		if i < len(p.Undo) && p.Undo[i] != nil && slices.ContainsFunc(outs, func(o Outcome) bool { return o.OK && o.Action.Equal(p.Actions[i]) }) {
 			undo = append(undo, *p.Undo[i])
 		}
 	}
 	return undo
 }
 
+// Equal compares the whole action, including the adapter and the values or lines it operates on.
+func (a Action) Equal(b Action) bool {
+	return actionEqual(a, b)
+}
+
 func actionEqual(a, b Action) bool {
 	return a.ID == b.ID && a.Adapter == b.Adapter && a.Index == b.Index && a.Value == b.Value &&
 		slices.Equal(a.Values, b.Values) && slices.Equal(a.Lines, b.Lines)
+}
+
+// Confirms checks the intended effect of a fix in a subsequent snapshot.
+func (r *Result) Confirms(a Action) bool {
+	f := r.Facts()
+	switch a.ID {
+	case "proxy_enable":
+		return a.Value == "0" && f["health.proxy"] == "off"
+	case "pac_set":
+		return a.Value == "" && f["health.proxy_pac"] == "none"
+	case "winhttp_set":
+		return a.Value == "" && f["health.winhttp"] == "direct"
+	case "hosts_comment":
+		return r.ActiveHostLines != nil && len(a.Lines) > 0 && !slices.ContainsFunc(a.Lines, func(line string) bool { return r.ActiveHostLines[line] })
+	case "dns_source":
+		servers, _ := r.Evidence("health_dns", "servers").([]dnsServer)
+		return a.Value == "dhcp" && slices.ContainsFunc(servers, func(s dnsServer) bool {
+			return s.index == a.Index && s.Adapter == a.Adapter && s.automatic && !s.Manual && s.Ms > 0 && s.Error == ""
+		}) && !slices.ContainsFunc(servers, func(s dnsServer) bool { return s.index == a.Index && s.Manual })
+	case "service_start":
+		return a.Value == "Dnscache" && f["health.dnscache"] == "running"
+	case "tcp_global":
+		key, value, _ := strings.Cut(a.Value, "=")
+		switch key {
+		case "autotuninglevel":
+			return value == "normal" && f["health.autotuning"] == value
+		case "rss":
+			return value == "enabled" && f["health.rss"] == value
+		}
+	case "dhcp_renew":
+		for _, adapter := range r.adapters {
+			if adapter.Name == a.Adapter && adapter.DHCP && slices.ContainsFunc(adapter.IPv4, func(ip string) bool {
+				addr, err := netip.ParseAddr(ip)
+				return err == nil && addr.Is4() && addr.IsGlobalUnicast() && !addr.IsLinkLocalUnicast()
+			}) {
+				return true
+			}
+		}
+	case "time_resync":
+		return f["health.clock_off"] == "false"
+	}
+	return false
 }
 
 var (
@@ -162,7 +211,7 @@ func Validate(a Action, adapterOK func(name string, index uint32) bool) error {
 			}
 		}
 	case "dns_source":
-		if !adapterOK("", a.Index) {
+		if a.Index == 0 || !adapterOK(a.Adapter, a.Index) {
 			return bad("not this PC's own adapter")
 		}
 		switch a.Value {
@@ -224,6 +273,10 @@ func uncommentHosts(content string, lines []string) (string, int) {
 }
 
 func editHosts(content string, f func(string) (string, bool)) (string, int) {
+	prefix := ""
+	if data, ok := strings.CutPrefix(content, "\ufeff"); ok {
+		prefix, content = "\ufeff", data
+	}
 	parts := strings.SplitAfter(content, "\n")
 	n := 0
 	for i, p := range parts {
@@ -233,5 +286,5 @@ func editHosts(content string, f func(string) (string, bool)) (string, int) {
 			n++
 		}
 	}
-	return strings.Join(parts, ""), n
+	return prefix + strings.Join(parts, ""), n
 }

@@ -234,6 +234,7 @@ type prober struct {
 	dpiLists  map[string]string // from the local step
 
 	pageOK        bool             // the page itself loaded: content steps have something to check
+	httpDowngrade bool             // the HTTP probe stopped at an HTTPS-to-HTTP redirect
 	body          []byte           // the page's HTML
 	finalURL      *url.URL         // after redirects
 	browserHosts  []*BrowserHost   // every server the browser used, failed first

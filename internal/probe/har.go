@@ -130,11 +130,35 @@ func ParseHAR(b []byte, m Markers) (*OwnRecord, error) {
 	return rec, nil
 }
 
+// HARPage identifies a page without the query or fragment. The site probe checks HTTPS on port 443.
+func HARPage(input string) (string, error) {
+	s := strings.TrimSpace(input)
+	if !strings.Contains(s, "://") {
+		s = "https://" + s
+	}
+	u, err := url.Parse(s)
+	if err != nil || !strings.EqualFold(u.Scheme, "https") || u.Port() != "" && u.Port() != "443" {
+		return "", ErrBadInput
+	}
+	host, path, err := Target(s)
+	if err != nil {
+		return "", err
+	}
+	path, _, _ = strings.Cut(path, "?")
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	return "https://" + host + path, nil
+}
+
 // SameSite reports whether two hosts belong to one site (dzen.ru and m.dzen.ru do).
 func SameSite(a, b string) bool {
+	if a == b {
+		return true
+	}
 	sa, err1 := publicsuffix.EffectiveTLDPlusOne(a)
 	sb, err2 := publicsuffix.EffectiveTLDPlusOne(b)
-	return a == b || err1 == nil && err2 == nil && sa == sb
+	return err1 == nil && err2 == nil && sa == sb
 }
 
 // ownFiles keeps the requests worth showing: stopped by the browser, failed, unanswered, or late.

@@ -43,6 +43,9 @@ func TestLiveMatch(t *testing.T) {
 		{with("live.internet", "unstable", "live.path_vpn", "true"), "live_vpn"},
 		{with("live.internet", "unstable", "live.server", "unstable"), "live_isp_network"},
 		{with("live.server", "unstable"), "live_route"},
+		{with("live.beyond", "silent"), "live_partial"},
+		{with("live.internet", "silent", "live.frames_stalled", "true"), "live_partial"},
+		{with("live.server", "silent"), "live_partial"},
 		{with("live.server", "none", "live.lag_marks", "2"), "live_stable"}, // marks are bookmarks: no verdict from them
 		{with("live.frames_stalled", "true"), "live_pc_frames"},
 		{with("live.frames_stalled", "true", "live.frames_cause", "cpu"), "live_pc_cpu"},

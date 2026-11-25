@@ -113,8 +113,8 @@ func TestContentLab(t *testing.T) {
 	}
 
 	f, v = run(`<script src="https://cdn.example.com/app.js"></script>`)
-	if v.ID != "all_ok" || f["res.checked"] != "1" || f["res.failed"] != "0" {
-		t.Errorf("all fine: verdict %s, facts %v", v.ID, f)
+	if v.ID != "http_reached" || f["res.checked"] != "1" || f["res.failed"] != "0" {
+		t.Errorf("HTTPS and static resource reachable without a browser: verdict %s, facts %v", v.ID, f)
 	}
 
 	// The browser's only failure is a name no DNS knows: a dead link in the page, not a problem

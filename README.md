@@ -14,7 +14,7 @@
 
 </div>
 
-Один небольшой `.exe`, без установки; права администратора нужны только для необязательной записи UDP и кадров игры. Проходит путь от твоего компьютера до сайта: сеть, DNS, соединение, страница, её картинки, видео и скрипты. Находит шаг, на котором ломается, и говорит, что делать. Технические подробности — под кнопкой «Подробнее».
+Программа запускается из одного `.exe` без установки. Права администратора нужны для записи UDP, замера кадров и некоторых исправлений сети Windows. WhyNet проверяет путь от компьютера до сайта и показывает, какой шаг не прошёл. Технические подробности доступны под кнопкой «Подробнее».
 
 ## Скачать
 
@@ -31,7 +31,7 @@
 | **Окно браузера** | Обычное окно, которым пользуешься ты сам (пройти проверку на робота, войти, включить видео), пока whynet записывает, что грузит страница. |
 | **Стабильность для игр** | Пингует роутер, провайдера, интернет и игровой сервер одновременно и показывает, какое звено даёт скачки пинга. Кнопка Ctrl+Alt+L (работает и внутри игры) отмечает момент, когда лагнуло. Рядом записывается загрузка процессора, а с галочкой «И кадры игры» (Windows спросит права администратора) и время каждого кадра: whynet сам находит игру, считает замирания картинки и говорит «лагает компьютер, а не сеть»; отметка «лагнуло» называет замирание, которое ей предшествовало. Если на пинги отвечает VPN-клиент на этом компьютере, whynet это замечает и не выдаёт «всё стабильно». |
 | **Проверка программы** | Выбираешь запущенную программу (Discord, лаунчер, игру), повторяешь в ней то, что не работает, а whynet записывает, к каким серверам она подключается по TCP, и проверяет каждый: отвечает ли, режут ли по имени, покрывает ли его zapret. TCP без прав администратора; с галочкой «И UDP» (Windows спросит права) whynet видит и UDP — голос Discord и саму игру: отвечает ли сервер, не замирает ли его поток. |
-| **Сеть Windows** | Одна кнопка проверяет сами настройки сети компьютера: адаптер и кабель (скорость линка, ошибки, сигнал Wi-Fi), адрес от роутера, DNS-серверы, прокси (в том числе забытый закрытым VPN-клиентом), файл hosts (каждый прибитый адрес проверяется: отвечает ли он ещё как этот сайт), настройки TCP и каталог Winsock, IPv6, MTU, часы, программы, которые режут трафик. Показывает все находки списком, а «Починить всё найденное» исправляет только найденное (права администратора спрашиваются один раз), очищает кэш DNS и проверяет снова. Старые значения сохраняются — «Вернуть как было» отменяет починку. VPN, маршруты и DNS роутера whynet не трогает. |
+| **Сеть Windows** | Проверяет адаптер, DNS, прокси, записи `hosts`, TCP, IPv6, MTU, часы и другие настройки сети. Для `hosts` показывает, какие записи удалось проверить. Предлагает точечные исправления и повторяет проверку после них. Кнопка «Вернуть как было» доступна для обратимых изменений с сохранённым исходным состоянием. Очистку кэшей, выдачу нового DHCP-адреса и корректировку времени откатить нельзя. Из результата сайта, указывающего на настройки Windows, можно сразу перейти к этой проверке и затем повторить проверку исходного адреса. |
 | **Отчёт для ИИ** | Одна кнопка сохраняет всё, что узнал whynet, в один Markdown-файл с инструкцией для нейросети наверху. Перетащи его в ChatGPT или Claude и ничего не пиши. |
 
 Больше 70 диагнозов, у каждого понятное объяснение и совет. Если уверенности нет, whynet так и говорит: «скорее всего» и почему.
@@ -43,6 +43,8 @@
 ## Приватность
 
 whynet ничего не отправляет, кроме нужного для проверки: DNS-over-HTTPS-запросы про проверяемый домен (1.1.1.1, 8.8.8.8), запрос к Cloudflare, чтобы узнать внешний IP и провайдера, и сама страница. При запуске он спрашивает у GitHub номер последней версии и предлагает обновиться; обновляется, только если нажать «Да» (новый exe сверяется с контрольной суммой SHA-256 релиза). Телеметрии нет. Невидимый браузер работает во временном профиле без входа в аккаунт и синхронизации, профиль удаляется. Запись браузера (HAR) читается только на твоём компьютере: из неё берутся адреса без параметров, тип, статус, ошибка и время.
+
+В Markdown-отчёте проверки сайта по умолчанию скрыты параметры, фрагменты и учётные данные в адресах. Домен и путь остаются видны. Проверь путь перед отправкой, если там есть личные данные. Флаг CLI `-json` выводит собранные данные без маскирования, включая исходный адрес и адреса перенаправлений HTTP-проверки. Если TLS не сработал, whynet запрашивает по HTTP корень сайта для распознавания заглушки провайдера. Пробный HTTPS-запрос и скрытый браузер останавливают переход с HTTPS на HTTP до отправки. В режиме «Проверить в браузере» whynet предупреждает перед каждым запуском. Обычный Chromium сам выполняет перенаправления и переходы по твоим действиям, при которых может отправить адрес открытым HTTP.
 
 ## Сборка из исходников
 
@@ -77,7 +79,7 @@ MIT, см. [LICENSE](LICENSE). Собрано на [Wails](https://wails.io). С
 
 </div>
 
-One small `.exe`, no installation; admin rights are needed only for the optional UDP and game-frames recording. It walks the path from your computer to the site: network, DNS, connection, the page and its images, video and scripts. It finds the step where things break and tells you what to do, with the technical details one click away under "Подробнее" (Details). The interface is in Russian.
+WhyNet runs from one `.exe` without installation. Recording UDP or game frames and applying certain Windows network fixes require administrator rights. The app checks the path from your computer to a site and shows which step failed. Technical details are under "Подробнее" (Details). The interface is in Russian.
 
 ## Download
 
@@ -94,7 +96,7 @@ Take `whynet.exe` from the [Releases](../../releases/latest) page and run it. Wi
 | **Browser window** | A plain window you use yourself (pass a bot check, log in, play a video) while whynet records what the page loads. |
 | **Stability for games** | Pings the router, the ISP, the internet and a game server at once and shows which link makes the ping jump. Ctrl+Alt+L (works inside a game too) marks the moment it lagged. The CPU load is recorded alongside, and with the "И кадры игры" (game frames) checkbox (Windows asks for admin rights) so is every frame's time: whynet finds the game by itself, counts the picture's freezes and can say "the computer lags, not the network"; a lag mark names the freeze just before it. If a VPN client on this PC answers the pings itself, whynet notices and doesn't claim "all stable". |
 | **App check** | Pick a running program (Discord, a launcher, a game), repeat in it what fails, and whynet records which servers it connects to over TCP and checks each one: does it answer, is it cut by name, does zapret cover it. TCP needs no admin rights; with the "И UDP" checkbox (Windows asks for them) whynet sees UDP too: Discord voice and the game itself, whether the server answers and whether its stream freezes. |
-| **Windows network** | One button checks the PC's own network setup: the adapter and cable (link speed, errors, Wi-Fi signal), the address from the router, DNS servers, the proxy (including one a closed VPN client left behind), the hosts file (every pinned address is checked: does it still answer as that site), TCP settings and the Winsock catalog, IPv6, MTU, the clock, programs that throttle traffic. It lists every finding, and "Починить всё найденное" (fix what was found) fixes only that (admin rights asked once), flushes the DNS cache and checks again. Old values are saved: "Вернуть как было" (undo) takes the fix back. whynet never touches a VPN, routes or the router's DNS. |
+| **Windows network** | Checks the adapter, DNS, proxy, `hosts` entries, TCP, IPv6, MTU, clock and other settings. For `hosts`, it identifies the entries it could check. It offers targeted fixes and checks again after applying them. "Вернуть как было" (undo) is available for reversible changes with a saved prior state. Cache flushes, renewed DHCP addresses and adjustments to the clock are permanent. If a site result points to Windows settings, you can open this check and then run the site check again for the original address. |
 | **AI report** | One button saves everything whynet learned into a single Markdown file with an instruction for the AI at the top. Drop it into ChatGPT or Claude and ask nothing. |
 
 More than 70 diagnoses, each with a plain explanation and what to do. When whynet can't tell, it says "probably" and why.
@@ -106,6 +108,8 @@ Your public IP, computer name and Windows user name are hidden by default. You s
 ## Privacy
 
 whynet sends nothing anywhere except what a check needs: DNS-over-HTTPS lookups of the checked domain (1.1.1.1, 8.8.8.8), a request to Cloudflare to learn your public IP and provider, and the page itself. On start it asks GitHub for the latest version number and offers to update; it updates only when you press "Yes" (the new exe is checked against the release's SHA-256). No telemetry. The hidden browser uses a throwaway profile with sign-in and sync switched off, deleted afterwards. A browser record (HAR) is read on your computer only: addresses without queries, type, status, error and timings are taken from it.
+
+By default, the site's Markdown report hides query strings, fragments and user information in URLs. The domain and path remain visible. Check the path before sharing if it contains private details. CLI `-json` prints the collected evidence without masking, including the original input and the HTTP probe's redirect URLs. If TLS fails, whynet requests the site's root over HTTP to look for an ISP block page. The Go HTTP probe and hidden browser stop HTTPS-to-HTTP redirects before sending the HTTP request. whynet asks for confirmation before every visible browser check. Plain Chromium handles redirects and the person's own navigation and can send a URL over unencrypted HTTP.
 
 ## Build from source
 

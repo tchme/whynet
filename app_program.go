@@ -130,7 +130,7 @@ func (a *App) RecordApp(exe string, udp bool) (*AppView, error) {
 	})
 	v := rules.Match(a.appRules, res.Facts())
 	a.mu.Lock()
-	a.lastApp, a.appVerdict, a.lastKind = res, v, "app"
+	a.lastApp, a.appVerdict = res, v
 	a.mu.Unlock()
 	return a.appView(res, v), nil
 }

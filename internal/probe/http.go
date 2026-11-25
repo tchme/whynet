@@ -10,8 +10,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-
-	"golang.org/x/net/publicsuffix"
 )
 
 // A browser-like agent: some sites refuse unknown clients, which would look like a failure.
@@ -25,14 +23,15 @@ func (p *prober) http(s *Step) {
 		s.Status = "skip"
 		return
 	}
-	// Over HTTPS when TLS works; otherwise plain HTTP, where ISP stub pages show up.
-	scheme := "https"
+	// The HTTP fallback only needs the site's root to find an ISP stub.
+	scheme, path := "https", p.path
 	if !p.tlsOK {
-		scheme = "http"
+		scheme, path = "http", "/"
 	}
 	s.Facts["http.scheme"] = scheme
 
 	var chain []map[string]any
+	blockedDowngrade := false
 	jar, _ := cookiejar.New(nil) // sites like ozon.ru set a cookie and redirect; without it they loop
 	cl := &http.Client{
 		Jar: jar,
@@ -50,13 +49,20 @@ func (p *prober) http(s *Step) {
 		Timeout: 2 * p.env.Timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			chain = append(chain, map[string]any{"status": req.Response.StatusCode, "to": req.URL.String()})
+			if req.URL.Scheme == "http" {
+				if via[len(via)-1].URL.Scheme == "https" {
+					blockedDowngrade = true
+					return http.ErrUseLastResponse
+				}
+				req.Header.Del("Referer")
+			}
 			if len(via) >= 5 {
 				return http.ErrUseLastResponse
 			}
 			return nil
 		},
 	}
-	req, err := http.NewRequestWithContext(p.ctx, "GET", scheme+"://"+p.host+p.path, nil)
+	req, err := http.NewRequestWithContext(p.ctx, "GET", scheme+"://"+p.host+path, nil)
 	if err != nil {
 		s.Facts["http.status"] = "error"
 		s.Evidence["error"] = err.Error()
@@ -68,6 +74,11 @@ func (p *prober) http(s *Step) {
 	resp, err := cl.Do(req)
 	if len(chain) > 0 {
 		s.Evidence["redirects"] = chain
+	}
+	if blockedDowngrade {
+		p.httpDowngrade = true
+		s.Facts["http.redirect_blocked"] = "true"
+		s.Status = "warn"
 	}
 	if err != nil {
 		s.Facts["http.status"] = netClass(err)
@@ -100,7 +111,7 @@ func (p *prober) http(s *Step) {
 		}
 	}
 	// The fallback ended on another site's plain-HTTP page: most likely an ISP's stub nobody listed.
-	if u := resp.Request.URL; scheme == "http" && u.Scheme == "http" && !sameSite(u.Hostname(), p.host) {
+	if u := resp.Request.URL; scheme == "http" && u.Scheme == "http" && !SameSite(u.Hostname(), p.host) {
 		s.Facts["http.other_site"] = "true"
 		s.Facts["http.other_host"] = u.Hostname()
 	}
@@ -133,7 +144,7 @@ func (p *prober) http(s *Step) {
 	if (code >= 400 && s.Facts["http.challenge"] != "true") || s.Facts["http.stub"] == "true" || s.Facts["http.other_site"] == "true" {
 		s.Status = "fail"
 	}
-	if scheme == "https" && s.Facts["http.stub"] != "true" && (code < 400 || s.Facts["http.challenge"] == "true") {
+	if scheme == "https" && !blockedDowngrade && s.Facts["http.stub"] != "true" && (code < 400 || s.Facts["http.challenge"] == "true") {
 		p.pageOK, p.body, p.finalURL = true, body, resp.Request.URL
 	}
 }
@@ -166,17 +177,4 @@ func (p *prober) seenFrom(s *Step, cl *http.Client) {
 	if home := p.res.Facts()["local.country"]; home != "" {
 		s.Facts["http.via_vpn"] = strconv.FormatBool(home != kv["loc"])
 	}
-}
-
-// sameSite: both names belong to one registered domain (www.instagram.com and instagram.com).
-func sameSite(a, b string) bool {
-	if a == b {
-		return true
-	}
-	ra, err := publicsuffix.EffectiveTLDPlusOne(a)
-	if err != nil {
-		return false
-	}
-	rb, err := publicsuffix.EffectiveTLDPlusOne(b)
-	return err == nil && ra == rb
 }

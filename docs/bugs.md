@@ -2,6 +2,8 @@
 
 Verified pitfalls and fixed bugs: symptom -> cause -> fix -> how it was verified.
 
+See [Bugs found while preparing 1.0](bugs-1.0.md) for newer entries.
+
 ## A VPN on the router looked like DNS spoofing
 
 - **Symptom:** youtube.com: DNS step "warn" (`dns.match=differ`), TLS step took 6 s.

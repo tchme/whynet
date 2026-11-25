@@ -17,7 +17,7 @@ WebView2 ships with Windows 11.
 go test ./...                                # unit tests and the failure lab (~5 s)
 go vet ./...
 go run ./cmd/whynet-cli youtube.com          # progress + verdict
-go run ./cmd/whynet-cli -json youtube.com    # every fact and all raw evidence
+go run ./cmd/whynet-cli -json youtube.com    # raw facts and evidence, with no report masking
 go run ./cmd/whynet-cli -save youtube.com    # also writes the AI report .md here
 go run ./cmd/whynet-cli -save -no-hide ...   # report without masking
 go run ./cmd/whynet-cli -no-browser ...      # skip the hidden Edge/Chrome step (faster)
@@ -31,13 +31,15 @@ wails build                                  # build/bin/whynet.exe
 
 The window: `wails build` regenerates `frontend/wailsjs/` (bindings to `app.go`, committed) and embeds `frontend/dist`. Fonts come from the pinned `@fontsource/golos-text` and `@fontsource/jetbrains-mono` packages (OFL) and ship inside the exe, so the app needs no internet for them. npm 11 warns that esbuild's install script was not approved; the build works without it.
 
+Markdown reports are masked by default. `-no-hide` controls the Markdown written by `-save`. CLI `-json` always prints the collected result, including the original site input and HTTP redirect URLs, even when `-save` also writes a masked Markdown report.
+
 ## Releasing
 
 1. Bump the version in `wails.json` (`info.productVersion`) and `internal/report/report.go` (`Version`).
-2. `wails build`, commit, tag `vX.Y.Z`, push `main` and the tag.
-3. Create the GitHub release for the tag with the exe attached under the exact name **`whynet.exe`**: the in-app updater looks for that name and checks the SHA-256 digest GitHub publishes for it. Release notes (and the README): Russian first, `---`, English below.
+2. Run Go tests and vet, check the frontend, then commit and build `whynet.exe` from that revision in a clean directory. Build `cmd/whynet-cli` for smoke tests. Keep the build SHA-256 and the results for the exact Windows version, network and VPN profiles in a separate record. Recheck applicable scenarios if the executable's bytes change.
+3. Tag `vX.Y.Z`, push and publish on the owner's request. Attach the tested executable under the exact name **`whynet.exe`**. Confirm that its published SHA-256 matches the tested file. The in-app updater requires a valid GitHub digest. Release notes and the README use Russian first and English below the divider.
 
-To test the updater before a release, build a copy that claims to be older and points at a fake release: `wails build -o whynet-test.exe -ldflags "-X whynet/internal/report.Version=0.1.0 -X whynet/internal/update.LatestURL=http://127.0.0.1:8765/latest"`, serve a `latest` JSON (`tag_name`, `assets[{name, size, digest, browser_download_url}]`) and the new exe with `python -m http.server 8765`, run the copy from a scratch folder, press "Да, обновить".
+To test an upgrade from 0.7.0, build `v0.7.0` from a scratch copy and point its updater at a local test release with `-ldflags "-X whynet/internal/update.LatestURL=http://127.0.0.1:8765/latest"`. Serve a `latest` JSON (`tag_name`, `assets[{name, size, digest, browser_download_url}]`) and the exact candidate executable with `python -m http.server 8765`. Run the old executable from a temporary folder and press "Да, обновить". Use `go test ./internal/update` for invalid digests, launch failure and interrupted replacement. The old executable is kept as `whynet.exe.old` after a successful replacement.
 
 Ad list: `go run ./tools/adlist` downloads the current StevenBlack/hosts list and rewrites `rules/ads.txt.gz`; update the date in `rules/ads-LICENSE.txt` and commit both.
 

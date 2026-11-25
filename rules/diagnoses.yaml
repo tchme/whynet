@@ -78,7 +78,7 @@
   when: {local.dpi_tool: none, local.dpi_installed: true, tcp.status: ok, tls.status: [reset, timeout, eof], tls.control: ok}
 
 - id: sni_blocked
-  confidence: high
+  confidence: likely
   when: {tcp.status: ok, tls.status: [reset, timeout, eof], tls.control: ok}
 
 # The server itself closes the neutral name, so the path is open but the name can't be compared.
@@ -131,7 +131,7 @@
 # failures (ERR_PROXY_CONNECTION_FAILED, a reset) are the proxy's before anything else.
 - id: proxy_in_way
   confidence: likely
-  when: {local.proxy: "on", tls.status: ok, http.class: [2xx, 3xx]}
+  when: {local.proxy: "on", tls.status: ok, http.class: [2xx, 3xx], http.redirect_blocked: "!true"}
 
 # The handshake passes, then the connection is reset on the request: DPI that lets the name through
 # and cuts later, or not on every connection. Live 2026-11-16, Flex Ltd. (AS21453): linkedin.com
@@ -231,7 +231,7 @@
 # The browser's only failures are names no DNS knows: dead links in the page (youtube.com, live).
 - id: all_ok
   confidence: high
-  when: {res.browser_dead: true, tls.status: ok, http.class: [2xx, 3xx], br.late: "!true", res.lossy: "!true"}
+  when: {res.browser_dead: true, tls.status: ok, http.class: [2xx, 3xx], http.redirect_blocked: "!true", br.late: "!true", res.lossy: "!true"}
 
 # The browser failed somewhere, but those servers passed their own check.
 - id: content_flaky
@@ -262,9 +262,13 @@
   confidence: likely
   when: {res.lossy: true}
 
+- id: http_reached
+  confidence: high
+  when: {tls.status: ok, http.class: [2xx, 3xx], http.redirect_blocked: "!true", br.status: [off, unavailable, error]}
+
 - id: all_ok
   confidence: high
-  when: {tls.status: ok, http.class: [2xx, 3xx]}
+  when: {tls.status: ok, http.class: [2xx, 3xx], http.redirect_blocked: "!true"}
 
 # The person's plain window loaded the page: whynet's own request being turned away doesn't matter.
 - id: browser_ok

@@ -86,7 +86,7 @@ whynet checks in its own clean browser, so it can't see what the person's browse
 
 ## Updates (2026-11-16, the author's request)
 
-On start whynet asks GitHub Releases for the latest version. When it is newer, a banner offers "Да, обновить / Нет". "Yes" downloads `whynet.exe` from the release, checks its size and SHA-256 against GitHub's digest, renames the running exe aside (Windows allows renaming a running exe, not overwriting it), puts the new one in its place, starts it and quits; the next start removes the old file. On any failure the old exe stays and the release page opens for a manual download (e.g. an exe in Program Files can't be replaced without admin rights). The exe isn't code-signed, so the trust is the GitHub account and HTTPS.
+On start whynet asks GitHub Releases for the latest version. When it is newer, a banner offers "Да, обновить / Нет". "Yes" requires a valid GitHub SHA-256 digest, verifies the download, and uses `ReplaceFileW` to install it and keep the previous executable as `whynet.exe.old`. Only one process can install an update to the same path at a time. The old window quits after Windows starts the replacement. If the start fails, whynet restores the previous executable. A recovery failure lists the backup path. The backup remains available until the next replacement, and the release page offers a manual download when automatic installation fails. The executable is unsigned, so update trust depends on the GitHub account and HTTPS.
 
 ## Which way to the site (2026-11-16)
 

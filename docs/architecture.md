@@ -97,7 +97,7 @@ whynet/
                            live.go: the stability report, link names and hop notes shared with the window;
                            app.go: the app check's report (servers table); summary and steps writers shared
   internal/update/         newest GitHub release (asset whynet.exe + its SHA-256 digest), version compare,
-                           download and swap: running exe -> exe.old, new -> exe; CleanOld on next start
+                           download verification, locked Windows replacement and launch, rollback on launch error
   rules/                   rules engine + data, embedded: diagnoses.yaml, live.yaml (stability verdicts,
                            LoadLive), app.yaml (app check verdicts, LoadApp), health.yaml (health findings: every match,
                            LoadHealth + MatchAll), markers.yaml, ads.txt.gz (76k ad
@@ -136,6 +136,8 @@ health: health.Run(ctx, markers, onStep) -> Result{Steps per area}
 - Every step runs under panic recovery and its own timeouts; a failed step is recorded and the next steps still run (skipping what they cannot do).
 - DPI-bypass tools (zapret/Flowseal, GoodbyeDPI) rewrite packets through WinDivert for every process, whynet included, so the checks see what the browser sees. The bundle folder is found from the process exe, the service command line or the driver path, in that order; its lists tell whether the site is covered. Tool names, services and drivers are data in `markers.yaml`.
 - The report masks private values (public IP to its first two octets, computer and user names as a safety net) by plain replacement over the finished text, raw JSON included.
+- The masked site report also removes query strings, fragments and user information from URL fields and URLs in diagnostics before writing the embedded JSON. Domains and paths remain visible. The original result, unmasked Markdown and CLI `-json` retain the evidence as collected. Browser and HAR URL fields already omit these URL details at collection.
+- If TLS fails, the Go HTTP probe requests `/` on port 80 to check for an ISP stub. It keeps the full page path and query on HTTPS, stops HTTPS-to-HTTP redirects before sending them, and removes `Referer` from any plain-HTTP redirect it follows. The hidden Chromium check blocks HTTP requests in its inspected page through DevTools before they reach the network. Every visible check requires fresh confirmation before the app starts plain Chromium. NetLog observes its traffic, including redirects and subsequent navigation by the person.
 
 ## Facts
 
@@ -164,6 +166,7 @@ health: health.Run(ctx, markers, onStep) -> Result{Steps per area}
 | `tls.intercepted` / `tls.interceptor` | true / the marker found in the chain |
 | `http.scheme` | https (TLS worked), http (fallback, where ISP stubs show up) |
 | `http.status` / `http.class` | code or error class / 2xx..5xx, fail |
+| `http.redirect_blocked` | true when the Go HTTP probe stopped an HTTPS-to-HTTP redirect. The HTTP status is still the status of the response that sent that redirect |
 | `http.stub`, `http.geo`, `http.challenge` | true when seen; `http.stub` also from the generic law words (`stub_law` + `stub_action` in markers.yaml, the whole page, plain-HTTP fallback only) |
 | `http.other_site`, `http.other_host` | the plain-HTTP fallback ended on another registered domain's plain-HTTP page (true, and that host) |
 | `local.country` | where the internet sees this computer by default (Cloudflare trace via 1.1.1.1) |

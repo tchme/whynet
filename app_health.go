@@ -27,7 +27,7 @@ type HealthFindingView struct {
 	Title string `json:"title"`
 	Text  string `json:"text"`
 	Tag   string `json:"tag"`             // починю / совет / исправлено...
-	State string `json:"state,omitempty"` // after a fix: fixed, left
+	State string `json:"state,omitempty"` // after a fix: fixed, left, gone, unconfirmed
 }
 
 // HealthOutcomeView is one action of a fix batch: planned (Status "") or done.
@@ -69,6 +69,30 @@ type healthState struct {
 	afterF  []rules.Rule
 }
 
+func (h *healthState) latest() (*health.Result, []rules.Rule) {
+	if h.after != nil {
+		return h.after, h.afterF
+	}
+	return h.res, h.finds
+}
+
+func (a *App) healthReport(h *healthState, hide bool) (string, string) {
+	_, issues, _ := health.InspectUndo()
+	return report.HealthMarkdown(h.res, h.finds, h.batches, h.after, h.afterF, a.t, hide, issues...), report.HealthFileName(h.res)
+}
+
+func (h *healthState) batch(after *health.Result, finds []rules.Rule, outs []health.Outcome, undo, declined bool) (report.HealthBatch, []rules.Rule) {
+	bt := report.HealthBatch{Undo: undo, Outcomes: outs, Declined: declined}
+	before, previous := h.latest()
+	if before != nil {
+		bt.BeforeFacts = before.Facts()
+		if !undo {
+			bt.States = report.HealthFixStates(before, after, previous, finds, outs)
+		}
+	}
+	return bt, previous
+}
+
 // HealthAreas are the areas for the checking screen, all waiting.
 func (a *App) healthAreas() []StepView {
 	out := make([]StepView, len(health.Areas))
@@ -87,10 +111,9 @@ func (a *App) CheckHealth() (*HealthView, error) {
 	res, finds := a.runHealth()
 	a.mu.Lock()
 	a.health = &healthState{res: res, finds: finds, plan: a.healthPlan(res, finds)}
-	a.lastKind = "health"
 	h := a.health
 	a.mu.Unlock()
-	return a.healthView(h, nil, nil, "", false), nil
+	return a.healthView(h, report.HealthBatch{}, nil, ""), nil
 }
 
 func (a *App) begin() bool {
@@ -113,23 +136,17 @@ func (a *App) end() {
 func (a *App) runHealth() (*health.Result, []rules.Rule) {
 	ctx, cancel := context.WithTimeout(a.ctx, time.Minute)
 	defer cancel()
-	facts := map[string]string{}
-	res := health.Run(ctx, a.markers, func(s probe.Step) {
-		for k, v := range s.Facts {
-			facts[k] = v
-		}
-		v := a.stepView(s)
-		v.Status = areaStatus(s.ID, rules.MatchAll(a.healthRules, facts))
-		runtime.EventsEmit(a.ctx, "health-step", v)
-	})
+	res := health.Run(ctx, a.markers, report.HealthProgress(a.healthRules, func(s probe.Step, finds []rules.Rule) {
+		runtime.EventsEmit(a.ctx, "health-step", a.healthStepView(s, finds))
+	}))
 	return res, rules.MatchAll(a.healthRules, res.Facts())
 }
 
-func areaStatus(id string, finds []rules.Rule) string {
-	if st := report.AreaStatus(finds)[id]; st != "" {
-		return st
-	}
-	return "ok"
+func (a *App) healthStepView(s probe.Step, finds []rules.Rule) StepView {
+	v := a.stepView(s)
+	v.Status = report.AreaStatus(s, finds)
+	v.Note = report.HealthAreaIssue(a.t, s)
+	return v
 }
 
 // healthPlan is the batch for the fixes the findings offer.
@@ -146,102 +163,72 @@ func (a *App) healthPlan(res *health.Result, finds []rules.Rule) health.Plan {
 // FixHealth runs the batch the last check offers, sending "health-fix" (the action's index and
 // outcome) after each action, then checks again.
 func (a *App) FixHealth() (*HealthView, error) {
-	a.mu.Lock()
-	h := a.health
-	a.mu.Unlock()
-	if h == nil {
-		return nil, errors.New(a.t.UI["busy"])
-	}
-	return a.runBatch(h, h.plan.Actions, false)
+	return a.runBatch(false)
 }
 
 // UndoHealth takes back what the fix batches since the last undo changed.
 func (a *App) UndoHealth() (*HealthView, error) {
-	a.mu.Lock()
-	h := a.health
-	a.mu.Unlock()
-	if h == nil {
-		h = &healthState{}
-	}
-	return a.runBatch(h, health.LoadUndo(), true)
+	return a.runBatch(true)
 }
 
-func (a *App) runBatch(h *healthState, actions []health.Action, undo bool) (*HealthView, error) {
+func (a *App) runBatch(undo bool) (*HealthView, error) {
 	if !a.begin() {
 		return nil, errors.New(a.t.UI["busy"])
 	}
 	defer a.end()
-	// The words for what was done come from the check the batch was planned on (the re-check no
-	// longer has, say, the proxy's address).
-	var before map[string]string
-	switch {
-	case h.after != nil:
-		before = h.after.Facts()
-	case h.res != nil:
-		before = h.res.Facts()
+	a.mu.Lock()
+	h := a.health
+	a.mu.Unlock()
+	if h == nil {
+		if !undo {
+			return nil, errors.New(a.t.UI["busy"])
+		}
+		h = &healthState{}
 	}
-	outs, declined := health.Execute(actions, a.markers, func(o health.Outcome) {
-		i := slices.IndexFunc(actions, func(x health.Action) bool { return actionSame(x, o.Action) })
+	outs, declined, issues := health.Execute(h.plan, undo, a.markers, func(i int, o health.Outcome) {
 		runtime.EventsEmit(a.ctx, "health-fix", map[string]any{"i": i, "ok": o.OK, "error": o.Error})
 	})
-	var err error
-	if undo {
-		var failed []health.Action
-		for _, act := range actions {
-			if !slices.ContainsFunc(outs, func(o health.Outcome) bool { return o.OK && actionSame(o.Action, act) }) {
-				failed = append(failed, act)
-			}
-		}
-		err = health.KeepUndo(failed)
-	} else {
-		err = health.SaveUndo(health.UndoPlan(h.plan, outs))
-	}
 	res, finds := a.runHealth()
+	bt, previous := h.batch(res, finds, outs, undo, declined)
+	bt.UndoIssues = issues
 	a.mu.Lock()
 	if a.health == nil || a.health.res == nil { // an undo before any check this run
 		a.health = &healthState{res: res, finds: finds}
 	}
-	a.health.batches = append(a.health.batches, report.HealthBatch{Undo: undo, Outcomes: outs, Declined: declined})
+	a.health.batches = append(a.health.batches, bt)
 	a.health.after, a.health.afterF = res, finds
 	a.health.plan = a.healthPlan(res, finds)
-	a.lastKind = "health"
 	h = a.health
 	a.mu.Unlock()
 	mode := "fix"
 	if undo {
 		mode = "undo"
 	}
-	v := a.healthView(h, outs, before, mode, declined)
-	if err != nil {
-		v.FixNote = locales.Fill(a.t.Health["undo_failed"], map[string]string{"error": err.Error()})
-	}
-	return v, nil
+	return a.healthView(h, bt, previous, mode), nil
 }
 
-func actionSame(x, y health.Action) bool {
-	return x.ID == y.ID && x.Value == y.Value && x.Index == y.Index && x.Adapter == y.Adapter && slices.Equal(x.Lines, y.Lines)
-}
-
-// healthView: the findings of the last check (after a fix: the first check's findings marked
-// fixed or left, plus anything new), the areas, the next batch. mode: "", fix, undo.
-func (a *App) healthView(h *healthState, outs []health.Outcome, before map[string]string, mode string, declined bool) *HealthView {
+// healthView shows the current check and any changes from the immediately preceding batch.
+func (a *App) healthView(h *healthState, bt report.HealthBatch, previous []rules.Rule, mode string) *HealthView {
 	H := a.t.Health
 	after := mode != ""
-	cur, finds := h.res, h.finds
-	if after && h.after != nil {
-		cur, finds = h.after, h.afterF
-	}
+	cur, finds := h.latest()
 	facts := cur.Facts()
-	v := &HealthView{After: after, Declined: declined}
-	for _, act := range health.LoadUndo() {
+	v := &HealthView{After: after, Declined: bt.Declined}
+	actions, issues, available := health.InspectUndo()
+	issues = append(issues, bt.UndoIssues...)
+	for _, act := range actions {
 		v.UndoList = append(v.UndoList, HealthOutcomeView{Text: report.HealthAction(a.t, act, facts, false),
 			DoneText: report.HealthAction(a.t, act, facts, true), Admin: act.Admin()})
 	}
-	v.Undo = len(v.UndoList) > 0
+	v.Undo = available
+	incomplete := false
 	for _, s := range cur.Steps {
-		sv := a.stepView(s)
-		sv.Status = areaStatus(s.ID, finds)
+		sv := a.healthStepView(s, finds)
 		v.Areas = append(v.Areas, sv)
+		incomplete = incomplete || sv.Note != ""
+		if sv.Status == "ok" && !slices.ContainsFunc(finds, func(r rules.Rule) bool { return r.Area == s.ID }) {
+			v.OKAreas = append(v.OKAreas, sv.Name)
+		}
 	}
 	view := func(f rules.Rule, facts map[string]string) HealthFindingView {
 		d := a.t.HealthFindings[f.ID]
@@ -260,35 +247,26 @@ func (a *App) healthView(h *healthState, outs []health.Outcome, before map[strin
 		}
 		return fv
 	}
-	has := func(list []rules.Rule, id string) bool {
-		return slices.ContainsFunc(list, func(r rules.Rule) bool { return r.ID == id })
-	}
 	problems, advice, fixed, total := 0, 0, 0, 0
-	marked := mode == "fix" && h.res != nil
-	if marked {
-		// What the first check found, each marked: gone now, or still there.
-		first := h.res.Facts()
-		for _, f := range h.finds {
-			if f.Kind == "info" {
-				continue
-			}
-			fv := view(f, first)
-			if f.Fix != "" {
-				total++
-			}
-			if has(finds, f.ID) {
-				fv.State, fv.Tag = "left", H["tag_left"]
-				if f.Kind == "advice" {
-					fv.State, fv.Tag = "", H["tag_advice"]
-				}
-			} else {
-				fv.State, fv.Tag = "fixed", H["tag_fixed"]
-				if f.Fix != "" {
-					fixed++
-				}
-			}
-			v.Finds = append(v.Finds, fv)
+	uncertain := false
+	for _, f := range previous {
+		state := bt.States[f.ID]
+		if state == "" {
+			continue
 		}
+		if f.Fix != "" {
+			total++
+			if state == "fixed" {
+				fixed++
+			}
+		}
+		uncertain = uncertain || state == "unconfirmed" || state == "gone"
+		if state == "left" || state == "unconfirmed" && slices.ContainsFunc(finds, func(r rules.Rule) bool { return r.ID == f.ID }) {
+			continue // use the current finding and its facts below
+		}
+		fv := view(f, bt.BeforeFacts)
+		fv.State, fv.Tag = state, H["tag_"+state]
+		v.Finds = append(v.Finds, fv)
 	}
 	for _, f := range finds {
 		if f.Kind == "info" {
@@ -300,32 +278,33 @@ func (a *App) healthView(h *healthState, outs []health.Outcome, before map[strin
 		} else {
 			advice++
 		}
-		if !(marked && has(h.finds, f.ID)) {
-			v.Finds = append(v.Finds, view(f, facts))
+		fv := view(f, facts)
+		if state := bt.States[f.ID]; state == "unconfirmed" || state == "left" && f.Kind == "problem" {
+			fv.State, fv.Tag = state, H["tag_"+state]
 		}
-	}
-	found := report.AreaStatus(finds)
-	for _, s := range cur.Steps {
-		if found[s.ID] == "" && !slices.ContainsFunc(finds, func(r rules.Rule) bool { return r.Area == s.ID }) {
-			v.OKAreas = append(v.OKAreas, a.t.Steps[s.ID].Name)
-		}
+		v.Finds = append(v.Finds, fv)
 	}
 
 	plural := func(n int, forms string) string { return strconv.Itoa(n) + " " + locales.Plural(n, forms) }
-	switch {
-	case mode == "undo" && slices.ContainsFunc(outs, func(o health.Outcome) bool { return !o.OK }):
-		ok := 0
-		for _, o := range outs {
-			if o.OK {
-				ok++
-			}
+	ok := 0
+	for _, o := range bt.Outcomes {
+		if o.OK {
+			ok++
 		}
-		v.Head = locales.Fill(H["undone_part"], map[string]string{"done": strconv.Itoa(ok), "total": strconv.Itoa(len(outs))})
+	}
+	failed := ok != len(bt.Outcomes) || (after && len(bt.Outcomes) == 0) || bt.Declined
+	switch {
+	case mode == "undo" && len(bt.Outcomes) == 0:
+		v.Head = H["undo_unconfirmed"]
+	case mode == "undo" && failed:
+		v.Head = locales.Fill(H["undone_part"], map[string]string{"done": strconv.Itoa(ok), "total": strconv.Itoa(len(bt.Outcomes))})
 	case mode == "undo":
 		v.Head = H["undone"]
-	case marked && total > 0:
+	case mode == "fix" && total > 0:
 		v.Head = locales.Fill(H["after_head"], map[string]string{"done": strconv.Itoa(fixed), "total": strconv.Itoa(total)})
-	case marked:
+	case mode == "fix" && failed:
+		v.Head = H["cleanup_unconfirmed"]
+	case mode == "fix":
 		v.Head = H["cleaned"]
 	case problems > 0 && advice > 0:
 		v.Head = locales.Fill(H["head_both"], map[string]string{"problems": plural(problems, H["problem_forms"]), "advice": plural(advice, H["advice_forms"])})
@@ -333,18 +312,17 @@ func (a *App) healthView(h *healthState, outs []health.Outcome, before map[strin
 		v.Head = locales.Fill(H["head_problems"], map[string]string{"problems": plural(problems, H["problem_forms"])})
 	case advice > 0:
 		v.Head = locales.Fill(H["head_advice"], map[string]string{"advice": plural(advice, H["advice_forms"])})
+	case incomplete:
+		v.Head = H["head_incomplete"]
 	default:
 		v.Head = H["head_ok"]
 	}
 	switch {
 	case problems > 0:
 		v.Tone = "bad"
-	case advice > 0:
+	case advice > 0 || incomplete || failed || uncertain || fixed != total || len(issues) > 0:
 		v.Tone = "warn"
 	default:
-		v.Tone = "ok"
-	}
-	if marked && total > 0 && fixed == total && problems == 0 {
 		v.Tone = "ok"
 	}
 
@@ -368,19 +346,23 @@ func (a *App) healthView(h *healthState, outs []health.Outcome, before map[strin
 			v.FixNote = H["fix_note_admin"]
 		}
 	}
-	for _, o := range outs {
+	if len(issues) > 0 {
+		v.FixNote += "\n" + strings.Join(report.HealthUndoNotes(a.t, facts, issues), "\n")
+	}
+	before := bt.BeforeFacts
+	if before == nil {
+		before = facts
+	}
+	for _, o := range bt.Outcomes {
 		st := "ok"
 		if !o.OK {
 			st = "fail"
-		}
-		if before == nil {
-			before = facts
 		}
 		e := o.Error
 		if e == health.ErrDeclined.Error() {
 			e = "" // the line under the list says it in words
 		}
-		v.Done = append(v.Done, HealthOutcomeView{Text: report.HealthAction(a.t, o.Action, before, o.OK), Status: st, Error: e})
+		v.Done = append(v.Done, HealthOutcomeView{Text: report.HealthOutcomeText(a.t, o, before), Status: st, Error: e})
 	}
 	return v
 }

@@ -27,7 +27,7 @@ func main() {
 	}
 	asJSON := flag.Bool("json", false, "print facts and raw evidence as JSON")
 	save := flag.Bool("save", false, "save the AI report (.md) in the current folder")
-	noHide := flag.Bool("no-hide", false, "keep the public IP and other private values in the report")
+	noHide := flag.Bool("no-hide", false, "keep private values in the Markdown report")
 	noBrowser := flag.Bool("no-browser", false, "skip loading the page in a hidden Edge/Chrome")
 	stability := flag.Bool("live", false, "stability check: ping the chain (router, ISP, internet, server) while you play")
 	app := flag.Bool("app", false, "app check: record a running program's TCP connections and check its servers (no name: list programs)")

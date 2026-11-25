@@ -30,6 +30,9 @@ func TestMatch(t *testing.T) {
 		want  string
 	}{
 		{ok, "all_ok"},
+		{with("br.status", "off"), "http_reached"},
+		{with("br.status", "unavailable"), "http_reached"},
+		{with("br.status", "error"), "http_reached"},
 		{with("local.net", "none"), "no_internet"},
 		{with("local.hosts_entry", "true"), "hosts_entry"},
 		{with("local.clock", "wrong", "tls.status", "cert_expired"), "clock_wrong"},
@@ -41,6 +44,7 @@ func TestMatch(t *testing.T) {
 		{with("tls.status", "eof", "tls.control", "closed", "http.class", "fail", "http.status", "eof"), "unknown"}, // closes every name: not DPI
 		{with("tls.intercepted", "true"), "https_intercepted"},
 		{with("local.proxy", "on"), "proxy_in_way"},
+		{with("http.class", "3xx", "http.status", "307", "http.redirect_blocked", "true", "local.proxy", "on", "br.status", "off"), "unknown"},
 		{with("http.class", "4xx", "http.status", "403", "http.challenge", "true"), "bot_check"},
 		{with("dns.system", "nxdomain", "dns.doh", "unavailable", "tcp.status", "skip", "tls.status", "skip"), "no_such_site"},
 		{with("dns.system", "timeout", "dns.doh", "unavailable", "tcp.status", "skip", "tls.status", "skip"), "no_internet"},

@@ -29,3 +29,4 @@ Windows 10/11 desktop app (Go + Wails v2) that tells a non-technical person why 
 - [docs/health.md](docs/health.md) — Windows network health (design + what stage 1 built): check the PC's network setup, fix what was found with undo
 - [docs/development.md](docs/development.md) — setup, commands, conventions
 - [docs/bugs.md](docs/bugs.md) — verified pitfalls and fixed bugs
+- [docs/bugs-1.0.md](docs/bugs-1.0.md) — regressions found while preparing 1.0

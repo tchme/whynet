@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"whynet/internal/health"
+	"whynet/internal/probe"
 	"whynet/locales"
 	"whynet/rules"
 )
@@ -22,23 +23,111 @@ func HealthFileName(res *health.Result) string {
 
 // HealthBatch is one fix (or undo) batch as the report tells it.
 type HealthBatch struct {
-	Undo     bool             `json:"undo,omitempty"`
-	Outcomes []health.Outcome `json:"outcomes"`
-	Declined bool             `json:"declined,omitempty"` // the administrator prompt was refused
+	Undo        bool               `json:"undo,omitempty"`
+	Outcomes    []health.Outcome   `json:"outcomes"`
+	Declined    bool               `json:"declined,omitempty"` // the administrator prompt was refused
+	States      map[string]string  `json:"finding_states,omitempty"`
+	BeforeFacts map[string]string  `json:"-"`
+	UndoIssues  []health.UndoIssue `json:"undo_issues,omitempty"`
 }
 
-// AreaStatus is each area's status from its findings: fail (a problem), warn (advice), ok.
-func AreaStatus(finds []rules.Rule) map[string]string {
-	st := map[string]string{}
+// AreaStatus combines the check's own status with the findings for that area.
+func AreaStatus(s probe.Step, finds []rules.Rule) string {
+	st := s.Status
+	switch st {
+	case "error", "fail", "skip":
+		return st
+	case "":
+		st = "ok"
+	}
 	for _, f := range finds {
-		switch {
-		case f.Kind == "problem":
-			st[f.Area] = "fail"
-		case f.Kind == "advice" && st[f.Area] != "fail":
-			st[f.Area] = "warn"
+		if f.Area == s.ID {
+			switch f.Kind {
+			case "problem":
+				return "fail"
+			case "advice":
+				st = "warn"
+			}
 		}
 	}
 	return st
+}
+
+// HealthAreaIssue describes an incomplete check independently of the findings it made.
+func HealthAreaIssue(t *locales.Texts, s probe.Step) string {
+	if s.Status == "" || s.Status == "ok" {
+		return ""
+	}
+	if n, _ := strconv.Atoi(s.Facts["health.hosts_unchecked"]); n > 0 && s.Status == "warn" {
+		return locales.Fill(t.Health["area_hosts_unchecked"], map[string]string{"n": strconv.Itoa(n)})
+	}
+	return t.Health["area_incomplete"]
+}
+
+// HealthProgress emits the status of a completed area and updates it if later facts change it.
+func HealthProgress(rs []rules.Rule, emit func(probe.Step, []rules.Rule)) func(probe.Step) {
+	facts := map[string]string{}
+	status := map[string]string{}
+	var steps []probe.Step
+	return func(s probe.Step) {
+		maps.Copy(facts, s.Facts)
+		steps = append(steps, s)
+		finds := rules.MatchAll(rs, facts)
+		for _, step := range steps {
+			if st := AreaStatus(step, finds); st != status[step.ID] {
+				status[step.ID] = st
+				emit(step, finds)
+			}
+		}
+	}
+}
+
+// HealthFixStates compares the findings immediately before and after one fix batch.
+func HealthFixStates(before, after *health.Result, previous, current []rules.Rule, outs []health.Outcome) map[string]string {
+	states := map[string]string{}
+	facts := after.Facts()
+	for _, f := range previous {
+		if f.Kind == "info" {
+			continue
+		}
+		states[f.ID] = "unconfirmed"
+		i := slices.IndexFunc(after.Steps, func(s probe.Step) bool { return s.ID == f.Area })
+		if i < 0 || !slices.Contains([]string{"", "ok", "warn"}, after.Steps[i].Status) {
+			continue
+		}
+		known := true
+		for key := range f.When {
+			if slices.Contains([]string{"", "unknown", "unreadable", "unavailable", "error"}, facts[key]) {
+				known = false
+				break
+			}
+		}
+		if !known {
+			continue
+		}
+		var planned []health.Action
+		if f.Fix != "" {
+			for _, act := range health.MakePlan(before, []string{f.Fix}).Actions {
+				if act.ID != "flush_dns" && act.ID != "flush_arp" {
+					planned = append(planned, act)
+				}
+			}
+		}
+		verified := len(planned) > 0 && !slices.ContainsFunc(planned, func(act health.Action) bool { return !after.Confirms(act) })
+		switch {
+		case verified && !slices.ContainsFunc(planned, func(act health.Action) bool {
+			return !slices.ContainsFunc(outs, func(o health.Outcome) bool { return o.OK && o.Action.Equal(act) })
+		}):
+			states[f.ID] = "fixed"
+		case slices.ContainsFunc(current, func(r rules.Rule) bool { return r.ID == f.ID }):
+			states[f.ID] = "left"
+		case after.Steps[i].Status == "warn" && !verified:
+			// An unchecked pin still present in hosts can make the stale rule disappear.
+		default:
+			states[f.ID] = "gone"
+		}
+	}
+	return states
 }
 
 // HealthAction is one action in plain words, as the window's list and the report show it: what
@@ -75,11 +164,41 @@ func HealthAction(t *locales.Texts, a health.Action, facts map[string]string, do
 	return strings.TrimSpace(locales.Fill(h[key], v))
 }
 
+func HealthOutcomeText(t *locales.Texts, o health.Outcome, facts map[string]string) string {
+	text := HealthAction(t, o.Action, facts, o.OK)
+	if o.Already {
+		text = locales.Fill(t.Health["already_restored"], map[string]string{"action": HealthAction(t, o.Action, facts, false)})
+	}
+	if o.Backup != "" {
+		text += " " + locales.Fill(t.Health["hosts_backup"], map[string]string{"path": o.Backup})
+	}
+	return text
+}
+
+func HealthUndoNotes(t *locales.Texts, facts map[string]string, issues []health.UndoIssue) []string {
+	var out []string
+	for _, issue := range issues {
+		key := "undo_failed"
+		v := map[string]string{"error": issue.Reason}
+		if issue.Action.ID != "" {
+			key, v["action"] = "undo_manual", HealthAction(t, issue.Action, facts, false)
+		}
+		note := locales.Fill(t.Health[key], v)
+		if issue.Backup != "" {
+			note += " " + locales.Fill(t.Health["hosts_backup"], map[string]string{"path": issue.Backup})
+		}
+		if !slices.Contains(out, note) {
+			out = append(out, note)
+		}
+	}
+	return out
+}
+
 // HealthMarkdown renders the Windows network health report: the findings, any fix batches with
 // their outcomes and the re-check after them, every area's facts, the raw data. With hide, the
 // private values in res.Mask are replaced across the whole text.
 func HealthMarkdown(res *health.Result, finds []rules.Rule, batches []HealthBatch, after *health.Result, afterFinds []rules.Rule,
-	t *locales.Texts, hide bool) string {
+	t *locales.Texts, hide bool, undoIssues ...health.UndoIssue) string {
 	facts := res.Facts()
 	r, h := t.Report, t.Health
 	var b strings.Builder
@@ -100,10 +219,21 @@ func HealthMarkdown(res *health.Result, finds []rules.Rule, batches []HealthBatc
 		privacy = r["privacy_hidden"]
 	}
 	w("- %s: %s\n", r["privacy"], privacy)
+	for _, note := range HealthUndoNotes(t, facts, undoIssues) {
+		w("- %s\n", note)
+	}
 
-	writeFindings := func(title string, finds []rules.Rule, facts map[string]string) {
+	writeFindings := func(title string, check *health.Result, finds []rules.Rule) {
 		w("\n## %s\n\n", title)
-		if len(finds) == 0 {
+		facts := check.Facts()
+		incomplete := false
+		for _, s := range check.Steps {
+			if issue := HealthAreaIssue(t, s); issue != "" {
+				incomplete = true
+				w("- **%s** %s %s\n", t.Steps[s.ID].Name, t.Status[AreaStatus(s, finds)], issue)
+			}
+		}
+		if len(finds) == 0 && !incomplete {
 			w("%s\n", h["no_findings"])
 			return
 		}
@@ -116,7 +246,7 @@ func HealthMarkdown(res *health.Result, finds []rules.Rule, batches []HealthBatc
 			w("\n")
 		}
 	}
-	writeFindings(h["findings_title"], finds, facts)
+	writeFindings(h["findings_title"], res, finds)
 
 	for _, bt := range batches {
 		title := h["fixes_title"]
@@ -124,29 +254,35 @@ func HealthMarkdown(res *health.Result, finds []rules.Rule, batches []HealthBatc
 			title = h["undo"]
 		}
 		w("\n## %s\n\n", title)
+		before := bt.BeforeFacts
+		if before == nil {
+			before = facts
+		}
 		for _, o := range bt.Outcomes {
 			mark := "✓"
 			if !o.OK {
 				mark = "✗ " + o.Error
 			}
-			w("- %s — %s\n", HealthAction(t, o.Action, facts, o.OK), mark)
+			w("- %s — %s\n", HealthOutcomeText(t, o, before), mark)
 		}
 		if bt.Declined {
 			w("\n%s\n", h["declined"])
 		}
+		for _, note := range HealthUndoNotes(t, before, bt.UndoIssues) {
+			w("- %s\n", note)
+		}
+		for _, id := range slices.Sorted(maps.Keys(bt.States)) {
+			w("- %s — %s\n", locales.Fill(t.HealthFindings[id].Title, before), h["tag_"+bt.States[id]])
+		}
 	}
 	if after != nil {
-		writeFindings(h["after_title"], afterFinds, after.Facts())
+		writeFindings(h["after_title"], after, afterFinds)
 	}
 
-	status := AreaStatus(finds)
 	w("\n## %s\n", h["facts_title"])
 	for i, s := range res.Steps {
 		st := t.Steps[s.ID]
-		mark := status[s.ID]
-		if mark == "" {
-			mark = s.Status
-		}
+		mark := AreaStatus(s, finds)
 		w("\n### %d. %s %s (%d %s)\n\n%s\n\n", i+1, st.Name, t.Status[mark], s.Ms, r["ms"], st.What)
 		for _, k := range slices.Sorted(maps.Keys(s.Facts)) {
 			w("- `%s`: %s\n", k, s.Facts[k])

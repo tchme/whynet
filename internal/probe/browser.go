@@ -95,13 +95,13 @@ type BrowserProgress struct {
 }
 
 func (p *prober) browser(s *Step) {
-	if (!p.pageOK && !p.env.BrowserAlways) || p.env.Browser == nil {
+	if (!p.pageOK && !p.httpDowngrade && !p.env.BrowserAlways) || p.env.Browser == nil {
 		s.Facts["br.status"] = "off"
 		s.Status = "skip"
 		return
 	}
-	// The address the person typed; the hidden run follows whynet's own redirects, a plain
-	// window starts clean (those redirects may be an anti-bot's answer to whynet itself).
+	// A plain window starts clean; redirects may be an anti-bot's answer to whynet itself.
+	// The hidden run uses the last page whynet could load, or retries the original HTTPS address.
 	target := "https://" + p.host + p.path
 	if p.finalURL != nil && !p.env.BrowserAlways {
 		target = p.finalURL.String()
@@ -647,6 +647,12 @@ func BrowserSession(ctx context.Context, target string, opts BrowserOpts) (res B
 		websocket.JSON.Send(ws, m)
 		return nextID
 	}
+	blockHTTP := func(m cdpMsg) {
+		var paused struct{ RequestID string }
+		if json.Unmarshal(m.Params, &paused) == nil && paused.RequestID != "" {
+			send("Fetch.failRequest", map[string]any{"requestId": paused.RequestID, "errorReason": "BlockedByClient"})
+		}
+	}
 	call := func(method string, params any) (json.RawMessage, error) {
 		id := send(method, params)
 		for {
@@ -654,6 +660,10 @@ func BrowserSession(ctx context.Context, target string, opts BrowserOpts) (res B
 			case m, ok := <-msgs:
 				if !ok {
 					return nil, errors.New("browser closed the connection")
+				}
+				if m.SessionID == session && m.Method == "Fetch.requestPaused" {
+					blockHTTP(m)
+					continue
 				}
 				if m.ID == id {
 					if m.Error != nil {
@@ -704,6 +714,8 @@ func BrowserSession(ctx context.Context, target string, opts BrowserOpts) (res B
 	}{
 		{"Network.enable", nil},
 		{"Page.enable", nil},
+		// A request-stage pause catches Chromium's own redirects before any HTTP request is sent.
+		{"Fetch.enable", map[string]any{"patterns": []map[string]string{{"urlPattern": "http://*", "requestStage": "Request"}}}},
 		// a plain browser agent: some sites turn away "HeadlessChrome"
 		{"Network.setUserAgentOverride", map[string]any{"userAgent": userAgent, "acceptLanguage": "ru,en;q=0.8"}},
 	} {
@@ -735,6 +747,8 @@ loop:
 					break loop
 				}
 			case m.SessionID != session:
+			case m.Method == "Fetch.requestPaused":
+				blockHTTP(m)
 			case m.Method == "Page.loadEventFired":
 				if !loaded {
 					loaded, loadedAt = true, time.Now()

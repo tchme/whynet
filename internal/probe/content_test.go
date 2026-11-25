@@ -193,7 +193,7 @@ func TestSlowFiles(t *testing.T) {
 		ev("Network.loadingFinished", map[string]any{"requestId": id, "timestamp": ts, "encodedDataLength": 1000})
 	}
 	// A: the connect took 1.5 s (a resent packet), 3.0 s in all.
-	req("A", "Image", "https://cdn.example/a.jpg?sig=secret", 1)
+	req("A", "Image", "https://secret-user:secret-pass@cdn.example/a.jpg?sig=secret#secret-fragment", 1)
 	answer("A", 2.7, map[string]float64{"requestTime": 1, "connectStart": 0, "sslStart": 1500, "sslEnd": 1550, "connectEnd": 1550, "sendStart": 1551, "sendEnd": 1552, "receiveHeadersEnd": 1700})
 	done("A", 4)
 	// B: same server, waited for A's connection (HTTP/2): its own timing shows only the wait.

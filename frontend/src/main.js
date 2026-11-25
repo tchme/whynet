@@ -4,7 +4,7 @@ import '@fontsource/golos-text/600.css';
 import '@fontsource/jetbrains-mono/400.css';
 import './style.css';
 
-import { Info, Check, CheckInBrowser, FinishBrowser, Report, SaveReport, CopyReport, CheckUpdate, Update,
+import { Info, Check, RepeatSiteCheck, CheckInBrowser, FinishBrowser, Report, SaveReport, CopyReport, CheckUpdate, Update,
   StartLive, FinishLive, CancelLive, MarkLag, ReadHAR, PasteHAR, ReadHARFile, PickHAR, CompareHAR,
   ListPrograms, RecordApp, FinishApp, CancelApp, FitWindow, CheckHealth, FixHealth, UndoHealth } from '../wailsjs/go/main/App';
 import { EventsOn, OnFileDrop, WindowGetSize } from '../wailsjs/runtime/runtime';
@@ -84,7 +84,9 @@ function rightHTML() {
     return `<section class="verdict waiting" aria-live="polite"><strong>${esc(fill(ui.checking, { host: state.host }))}</strong>
       <span>${esc(fill(ui.step_of, { n: n < 0 ? state.steps.length : n + 1, total: state.steps.length }))}${n >= 0 ? `: ${esc(state.steps[n].name.toLowerCase())}` : ''}</span></section>`;
   }
-  return verdictCard(state.verdict, `<div class="deeper"><div class="deeper-cap">${esc(ui.deeper)}</div><div class="actions">
+  const local = ['hosts_entry', 'proxy_in_way', 'clock_wrong', 'isp_dns_down'].includes(state.verdict.id);
+  const health = local ? `<div class="actions"><button class="btn" data-act="site-health">${esc(ui.site_health)}</button></div>` : '';
+  return verdictCard(state.verdict, `${health}<div class="deeper"><div class="deeper-cap">${esc(ui.deeper)}</div><div class="actions">
         <button class="btn sm" data-act="own">${esc(ui.own_open)}</button>
         <button class="btn sm" data-act="in-browser">${esc(ui.in_browser)}</button>
       </div></div>`);
@@ -720,15 +722,15 @@ EventsOn('app-step', s => {
 
 /* ---------- Windows network health ---------- */
 
-const healthMark = st => ({ fail: '✗', error: '✗', warn: '!', ok: '✓' })[st];
-const healthTone = st => ({ fail: 'bad', error: 'bad', warn: 'warn', ok: 'ok' })[st] || 'wait';
+const healthMark = st => ({ fail: '✗', error: '✗', warn: '!', skip: '—', ok: '✓' })[st];
+const healthTone = st => ({ fail: 'bad', error: 'bad', warn: 'warn', skip: 'warn', ok: 'ok' })[st] || 'wait';
 
 function healthAreasHTML(areas) {
-  return `<ul class="areas">${areas.map(a => `<li><span class="ico ${healthTone(a.status)}">${healthMark(a.status) ?? '<span class="spin"></span>'}</span>${esc(a.name)}</li>`).join('')}</ul>`;
+  return `<ul class="areas">${areas.map(a => `<li><span class="ico ${healthTone(a.status)}">${healthMark(a.status) ?? '<span class="spin"></span>'}</span><span>${esc(a.name)}${a.note ? `<br><small class="muted">${esc(a.note)}</small>` : ''}</span></li>`).join('')}</ul>`;
 }
 
 function findHTML(f) {
-  const cls = f.state || f.kind, mark = { fixed: '✓', left: '✗', problem: '✗', advice: '!' }[cls] ?? 'i';
+  const cls = f.state || f.kind, mark = { fixed: '✓', left: '✗', problem: '✗', advice: '!', unconfirmed: '!', gone: '!' }[cls] ?? 'i';
   return `<div class="find ${cls}"><span class="ico">${mark}</span><h3>${esc(f.title)}</h3><span class="ftag">${esc(f.tag)}</span><p>${esc(f.text)}</p></div>`;
 }
 
@@ -753,30 +755,34 @@ function healthHTML() {
     const waitAdmin = !all && items.some((x, i) => x.admin && !hs.run[i]) && items.every((x, i) => x.admin || hs.run[i]);
     return `<div class="hbody"><div class="hhead"><span class="spin"></span><strong>${esc(hs.undoing ? H.undoing : H.fixing)}</strong></div>
       ${runListHTML(items, hs.run)}
-      ${waitAdmin ? `<p class="muted">${esc(H.wait_uac)}</p>` : ''}${all ? `<p class="muted"><span class="spin"></span>${esc(H.rechecking)}</p>` : ''}</div>`;
+      ${waitAdmin ? `<p class="muted">${esc(H.wait_uac)}</p>` : ''}${all || hs.areas.length ? `<p class="muted"><span class="spin"></span>${esc(H.rechecking)}</p>` : ''}
+      ${hs.areas.length ? healthAreasHTML(hs.areas) : ''}</div>`;
   }
   const head = `<div class="hhead"><span class="ico big ${v.tone}">${{ bad: '✗', warn: '!', ok: '✓' }[v.tone]}</span><h2>${esc(v.head)}</h2></div>`;
   const infos = v.infos?.length ? `<details class="fold"><summary><b>${esc(H.info_title)}</b> ${esc(v.infos.map(f => f.title).join('; '))}</summary>
       <div class="finds">${v.infos.map(findHTML).join('')}</div></details>` : '';
-  const oks = v.ok_areas?.length ? `<details class="fold"><summary><b>${esc(H.ok_title)}</b> ${esc(v.ok_areas.join(', '))}</summary>${healthAreasHTML(v.areas)}</details>` : '';
+  const incomplete = v.areas?.filter(a => a.note) || [];
+  const oks = v.ok_areas?.length ? `<details class="fold"><summary><b>${esc(H.ok_title)}</b> ${esc(v.ok_areas.join(', '))}</summary>${healthAreasHTML(v.areas.filter(a => !a.note))}</details>` : '';
   const report = `<span class="split"><button class="btn" data-act="open">${esc(state.ui.save_report)}</button><button class="btn" data-act="copy">⧉ ${esc(state.ui.copy)}</button></span>`;
   const undo = v.undo ? `<button class="btn" data-act="health-undo">${esc(H.undo)}</button>` : '';
   const fixBtn = `<button class="btn primary" data-act="health-fix">${esc(v.fix_label)}</button>`;
+  const repeat = `<button class="btn${v.after && !v.fixable ? ' primary' : ''}" data-act="health-repeat-site">${esc(state.ui.health_repeat_site)}</button>`;
   let go;
   if (v.after) {
     const done = v.done?.length ? runListHTML(v.done, v.done.map(x => x.status)) : '';
     // Something still to fix: that is the main button; otherwise go and try what failed.
-    const site = `<button class="btn${v.fixable ? '' : ' primary'}" data-act="health-site">${esc(H.check_site)}</button>`;
+    const site = hs.fromSite ? repeat : `<button class="btn${v.fixable ? '' : ' primary'}" data-act="health-site">${esc(H.check_site)}</button>`;
     go = `${done}${v.declined ? `<p class="small bad">${esc(H.declined)}</p>` : ''}
       ${v.fixable ? '' : `<p class="small">${esc(H.try_now)}</p>`}
       <div class="actions">${v.fixable ? fixBtn : ''}${site}
         <button class="btn" data-act="health-app">${esc(H.check_app)}</button>${undo}${report}</div>
-      ${v.undo ? `<p class="small">${esc(H.undo_note)}</p>` : ''}${v.fix_note && !v.fixable && v.fix_note !== H.clean_note ? `<p class="small bad">${esc(v.fix_note)}</p>` : ''}`;
+      ${v.undo ? `<p class="small">${esc(H.undo_note)}</p>` : ''}${v.fix_note && ![H.clean_note, H.fix_note, H.fix_note_admin].includes(v.fix_note) ? `<p class="small bad health-note">${esc(v.fix_note)}</p>` : ''}`;
   } else {
-    go = `<div class="actions">${fixBtn}${undo}${report}</div>
-      <ol>${v.plan.map(x => `<li>${esc(x.text)}</li>`).join('')}</ol><p class="small">${esc(v.fix_note)}</p>`;
+    go = `<div class="actions">${fixBtn}${undo}${hs.fromSite ? repeat : ''}${report}</div>
+      <ol>${v.plan.map(x => `<li>${esc(x.text)}</li>`).join('')}</ol><p class="small health-note">${esc(v.fix_note)}</p>`;
   }
   return `<div class="hbody">${head}${v.tone === 'ok' && !v.after && !v.finds?.length ? `<p class="muted">${esc(H.ok_text)}</p>` : ''}
+    ${incomplete.length ? healthAreasHTML(incomplete) : ''}
     ${v.finds?.length ? `<div class="finds">${v.finds.map(findHTML).join('')}</div>` : ''}${infos}${oks}
     <div class="go">${go}</div>${err}<p class="muted small">${esc(H.heavy_note)}</p>
     <div class="version">whynet ${esc(state.version)}</div></div>`;
@@ -798,7 +804,7 @@ async function startHealth() {
 async function runHealthBatch(undo) {
   const hs = state.health;
   if (healthBusy() || !hs.view) return;
-  Object.assign(hs, { phase: 'fixing', run: [], undoing: undo, error: '' });
+  Object.assign(hs, { phase: 'fixing', run: [], areas: [], undoing: undo, error: '' });
   render();
   try { Object.assign(hs, { phase: 'done', view: await (undo ? UndoHealth() : FixHealth()) }); }
   catch (err) { Object.assign(hs, { phase: 'done', error: err?.message ?? String(err) }); }
@@ -807,7 +813,8 @@ async function runHealthBatch(undo) {
 
 EventsOn('health-step', s => {
   const hs = state.health;
-  if (hs.phase !== 'checking') return; // the re-check after a fix shows only "Проверяю ещё раз"
+  if (hs.phase !== 'checking' && hs.phase !== 'fixing') return;
+  if (!hs.areas.length) hs.areas = state.healthAreas.map(a => ({ ...a, status: 'run' }));
   const i = hs.areas.findIndex(a => a.id === s.id);
   if (i >= 0) { hs.areas[i] = s; render(); }
 });
@@ -890,9 +897,13 @@ async function fitWindow(again = true) {
   } catch { /* outside Wails (vite preview): nothing to resize */ }
 }
 
+let previewRequest = 0;
 async function refreshPreview() {
   const pre = $('preview');
-  if (pre) pre.textContent = await Report(!state.reveal);
+  if (!pre) return;
+  const id = ++previewRequest;
+  const text = await Report(state.modal, !state.reveal).catch(err => err?.message ?? String(err));
+  if (id === previewRequest && pre === $('preview')) pre.textContent = text;
 }
 
 let toastTimer = 0;
@@ -921,11 +932,36 @@ EventsOn('browser-progress', p => {
   else render();
 });
 
-async function startCheck(site, visible) {
-  if (!site || state.phase === 'running') return;
+function confirmBrowserCheck() {
+  const ui = state.ui;
+  const dialog = document.createElement('dialog');
+  dialog.id = 'browser-consent';
+  dialog.className = 'm';
+  dialog.setAttribute('role', 'alertdialog');
+  dialog.setAttribute('aria-labelledby', 'browser-consent-title');
+  dialog.setAttribute('aria-describedby', 'browser-consent-risk');
+  dialog.innerHTML = `<h2 id="browser-consent-title">${esc(ui.browser_consent_title)}</h2>
+    <p id="browser-consent-risk">${esc(ui.browser_consent_risk)}</p>
+    <form method="dialog" class="actions end">
+      <button class="btn" value="cancel" autofocus>${esc(ui.browser_consent_cancel)}</button>
+      <button class="btn primary" value="open">${esc(ui.browser_consent_open)}</button>
+    </form>`;
+  document.body.append(dialog);
+  return new Promise(resolve => {
+    dialog.addEventListener('close', () => {
+      dialog.remove();
+      resolve(dialog.returnValue === 'open');
+    }, { once: true });
+    dialog.showModal();
+  });
+}
+
+async function startCheck(site, visible, repeat = false) {
+  if (!site || state.phase === 'running' || $('browser-consent')) return;
+  if (visible && !await confirmBrowserCheck()) return;
   running(site, visible);
   try {
-    const view = await (visible ? CheckInBrowser(site) : Check(site));
+    const view = await (repeat ? RepeatSiteCheck() : visible ? CheckInBrowser(site) : Check(site));
     showView(view);
     if (visible && view.steps.find(s => s.id === 'browser')?.facts?.some(([k, v]) => k === 'br.status' && v === 'unavailable')) {
       toast(state.ui.browser_missing);
@@ -971,6 +1007,7 @@ async function readOwn(reading) {
 const typed = { site: '', live: '', app: '', health: '' };
 function setMode(mode) {
   typed[state.mode] = input.value;
+  state.health.fromSite = false;
   state.mode = mode;
   input.value = typed[state.mode];
   state.details = false;
@@ -1032,6 +1069,8 @@ out.addEventListener('click', async e => {
   else if (act === 'app-done') { el.disabled = true; FinishApp(); }
   else if (act === 'health-fix') runHealthBatch(false);
   else if (act === 'health-undo') runHealthBatch(true);
+  else if (act === 'site-health') { setMode('health'); state.health.fromSite = true; startHealth(); }
+  else if (act === 'health-repeat-site') { const host = state.host; setMode('site'); startCheck(host, false, true); }
   else if (act === 'health-site') setMode('site');
   else if (act === 'health-app') setMode('app');
   else if (act === 'app-cancel') CancelApp();
@@ -1043,12 +1082,12 @@ out.addEventListener('click', async e => {
   else if (act === 'live-mark') { MarkLag(); state.live.lags++; updateLiveRec(); }
   else if (act === 'live-again') startLive(state.live.target, true);
   else if (act === 'view-lanes' || act === 'view-lines') { state.live.chart = act.slice(5); render(); }
-  else if (act === 'open') { state.modal = true; render(); $('m-title')?.closest('.m').querySelector('[data-act="save"]').focus(); }
+  else if (act === 'open') { state.modal = state.mode; state.reveal = false; render(); $('m-title')?.closest('.m').querySelector('[data-act="save"]').focus(); }
   else if (act === 'close' || (act === 'backdrop' && e.target === el)) { state.modal = false; render(); }
   else if (act === 'copy') {
-    try { await CopyReport(!(state.modal && state.reveal)); toast(state.ui.copied); } catch (err) { failed(err); }
+    try { await CopyReport(state.modal || state.mode, !(state.modal && state.reveal)); toast(state.ui.copied); } catch (err) { failed(err); }
   } else if (act === 'save') {
-    try { const path = await SaveReport(!state.reveal); if (path) toast(fill(state.ui.saved, { path })); } catch (err) { failed(err); }
+    try { const path = await SaveReport(state.modal, !state.reveal); if (path) toast(fill(state.ui.saved, { path })); } catch (err) { failed(err); }
   }
 });
 

@@ -49,13 +49,14 @@ func TestHealthMatch(t *testing.T) {
 	}{
 		{healthyPC, []string{"health_hosts_pins", "health_mtu_low"}},
 		// Several independent problems are all listed, in file order.
-		{with("health.proxy", "dead", "health.hosts_stale", "36", "health.link_slow", "true"),
+		{with("health.proxy", "dead", "health.hosts_stale", "36", "health.hosts_stale_found", "true", "health.hosts_unchecked", "2", "health.link_slow", "true"),
 			[]string{"health_link_slow", "health_proxy_dead", "health_hosts_stale", "health_hosts_pins", "health_mtu_low"}},
 		// A dead manual DNS with a working router DNS is the fixable case, not "DNS is dead".
 		{with("health.dns", "dead_all", "health.dns_manual_dead", "true"), []string{"health_dns_manual_dead", "health_hosts_pins", "health_mtu_low"}},
 		{with("health.dns", "dead_all"), []string{"health_dns_dead", "health_hosts_pins", "health_mtu_low"}},
 		// hosts unreadable: no stale finding from a missing count.
 		{with("health.hosts", "unreadable", "health.hosts_pins", "", "health.hosts_stale", ""), []string{"health_mtu_low"}},
+		{with("health.hosts_stale", "", "health.hosts_unchecked", "2"), []string{"health_hosts_pins", "health_mtu_low"}},
 		{with("health.autotuning", "disabled", "health.rss", "disabled"), []string{"health_hosts_pins", "health_autotuning", "health_rss_off", "health_mtu_low"}},
 		{with("health.clock_off", "true", "local.dpi_tool", "zapret"), []string{"health_hosts_pins", "health_mtu_low", "health_clock_off", "health_dpi"}},
 	}

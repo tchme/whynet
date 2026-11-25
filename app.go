@@ -5,7 +5,6 @@ import (
 	"errors"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -23,7 +22,7 @@ import (
 	"whynet/rules"
 )
 
-// App is what the window calls. One check runs at a time; the last one feeds the report.
+// App is what the window calls. One check runs at a time and each mode keeps its result.
 type App struct {
 	ctx     context.Context
 	rules   []rules.Rule
@@ -55,7 +54,6 @@ type App struct {
 	healthRules []rules.Rule
 	health      *healthState // the last Windows network health check and the fixes since
 
-	lastKind string // site, live, app, health: which check the report is about
 }
 
 func NewApp() (*App, error) {
@@ -84,17 +82,6 @@ func NewApp() (*App, error) {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	// After an update the previous exe may still be closing: retry removing it for a while.
-	go func() {
-		exe, err := os.Executable()
-		if err != nil {
-			return
-		}
-		for range 10 {
-			update.CleanOld(exe)
-			time.Sleep(time.Second)
-		}
-	}()
 }
 
 // CheckUpdate returns a newer release from GitHub, or nil when there's none or GitHub can't be asked.
@@ -125,11 +112,18 @@ func (a *App) Update() error {
 	if err == nil {
 		err = update.Apply(a.ctx, rel, exe)
 	}
-	if err == nil {
-		err = exec.Command(exe).Start()
-	}
 	if err != nil {
-		runtime.BrowserOpenURL(a.ctx, rel.Page)
+		switch {
+		case errors.Is(err, update.ErrBusy):
+			return errors.New(a.t.UI["update_already_running"])
+		case errors.Is(err, update.ErrCurrent):
+			return errors.New(a.t.UI["update_already_installed"])
+		case errors.Is(err, update.ErrDigest):
+			err = errors.New(a.t.UI["update_missing_digest"])
+		}
+		if rel.Page != "" {
+			runtime.BrowserOpenURL(a.ctx, rel.Page)
+		}
 		return err
 	}
 	runtime.Quit(a.ctx)
@@ -315,7 +309,7 @@ type InfoView struct {
 
 // tones colour the verdict; anything not listed is "bad".
 var tones = map[string]string{
-	"all_ok": "ok", "bot_check": "ok", "browser_ok": "ok",
+	"all_ok": "ok", "bot_check": "ok", "browser_ok": "ok", "http_reached": "warn",
 	"site_blocks_you": "warn", "hosts_entry": "warn", "no_such_site": "warn", "isp_dns_down": "warn", "clock_wrong": "warn",
 	"proxy_in_way": "warn", "https_intercepted": "warn", "proxy_path_broken": "warn", "sni_blocked_router": "warn", "unknown": "warn",
 	"content_stall": "warn", "content_blocked": "warn", "content_slow": "warn", "content_flaky": "warn", "page_slow": "warn",
@@ -343,21 +337,45 @@ func (a *App) Check(site string) (*CheckView, error) {
 	return a.check(site, probe.DefaultEnv(a.markers), 2*time.Minute)
 }
 
+// RepeatSiteCheck uses the exact input of the last completed site check.
+func (a *App) RepeatSiteCheck() (*CheckView, error) {
+	a.mu.Lock()
+	last := a.last
+	a.mu.Unlock()
+	if last == nil {
+		return nil, errors.New(a.t.UI["bad_input"])
+	}
+	return a.Check(last.Input)
+}
+
 // CheckInBrowser runs the check with the browser step in a visible window the person uses
 // (to pass an anti-bot check, log in, play a video). The window sends "browser-progress"
 // events; it ends with FinishBrowser or when the person closes it.
 func (a *App) CheckInBrowser(site string) (*CheckView, error) {
+	if !a.begin() {
+		return nil, errors.New(a.t.UI["busy"])
+	}
 	done := make(chan struct{})
 	a.mu.Lock()
 	a.browserDone = done
 	a.mu.Unlock()
+	defer func() {
+		a.mu.Lock()
+		a.browserDone = nil
+		a.running = false
+		a.mu.Unlock()
+	}()
 	env := probe.DefaultEnv(a.markers)
 	env.BrowserAlways = true
 	env.Browser = func(ctx context.Context, url string) probe.BrowserResult {
 		return probe.BrowserSession(ctx, url, probe.BrowserOpts{Visible: true, Done: done,
 			Progress: func(p probe.BrowserProgress) { runtime.EventsEmit(a.ctx, "browser-progress", p) }})
 	}
-	return a.check(site, env, 15*time.Minute)
+	res, err := a.collectSite(site, env, 15*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+	return a.finishSite(res), nil
 }
 
 // FinishBrowser ends a visible browser check: whynet takes what the page loaded so far.
@@ -371,20 +389,18 @@ func (a *App) FinishBrowser() {
 }
 
 func (a *App) check(site string, env probe.Env, limit time.Duration) (*CheckView, error) {
-	a.mu.Lock()
-	if a.running {
-		a.mu.Unlock()
+	if !a.begin() {
 		return nil, errors.New(a.t.UI["busy"])
 	}
-	a.running = true
-	a.mu.Unlock()
-	defer func() {
-		a.mu.Lock()
-		a.running = false
-		a.browserDone = nil
-		a.mu.Unlock()
-	}()
+	defer a.end()
+	res, err := a.collectSite(site, env, limit)
+	if err != nil {
+		return nil, err
+	}
+	return a.finishSite(res), nil
+}
 
+func (a *App) collectSite(site string, env probe.Env, limit time.Duration) (*probe.Result, error) {
 	ctx, cancel := context.WithTimeout(a.ctx, limit)
 	defer cancel()
 	res, err := probe.Run(ctx, env, site, func(s probe.Step) {
@@ -393,14 +409,15 @@ func (a *App) check(site string, env probe.Env, limit time.Duration) (*CheckView
 	if errors.Is(err, probe.ErrBadInput) {
 		return nil, errors.New(a.t.UI["bad_input"])
 	}
-	if err != nil {
-		return nil, err
-	}
+	return res, err
+}
+
+func (a *App) finishSite(res *probe.Result) *CheckView {
 	v := rules.Match(a.rules, res.Facts())
 	a.mu.Lock()
-	a.last, a.verdict, a.lastKind = res, v, "site"
+	a.last, a.verdict = res, v
 	a.mu.Unlock()
-	return a.view(res, v), nil
+	return a.view(res, v)
 }
 
 // view is a finished check as the window shows it.
@@ -433,35 +450,38 @@ func (a *App) stepView(s probe.Step) StepView {
 	return v
 }
 
-// report renders the last check of either kind; "" before the first one.
-func (a *App) report(hide bool) (md, name string) {
+// report renders the result of the requested mode.
+func (a *App) report(kind string, hide bool) (md, name string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	switch {
-	case a.lastKind == "health" && a.health != nil:
+	case kind == "health" && a.health != nil && a.health.res != nil:
 		h := a.health
-		return report.HealthMarkdown(h.res, h.finds, h.batches, h.after, h.afterF, a.t, hide), report.HealthFileName(h.res)
-	case a.lastKind == "app" && a.lastApp != nil:
+		return a.healthReport(h, hide)
+	case kind == "app" && a.lastApp != nil:
 		return report.AppMarkdown(a.lastApp, a.appVerdict, a.t, hide), report.AppFileName(a.lastApp)
-	case a.lastKind == "live" && a.lastLive != nil:
+	case kind == "live" && a.lastLive != nil:
 		return report.LiveMarkdown(a.lastLive, a.liveVerdict, a.t, hide, a.prevLive), report.LiveFileName(a.lastLive)
-	case a.last != nil:
+	case kind == "site" && a.last != nil:
 		return report.Markdown(a.last, a.verdict, a.t, hide), report.FileName(a.last)
 	}
 	return "", ""
 }
 
 // Report is the AI report text for the preview.
-func (a *App) Report(hide bool) string {
-	md, _ := a.report(hide)
-	return md
+func (a *App) Report(kind string, hide bool) (string, error) {
+	md, _ := a.report(kind, hide)
+	if md == "" {
+		return "", errors.New(a.t.UI["no_report"])
+	}
+	return md, nil
 }
 
 // SaveReport asks where to save the AI report and writes it. "" means the person cancelled.
-func (a *App) SaveReport(hide bool) (string, error) {
-	md, name := a.report(hide)
+func (a *App) SaveReport(kind string, hide bool) (string, error) {
+	md, name := a.report(kind, hide)
 	if md == "" {
-		return "", nil
+		return "", errors.New(a.t.UI["no_report"])
 	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           a.t.UI["save_title"],
@@ -475,7 +495,10 @@ func (a *App) SaveReport(hide bool) (string, error) {
 }
 
 // CopyReport puts the AI report on the clipboard.
-func (a *App) CopyReport(hide bool) error {
-	md, _ := a.report(hide)
+func (a *App) CopyReport(kind string, hide bool) error {
+	md, err := a.Report(kind, hide)
+	if err != nil {
+		return err
+	}
 	return runtime.ClipboardSetText(a.ctx, md)
 }

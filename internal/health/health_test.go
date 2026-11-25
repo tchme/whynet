@@ -1,13 +1,143 @@
 package health
 
 import (
+	"context"
+	"crypto/x509"
+	"io"
+	"net"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"whynet/internal/probe"
 )
+
+func TestHostsFixRequiresConfirmedPinFailures(t *testing.T) {
+	const neighbor = "192.0.2.1 neighbor.example"
+	const target = "192.0.2.2 target.example"
+	const extra = "192.0.2.3 queued.example"
+	const mixed = "192.0.2.2 target.example unchecked.example"
+	secure := httptest.NewTLSServer(nil)
+	defer secure.Close()
+	roots := x509.NewCertPool()
+	roots.AddCert(secure.Certificate())
+	openPipe := func(serve func(net.Conn)) net.Conn {
+		client, server := net.Pipe()
+		go func() { defer server.Close(); serve(server) }()
+		return client
+	}
+	traits := new(net.Dialer)
+	for _, tc := range []struct {
+		name         string
+		stage        int // 1 = connect, 2 = requested name TLS, 3 = control TLS
+		cause        string
+		content      string
+		cap, unknown int
+		fix          []string
+	}{
+		{"canceled before start", 0, "cancel", neighbor + "\n" + target, 10, 2, nil},
+		{"canceled in TCP with queue", 1, "cancel", neighbor + "\n" + target + "\n" + extra, 10, 2, []string{neighbor}},
+		{"canceled in requested TLS", 2, "cancel", neighbor + "\n" + target, 10, 1, []string{neighbor}},
+		{"canceled in control TLS", 3, "cancel", neighbor + "\n" + target, 10, 1, []string{neighbor}},
+		{"own timeout in TCP", 1, "deadline", neighbor + "\n" + target, 10, 1, []string{neighbor}},
+		{"own timeout in requested TLS", 2, "deadline", neighbor + "\n" + target, 10, 1, []string{neighbor}},
+		{"own timeout in control TLS", 3, "deadline", neighbor + "\n" + target, 10, 1, []string{neighbor}},
+		{"socket timeout", 2, "timeout", neighbor + "\n" + target, 10, 1, []string{neighbor}},
+		{"worker panic", 1, "panic", neighbor + "\n" + target + "\n" + mixed, 10, 2, []string{neighbor}},
+		{"socket refusal", 1, "refused", neighbor + "\n" + target, 10, 0, []string{neighbor, target}},
+		{"mismatched certificate", 2, "cert", neighbor + "\n" + target, 10, 0, []string{neighbor, target}},
+		{"certificate and capped name on the same line", 2, "cert", neighbor + "\n" + mixed, 2, 1, []string{neighbor}},
+		{"both TLS handshakes explicitly failed", 3, "protocol", neighbor + "\n" + target, 10, 0, []string{neighbor, target}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if tc.stage == 0 {
+				cancel()
+			}
+			dials := 0
+			pc := pinCheck{Roots: roots, Wait: 40 * time.Millisecond, Cap: tc.cap, Par: 1}
+			if tc.cause != "deadline" {
+				pc.Wait = time.Second
+			}
+			pc.Dial = func(ctx context.Context, network, addr string) (net.Conn, error) {
+				if addr == "192.0.2.1:443" || addr == "192.0.2.3:443" {
+					return nil, &net.OpError{Err: syscall.Errno(10061)}
+				}
+				dials++
+				if dials == tc.stage {
+					switch tc.cause {
+					case "cancel":
+						cancel()
+						return nil, syscall.Errno(10061)
+					case "deadline":
+						if tc.stage == 1 {
+							<-ctx.Done()
+							return nil, syscall.Errno(10061)
+						}
+						return openPipe(func(net.Conn) { <-ctx.Done() }), nil
+					case "timeout":
+						return nil, os.ErrDeadlineExceeded
+					case "panic":
+						panic("probe fixture")
+					case "refused":
+						return nil, syscall.Errno(10061)
+					case "cert":
+						return traits.DialContext(ctx, network, secure.Listener.Addr().String())
+					}
+				}
+				if dials == 1 {
+					return openPipe(func(net.Conn) {}), nil
+				}
+				return openPipe(func(server net.Conn) {
+					buf := make([]byte, 64<<10)
+					server.Read(buf)
+					io.WriteString(server, "HTTP/1.0 200 OK\r\n\r\n")
+				}), nil
+			}
+			path := filepath.Join(t.TempDir(), "hosts")
+			if err := os.WriteFile(path, []byte(tc.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			c := checker{ctx: ctx}
+			s := probe.Step{ID: "health_hosts", Status: "ok", Facts: map[string]string{}, Evidence: map[string]any{}}
+			c.readHosts(&s, path, pc)
+			if tc.cause == "deadline" && ctx.Err() != nil {
+				t.Fatal("test also exhausted the parent context")
+			}
+			if got := s.Facts["health.hosts_unchecked"]; got != strconv.Itoa(tc.unknown) {
+				t.Errorf("unchecked = %s, want %d (evidence %v)", got, tc.unknown, s.Evidence["pin_results"])
+			}
+			if got := s.Evidence["pin_results"].(map[string]int)["unchecked"]; got != tc.unknown || (s.Status == "warn") != (tc.unknown > 0) {
+				t.Errorf("unchecked evidence = %v, status %s, want %d", s.Evidence["pin_results"], s.Status, tc.unknown)
+			}
+			var fixed []string
+			for _, a := range MakePlan(&Result{Steps: []probe.Step{s}}, []string{"hosts_stale"}).Actions {
+				if a.ID == "hosts_comment" {
+					fixed = a.Lines
+				}
+			}
+			if !slices.Equal(fixed, tc.fix) || s.Facts["health.hosts_stale_found"] != strconv.FormatBool(len(tc.fix) > 0) {
+				t.Errorf("hosts_comment = %q, want %q, evidence %v", fixed, tc.fix, s.Evidence)
+			}
+		})
+	}
+}
+
+func TestUnreadableHostsIsAnError(t *testing.T) {
+	c := checker{ctx: context.Background()}
+	s := probe.Step{Status: "ok", Facts: map[string]string{}, Evidence: map[string]any{}}
+	c.readHosts(&s, filepath.Join(t.TempDir(), "missing"), pinCheck{})
+	if s.Status != "error" || s.Facts["health.hosts"] != "unreadable" || s.Evidence["error"] == nil {
+		t.Errorf("unreadable hosts: %+v", s)
+	}
+}
 
 // A zapret-pack style hosts file, as on the author's PC (2026-11-17), plus blocks and a LAN name.
 const hostsSample = "# Copyright (c) Microsoft\r\n" +

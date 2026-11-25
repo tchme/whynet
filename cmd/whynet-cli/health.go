@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -31,11 +32,17 @@ func runHealth(asJSON, save, hide bool) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	res := health.Run(ctx, markers, func(s probe.Step) {
-		if !asJSON {
-			fmt.Printf("· %s (%d %s)\n", t.Steps[s.ID].Name, s.Ms, t.Report["ms"])
-		}
-	})
+	var onStep func(probe.Step)
+	if !asJSON {
+		onStep = report.HealthProgress(rs, func(s probe.Step, finds []rules.Rule) {
+			fmt.Printf("%s %s (%d %s)", t.Status[report.AreaStatus(s, finds)], t.Steps[s.ID].Name, s.Ms, t.Report["ms"])
+			if issue := report.HealthAreaIssue(t, s); issue != "" {
+				fmt.Printf(" %s", issue)
+			}
+			fmt.Println()
+		})
+	}
+	res := health.Run(ctx, markers, onStep)
 	facts := res.Facts()
 	finds := rules.MatchAll(rs, facts)
 	if asJSON {
@@ -45,17 +52,7 @@ func runHealth(asJSON, save, hide bool) error {
 			return err
 		}
 	} else {
-		fmt.Println()
-		if len(finds) == 0 {
-			fmt.Println(t.Health["head_ok"])
-		}
-		for _, f := range finds {
-			d := t.HealthFindings[f.ID]
-			fmt.Printf("[%s] %s\n  %s\n", t.Health["kind_"+f.Kind], locales.Fill(d.Title, facts), locales.Fill(d.Explain, facts))
-			if d.Advice != "" {
-				fmt.Printf("  → %s\n", locales.Fill(d.Advice, facts))
-			}
-		}
+		writeHealthText(os.Stdout, t, res, finds)
 	}
 	if save {
 		name := report.HealthFileName(res)
@@ -65,4 +62,29 @@ func runHealth(asJSON, save, hide bool) error {
 		fmt.Fprintln(os.Stderr, "\nreport:", name)
 	}
 	return nil
+}
+
+func writeHealthText(w io.Writer, t *locales.Texts, res *health.Result, finds []rules.Rule) {
+	fmt.Fprintln(w)
+	incomplete := false
+	for _, s := range res.Steps {
+		if issue := report.HealthAreaIssue(t, s); issue != "" {
+			if !incomplete {
+				fmt.Fprintln(w, t.Health["head_incomplete"])
+				incomplete = true
+			}
+			fmt.Fprintf(w, "%s %s. %s\n", t.Status[report.AreaStatus(s, finds)], t.Steps[s.ID].Name, issue)
+		}
+	}
+	if len(finds) == 0 && !incomplete {
+		fmt.Fprintln(w, t.Health["head_ok"])
+	}
+	facts := res.Facts()
+	for _, f := range finds {
+		d := t.HealthFindings[f.ID]
+		fmt.Fprintf(w, "[%s] %s\n  %s\n", t.Health["kind_"+f.Kind], locales.Fill(d.Title, facts), locales.Fill(d.Explain, facts))
+		if d.Advice != "" {
+			fmt.Fprintf(w, "  → %s\n", locales.Fill(d.Advice, facts))
+		}
+	}
 }

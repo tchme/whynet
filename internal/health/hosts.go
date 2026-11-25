@@ -5,11 +5,13 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"io"
 	"net"
 	"net/netip"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -28,7 +30,7 @@ var ncsiNames = []string{"msftconnecttest.com", "msftncsi.com"}
 // parseHosts reads the active lines of a hosts file; comments, blanks and malformed lines are skipped.
 func parseHosts(content string) []hostsLine {
 	var out []hostsLine
-	for _, raw := range strings.Split(content, "\n") {
+	for _, raw := range strings.Split(strings.TrimPrefix(content, "\ufeff"), "\n") {
 		raw = strings.TrimRight(raw, "\r")
 		l, _, _ := strings.Cut(raw, "#")
 		f := strings.Fields(l)
@@ -71,18 +73,17 @@ func blocksNCSI(lines []hostsLine) bool {
 	return false
 }
 
-// Pin results: the name is served there (ok), cut by its name only (cut: DPI, the pin may still be
-// wanted), the certificate can't be trusted at all (untrusted: an interceptor or the clock);
-// the stale ones: the address doesn't answer (dead), it answers as another site (other_cert),
-// it answers TLS for no name (no_tls).
+// A refused address (dead), a different certificate name (other_cert) and two explicit TLS
+// failures (no_tls) can mark a pin stale. A timeout, cancellation or unknown result is unchecked.
 var staleResults = []string{"dead", "other_cert", "no_tls"}
 
 // pinCheck tests a pinned address: one TCP connect per address, then a TLS handshake per name.
 type pinCheck struct {
-	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
-	Wait time.Duration // per connect / handshake
-	Cap  int           // names tested at most; the rest are "unchecked"
-	Par  int           // at once
+	Dial  func(ctx context.Context, network, addr string) (net.Conn, error)
+	Roots *x509.CertPool // nil uses the system roots
+	Wait  time.Duration  // per connect / handshake
+	Cap   int            // names tested at most; the rest are "unchecked"
+	Par   int            // at once
 }
 
 // pinResult is what pinCheck learned about one name.
@@ -90,7 +91,7 @@ type pinResult struct {
 	Addr, Name, Result string
 }
 
-// run checks every pinned name (up to Cap) and returns a result per name it tested.
+// run checks every unique pinned pair up to Cap and counts pairs without a conclusive check.
 func (c pinCheck) run(ctx context.Context, lines []hostsLine) (res []pinResult, unchecked int) {
 	type job struct{ addr, name string }
 	var jobs []job
@@ -110,48 +111,67 @@ func (c pinCheck) run(ctx context.Context, lines []hostsLine) (res []pinResult, 
 	if len(jobs) > c.Cap {
 		unchecked, jobs = len(jobs)-c.Cap, jobs[:c.Cap]
 	}
-	// Dead addresses first, once each: a dead one makes every name on it stale without a handshake.
-	alive := map[string]bool{}
+	// Check TCP once per address. A missing worker result leaves each of its names unchecked.
+	connections := map[string]string{}
 	var addrs []string
 	for _, j := range jobs {
-		if _, ok := alive[j.addr]; !ok {
-			alive[j.addr] = false
+		if _, ok := connections[j.addr]; !ok {
+			connections[j.addr] = ""
 			addrs = append(addrs, j.addr)
 		}
 	}
 	var mu sync.Mutex
 	parallel(c.Par, len(addrs), func(i int) {
-		ok := c.connect(ctx, addrs[i])
+		status := c.connect(ctx, addrs[i])
 		mu.Lock()
-		alive[addrs[i]] = ok
+		connections[addrs[i]] = status
 		mu.Unlock()
 	})
 	res = make([]pinResult, len(jobs))
+	for i, j := range jobs {
+		res[i] = pinResult{j.addr, j.name, "unchecked"}
+	}
 	parallel(c.Par, len(jobs), func(i int) {
-		j := jobs[i]
-		r := "dead"
-		if alive[j.addr] {
-			r = c.handshake(ctx, j.addr, j.name)
+		r := &res[i]
+		switch connections[r.Addr] {
+		case "dead":
+			r.Result = "dead"
+		case "ok":
+			r.Result = c.handshake(ctx, r.Addr, r.Name)
 		}
-		res[i] = pinResult{j.addr, j.name, r}
 	})
+	for _, r := range res {
+		if r.Result == "unchecked" {
+			unchecked++
+		}
+	}
 	return res, unchecked
 }
 
-func (c pinCheck) connect(ctx context.Context, addr string) bool {
+func (c pinCheck) connect(ctx context.Context, addr string) string {
 	ctx, cancel := context.WithTimeout(ctx, c.Wait)
 	defer cancel()
-	conn, err := c.Dial(ctx, "tcp", net.JoinHostPort(addr, "443"))
-	if err != nil {
-		return false
+	if ctx.Err() != nil {
+		return "unchecked"
 	}
-	conn.Close()
-	return true
+	conn, err := c.Dial(ctx, "tcp", net.JoinHostPort(addr, "443"))
+	if conn != nil {
+		defer conn.Close()
+	}
+	switch {
+	case ctx.Err() != nil:
+		return "unchecked"
+	case err == nil && conn != nil:
+		return "ok"
+	case errors.Is(err, syscall.ECONNREFUSED), errors.Is(err, syscall.Errno(10061)): // WSAECONNREFUSED
+		return "dead"
+	default:
+		return "unchecked"
+	}
 }
 
-// handshake: ok, other_cert, untrusted, cut, no_tls (see staleResults).
 func (c pinCheck) handshake(ctx context.Context, addr, name string) string {
-	err := c.tls(ctx, addr, &tls.Config{ServerName: name})
+	err := c.tls(ctx, addr, &tls.Config{ServerName: name, RootCAs: c.Roots})
 	var host x509.HostnameError
 	var unknown x509.UnknownAuthorityError
 	var invalid x509.CertificateInvalidError
@@ -163,23 +183,52 @@ func (c pinCheck) handshake(ctx context.Context, addr, name string) string {
 	case errors.As(err, &unknown), errors.As(err, &invalid):
 		return "untrusted"
 	}
+	if !pinTLSFailure(err) {
+		return "unchecked"
+	}
 	// The handshake broke: with a neutral name too, or only with this one (cut by name: DPI)?
-	if c.tls(ctx, addr, &tls.Config{ServerName: "example.org", InsecureSkipVerify: true}) == nil {
+	control := c.tls(ctx, addr, &tls.Config{ServerName: "example.org", InsecureSkipVerify: true})
+	if control == nil {
 		return "cut"
 	}
-	return "no_tls"
+	if pinTLSFailure(control) {
+		return "no_tls"
+	}
+	return "unchecked"
+}
+
+func pinTLSFailure(err error) bool {
+	var ne net.Error
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.As(err, &ne) && ne.Timeout() {
+		return false
+	}
+	var header tls.RecordHeaderError
+	var alert tls.AlertError
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.As(err, &header) || errors.As(err, &alert) ||
+		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.Errno(10054)) // WSAECONNRESET
 }
 
 func (c pinCheck) tls(ctx context.Context, addr string, cfg *tls.Config) error {
 	ctx, cancel := context.WithTimeout(ctx, c.Wait)
 	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	raw, err := c.Dial(ctx, "tcp", net.JoinHostPort(addr, "443"))
+	if raw != nil {
+		defer raw.Close()
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if err != nil {
 		return err
 	}
-	conn := tls.Client(raw, cfg)
-	defer conn.Close()
-	return conn.HandshakeContext(ctx)
+	err = tls.Client(raw, cfg).HandshakeContext(ctx)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return err
 }
 
 // staleLines are the pin lines whose every name came back stale; names with no result (unchecked) keep a line.
